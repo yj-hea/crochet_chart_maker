@@ -33,12 +33,15 @@ describe('layoutFlat', () => {
     expect(r2.position.y).toBeLessThan(r1.position.y);
   });
 
-  it('방향: 단 1은 L→R(angle=0), 단 2는 R→L(angle=π)', () => {
-    const result = layoutFromSources(['6O', '6X']);
-    const r1 = result.stitches.filter((s) => s.roundIndex === 1)[0]!;
-    const r2 = result.stitches.filter((s) => s.roundIndex === 2)[0]!;
-    expect(r1.angle).toBe(0);
-    expect(r2.angle).toBeCloseTo(Math.PI, 5);
+  it('기호는 모든 단에서 angle=0 (짝수 단에서도 뒤집히지 않음)', () => {
+    const result = layoutFromSources(['6O', '6X', '6X']);
+    for (const s of result.stitches) {
+      expect(s.angle).toBe(0);
+    }
+    // 작업 방향은 마커 direction으로 표현됨
+    const markers = result.roundMarkers;
+    expect(markers.find((m) => m.roundIndex === 1)?.direction).toBe('right');
+    expect(markers.find((m) => m.roundIndex === 2)?.direction).toBe('left');
   });
 
   it('V는 1개의 stitch지만 2슬롯 차지', () => {

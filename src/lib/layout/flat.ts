@@ -8,7 +8,8 @@
  *
  * y = -(N-1) * FLAT_CELL_HEIGHT (위로 쌓임)
  * 행 내 슬롯은 수평 균등 간격으로 분포, 좌우 중앙 정렬.
- * 방향: 홀수 단 L→R (angle 0), 짝수 단 R→L (angle π).
+ * 작업 방향: 홀수 단 L→R, 짝수 단 R→L. 방향은 시작 마커(▶/◀)로만 표현하고
+ * 기호 자체는 항상 위쪽이 위를 향하도록 angle=0 유지 (코바늘 차트 관행).
  *
  * MAGIC은 단의 가운데 약간 아래에 배치 (참고용).
  */
@@ -72,7 +73,7 @@ function placeRow(
   const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
   const startX = -((rowSlots - 1) * FLAT_CELL_WIDTH) / 2;
   const direction: 1 | -1 = roundIdx % 2 === 1 ? 1 : -1;
-  const angle = direction === 1 ? 0 : Math.PI;
+  const angle = 0;
 
   const parentSlotMap = slotMapByRound.get(roundIdx - 1) ?? [];
   const thisStitchIndices: number[] = [];

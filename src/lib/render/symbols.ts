@@ -4,8 +4,8 @@
  * 각 기호는 원점 (0,0) 중심으로 그려지며, <use> 요소의 x/y 속성으로 위치가 결정된다.
  * 색상은 currentColor 를 사용하므로 상위 그룹의 color/stroke 설정으로 제어 가능.
  *
- * V(INC)/A(DEC)는 베이스가 SC이므로 sym-SC를 재사용한다.
- * 이 매핑은 `stitchSymbolId`로 노출된다.
+ * V(INC)는 꼭짓점이 아래(부모 단 방향), 두 팔이 위로 벌어진 V 형태.
+ * A(DEC)는 꼭짓점이 위, 두 팔이 아래로 벌어진 역V 형태. V와 수직 대칭.
  */
 
 import type { StitchKind } from '$lib/model/stitch';
@@ -45,14 +45,12 @@ export const SYMBOL_DEFS = `
   <line x1="-4" y1="3" x2="4" y2="1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
 </g>
 <g id="sym-INC">
-  <line x1="-5" y1="-7" x2="0" y2="3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="5" y1="-7" x2="0" y2="3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="0" y1="3" x2="0" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="-5" y1="-5" x2="0" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="5" y1="-5" x2="0" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 </g>
 <g id="sym-DEC">
-  <line x1="0" y1="-7" x2="0" y2="-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-  <line x1="-5" y1="7" x2="0" y2="-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-  <line x1="5" y1="7" x2="0" y2="-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-5" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="5" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 </g>
 `.trim();
 

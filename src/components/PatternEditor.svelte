@@ -42,6 +42,7 @@
       source={round.source}
       index={i + 1}
       errors={round.parsed?.errors ?? []}
+      stitchCount={round.expanded?.totalProduce}
       focusToken={focusTokens[round.id]}
       onChange={(s) => updateRoundSource(round.id, s)}
       onEnter={() => handleEnter(round.id)}

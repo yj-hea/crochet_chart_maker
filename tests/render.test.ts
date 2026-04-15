@@ -89,6 +89,23 @@ describe('renderSvg', () => {
     expect(svg.match(/<use /g)?.length).toBe(12);
   });
 
+  it('평면 도안의 짝수 단 기호는 회전되지 않는다', () => {
+    // 짝수 단에 angle=π를 적용하면 rotate(180 ...)이 생성되어 기호가 뒤집혀 보인다.
+    // 기호는 항상 위쪽이 위를 향해야 한다 (차트 관행).
+    const svg = render(['6O', '6X', '6X'], 'flat');
+    expect(svg).not.toMatch(/transform="rotate\(180/);
+    expect(svg).not.toMatch(/transform="rotate\(-180/);
+  });
+
+  it('sym-INC는 Y자 꼬리가 없는 V 형태', () => {
+    const svg = render(['@, 6X', '6V']);
+    // sym-INC 정의를 추출해 수직선(x1=x2=0)이 없는지 확인
+    const defMatch = svg.match(/<g id="sym-INC">([\s\S]*?)<\/g>/);
+    expect(defMatch).not.toBeNull();
+    const incDef = defMatch![1]!;
+    expect(incDef).not.toMatch(/x1="0"[^/]*x2="0"/);
+  });
+
   it('회전 변환 적용', () => {
     const svg = render(['@, 6X']);
     // 각 use는 rotate() transform을 가짐

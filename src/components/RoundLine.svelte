@@ -9,6 +9,8 @@
     source: string;
     index: number;
     errors?: ParseError[];
+    /** 이 단에서 생성되는 총 코 수 (expanded.totalProduce). 미정의 시 '—' 표시 */
+    stitchCount?: number;
     /** 외부에서 이 단에 포커스 요청. 변경될 때마다 (true→false→true 등) 포커스 */
     focusToken?: number;
     onChange: (source: string) => void;
@@ -22,6 +24,7 @@
     source,
     index,
     errors = [],
+    stitchCount,
     focusToken,
     onChange,
     onEnter,
@@ -70,7 +73,7 @@
   }
 
   onMount(() => {
-    view = new EditorView({
+    const v = new EditorView({
       state: EditorState.create({
         doc: source,
         extensions: [
@@ -112,14 +115,26 @@
             '.cm-content': { padding: '6px 8px' },
             '.cm-line': { padding: '0' },
             '&.cm-focused': { outline: 'none' },
-            '.cm-error': { textDecoration: 'underline wavy #d33', textDecorationSkipInk: 'none' },
+            '.cm-error': {
+              textDecoration: 'underline wavy #d33',
+              textDecorationThickness: '2px',
+              textDecorationSkipInk: 'none',
+              backgroundColor: 'rgba(221, 51, 51, 0.14)',
+              borderRadius: '2px',
+            },
           }),
         ],
       }),
       parent: container,
     });
-    applyErrors(view, errors);
-    return () => view?.destroy();
+    view = v;
+    applyErrors(v, errors);
+    // 마운트 시점에 포커스 요청이 이미 걸려있으면 즉시 포커스.
+    // ($effect가 $state 미사용 변수 `view`를 재추적하지 못해 놓치는 경우 대비)
+    if (focusToken !== undefined) {
+      tick().then(() => v.focus());
+    }
+    return () => v.destroy();
   });
 
   // 외부에서 source가 바뀌면 (단 추가/삭제 후 재인덱싱 등) view에 동기화
@@ -147,7 +162,19 @@
 
 <div class="round-line">
   <span class="round-index">{index}:</span>
-  <div class="cm-host" bind:this={container}></div>
+  <div class="cm-wrap">
+    <div class="cm-host" bind:this={container}></div>
+    {#if errors.length > 0}
+      <ul class="error-list">
+        {#each errors as err (err.range.start + ':' + err.kind)}
+          <li>{err.message}</li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+  <span class="stitch-count" title="이 단의 총 코 수">
+    {stitchCount ?? '—'}<span class="unit">코</span>
+  </span>
 </div>
 
 <style>
@@ -166,13 +193,50 @@
     padding-top: 8px;
     user-select: none;
   }
-  .cm-host {
+  .cm-wrap {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .cm-host {
+    width: 100%;
     border: 1px solid #ddd;
     border-radius: 4px;
     background: white;
+    box-sizing: border-box;
+  }
+  .cm-host :global(.cm-editor) {
+    width: 100%;
   }
   .cm-host :global(.cm-editor.cm-focused) {
     border-color: #888;
+  }
+  .stitch-count {
+    flex-shrink: 0;
+    min-width: 56px;
+    text-align: right;
+    padding-top: 8px;
+    font-size: 13px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    color: #555;
+    user-select: none;
+  }
+  .stitch-count .unit {
+    color: #999;
+    font-size: 11px;
+    margin-left: 2px;
+  }
+  .error-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0 4px;
+    font-size: 12px;
+    color: #c0392b;
+    line-height: 1.35;
+  }
+  .error-list li::before {
+    content: '⚠ ';
   }
 </style>
