@@ -11,11 +11,13 @@
     errors?: ParseError[];
     /** 이 단에서 생성되는 총 코 수 (expanded.totalProduce). 미정의 시 '—' 표시 */
     stitchCount?: number;
+    /** 이 단을 삭제할 수 있는지 (마지막 한 단은 삭제 불가). 버튼 활성화 제어용 */
+    canDelete?: boolean;
     /** 외부에서 이 단에 포커스 요청. 변경될 때마다 (true→false→true 등) 포커스 */
     focusToken?: number;
     onChange: (source: string) => void;
     onEnter: () => void;
-    onBackspaceEmpty: () => void;
+    onDelete: () => void;
     onArrowUp?: () => void;
     onArrowDown?: () => void;
   }
@@ -25,10 +27,11 @@
     index,
     errors = [],
     stitchCount,
+    canDelete = true,
     focusToken,
     onChange,
     onEnter,
-    onBackspaceEmpty,
+    onDelete,
     onArrowUp,
     onArrowDown,
   }: Props = $props();
@@ -85,16 +88,6 @@
             {
               key: 'Enter',
               run: () => { onEnter(); return true; },
-            },
-            {
-              key: 'Backspace',
-              run: (v) => {
-                if (v.state.doc.length === 0) {
-                  onBackspaceEmpty();
-                  return true;
-                }
-                return false;
-              },
             },
             {
               key: 'ArrowUp',
@@ -175,6 +168,14 @@
   <span class="stitch-count" title="이 단의 총 코 수">
     {stitchCount ?? '—'}<span class="unit">코</span>
   </span>
+  <button
+    type="button"
+    class="delete-btn"
+    onclick={onDelete}
+    disabled={!canDelete}
+    title={canDelete ? '이 단 삭제' : '마지막 단은 삭제할 수 없습니다'}
+    aria-label="단 {index} 삭제"
+  >×</button>
 </div>
 
 <style>
@@ -227,6 +228,29 @@
     color: #999;
     font-size: 11px;
     margin-left: 2px;
+  }
+  .delete-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin-top: 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: #999;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .delete-btn:hover:not(:disabled) {
+    background: #fce4e4;
+    border-color: #e88;
+    color: #c0392b;
+  }
+  .delete-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
   .error-list {
     list-style: none;

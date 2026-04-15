@@ -88,6 +88,17 @@ export function addRoundAfter(id: string): string {
   return newId;
 }
 
+/** 맨 끝에 단 추가. 반환값은 새 단의 id (포커스 이동용) */
+export function addRoundAtEnd(): string {
+  let newId = '';
+  pattern.update((p) => {
+    newId = makeId();
+    const newRounds = [...p.rounds, { id: newId, source: '' }];
+    return { ...p, rounds: reparseAll(newRounds) };
+  });
+  return newId;
+}
+
 /** 빈 단 삭제. 위 단으로 포커스 이동을 위해 이전 단의 id 반환 (없으면 빈 문자열) */
 export function deleteRound(id: string): string {
   let prevId = '';
