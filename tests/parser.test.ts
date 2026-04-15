@@ -147,3 +147,79 @@ describe('parseRound', () => {
     expect(r.lastValid?.elements).toHaveLength(2);
   });
 });
+
+describe('parseRound — samehole [...]', () => {
+  it('단순 [F,T]', () => {
+    const r = parseRound(1, '[F,T]');
+    expect(r.errors).toEqual([]);
+    expect(r.body?.elements).toHaveLength(1);
+    const el = r.body!.elements[0]!;
+    expect(el.type).toBe('samehole');
+    if (el.type === 'samehole') {
+      expect(el.count).toBe(1);
+      expect(el.body.elements).toHaveLength(2);
+    }
+  });
+
+  it('prefix count: 3[F,T]', () => {
+    const r = parseRound(1, '3[F,T]');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0]!;
+    if (el.type === 'samehole') {
+      expect(el.count).toBe(3);
+      expect(el.body.elements).toHaveLength(2);
+    } else {
+      throw new Error('expected samehole');
+    }
+  });
+
+  it('[] 안에 V 금지', () => {
+    const r = parseRound(1, '[F,V]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors.length).toBeGreaterThan(0);
+    expect(r.errors[0]!.kind).toBe('invalid_samehole');
+  });
+
+  it('[] 안에 A 금지', () => {
+    const r = parseRound(1, '[A]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('invalid_samehole');
+  });
+
+  it('[] 안에 () 허용', () => {
+    const r = parseRound(1, '[(F,T)*2]');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0]!;
+    expect(el.type).toBe('samehole');
+  });
+
+  it('[] 중첩 금지', () => {
+    const r = parseRound(1, '[F,[X,T]]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('invalid_samehole');
+  });
+
+  it('빈 [] 오류', () => {
+    const r = parseRound(1, '[]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('empty_samehole');
+  });
+
+  it('닫히지 않은 [', () => {
+    const r = parseRound(1, '[F,T');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('unclosed_bracket');
+  });
+
+  it('짝 없는 ]', () => {
+    const r = parseRound(1, 'F]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors.some((e) => e.kind === 'unopened_bracket')).toBe(true);
+  });
+
+  it('samehole은 sequence 안에서도 동작', () => {
+    const r = parseRound(1, '2X, [F,T], 3X');
+    expect(r.errors).toEqual([]);
+    expect(r.body?.elements.map((e) => e.type)).toEqual(['stitch', 'samehole', 'stitch']);
+  });
+});

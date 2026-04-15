@@ -2,18 +2,19 @@
  * Parser AST node types.
  *
  * 문법(EBNF, 요약):
- *   round     ::= sequence
- *   sequence  ::= element ("," element)*
- *   element   ::= count? operand expansion?
- *   operand   ::= stitch | modifier stitch | "(" sequence ")"
- *   expansion ::= "^" NUMBER           (V/A에만)
- *   repeat    ::= "(" sequence ")" "*" NUMBER
+ *   round       ::= sequence
+ *   sequence    ::= element ("," element)*
+ *   element     ::= stitchElement | repeatElement | sameHoleElement
+ *   stitchElement ::= modifier? count? stitch expansion?
+ *   repeatElement ::= "(" sequence ")" "*" NUMBER
+ *   sameHoleElement ::= count? "[" sequence "]"   (한 코에 여러 기호 적용. 안에 V/A/중첩[] 금지)
+ *   expansion   ::= "^" NUMBER                    (V/A에만)
  */
 
 import type { StitchKind, ModifierKind } from '$lib/model/stitch';
 import type { ParseError, SourceRange } from '$lib/model/errors';
 
-export type AstNode = StitchNode | RepeatNode | SequenceNode;
+export type AstNode = StitchNode | RepeatNode | SameHoleGroupNode | SequenceNode;
 
 export interface StitchNode {
   type: 'stitch';
@@ -35,9 +36,24 @@ export interface RepeatNode {
   range: SourceRange;
 }
 
+/**
+ * `[...]` 한 코 그룹. 그룹 전체가 부모 단 한 코를 공유한다.
+ * 예: `[F,T]` = 한 부모 코에 F 한 번 + T 한 번 → consume 1, produce 2.
+ * 제약: 안에 V/A 금지, `[...]` 중첩 금지. `(...)` 는 허용.
+ */
+export interface SameHoleGroupNode {
+  type: 'samehole';
+  body: SequenceNode;
+  /** 앞 숫자 — 그룹 전체를 N번 반복. 예: 3[F,T] → count=3 */
+  count: number;
+  range: SourceRange;
+}
+
+export type ElementNode = StitchNode | RepeatNode | SameHoleGroupNode;
+
 export interface SequenceNode {
   type: 'sequence';
-  elements: Array<StitchNode | RepeatNode>;
+  elements: ElementNode[];
   range: SourceRange;
 }
 

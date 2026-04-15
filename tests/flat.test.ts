@@ -86,3 +86,31 @@ describe('layoutFlat', () => {
     expect(result.bounds.width).toBeGreaterThan(0);
   });
 });
+
+describe('layoutFlat — samehole', () => {
+  it('[F,T] 두 stitch가 같은 부모를 공유', () => {
+    const r1 = parseRound(1, '2O');
+    const r2 = parseRound(2, '[F,T]');
+    const e1 = expand(r1.body!, 1);
+    const e2 = expand(r2.body!, 2);
+    const result = layoutFlat([e1, e2]);
+    const r2stitches = result.stitches.filter((s) => s.roundIndex === 2);
+    expect(r2stitches).toHaveLength(2);
+    // 두 stitch 모두 같은 부모
+    expect(r2stitches[0]!.parentIndices).toEqual(r2stitches[1]!.parentIndices);
+    expect(r2stitches[0]!.parentIndices).toHaveLength(1);
+  });
+
+  it('2X, [F,T] — 3번째 부모가 [F,T] 그룹 공유', () => {
+    const r1 = parseRound(1, '3O');
+    const r2 = parseRound(2, '2X, [F,T]');
+    const e1 = expand(r1.body!, 1);
+    const e2 = expand(r2.body!, 2);
+    const result = layoutFlat([e1, e2]);
+    const r2s = result.stitches.filter((s) => s.roundIndex === 2);
+    expect(r2s).toHaveLength(4); // X, X, F, T
+    // F와 T는 같은 부모(세 번째 O)
+    expect(r2s[2]!.parentIndices).toEqual(r2s[3]!.parentIndices);
+    expect(r2s[2]!.parentIndices[0]).not.toBe(r2s[0]!.parentIndices[0]);
+  });
+});

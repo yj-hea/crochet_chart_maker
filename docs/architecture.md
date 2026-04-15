@@ -189,15 +189,16 @@ PositionedStitches
 
 문법(EBNF):
 ```
-round       ::= sequence
-sequence    ::= element ("," element)*
-element     ::= count? operand expansion?
-operand     ::= stitch | modifier stitch | "(" sequence ")"
-expansion   ::= "^" NUMBER          (V/A에만 허용)
-count       ::= NUMBER
-stitch      ::= "@" | "O" | "S" | "X" | "F" | "T" | "E" | "V" | "A"
-modifier    ::= "blo"
-repeat      ::= "(" sequence ")" "*" NUMBER
+round            ::= sequence
+sequence         ::= element ("," element)*
+element          ::= stitchElement | repeatElement | sameHoleElement
+stitchElement    ::= modifier? count? stitch expansion?
+repeatElement    ::= "(" sequence ")" "*" NUMBER
+sameHoleElement  ::= count? "[" sequence "]"    (안에 V/A/중첩 [] 금지. () 허용)
+expansion        ::= "^" NUMBER                  (V/A에만 허용)
+count            ::= NUMBER
+stitch           ::= "@" | "O" | "S" | "X" | "F" | "T" | "E" | "V" | "A"
+modifier         ::= "blo"
 ```
 
 점진적 모드: 세그먼트 단위로 파싱, 실패 시 마지막 정상 AST 반환 + 에러 토큰 위치 반환.
@@ -304,3 +305,4 @@ export const currentRound = writable<number>(1);  // Read 모드 진행 추적
 - **2026-04-15**: 숫자 키 단축키(`1`~`9`) 제거 — 화살표/Home/End + 네비게이터 직접 입력만 사용
 - **2026-04-15**: V(INC)/A(DEC) 기호를 꼬리 없는 수직 대칭 V/역V로 변경 (Y자로 보이던 문제 해결)
 - **2026-04-15**: 평면 짝수 단 기호 회전(angle=π) 제거 — 작업 방향은 시작 마커로만 표현, 기호는 항상 위 향함
+- **2026-04-15**: `[...]` 한 코 그룹 문법 추가. Op에 `sameHoleContinuation` 플래그, 레이아웃은 이 플래그가 true인 op의 부모를 직전 그룹과 공유

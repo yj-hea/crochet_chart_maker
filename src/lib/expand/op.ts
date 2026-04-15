@@ -17,6 +17,12 @@ export interface Op {
   expansion: number;
   consume: number;
   produce: number;
+  /**
+   * `[...]` 한 코 그룹의 두 번째 이후 op임을 표시.
+   * true인 op는 부모 슬롯을 새로 소비하지 않고 직전 op와 같은 부모를 공유한다.
+   * (consume 은 이 경우 0으로 설정됨)
+   */
+  sameHoleContinuation?: boolean;
   /** 원본 AST 노드의 소스 위치 (같은 AST 노드에서 확장된 Op들은 동일 range 공유) */
   sourceRange: SourceRange;
 }

@@ -19,6 +19,13 @@ describe('tokenize', () => {
     ]);
   });
 
+  it('대괄호 한 코 그룹', () => {
+    const tokens = tokenize('3[F,T]');
+    expect(tokens.map((t) => t.type)).toEqual([
+      'NUMBER', 'LBRACKET', 'STITCH', 'COMMA', 'STITCH', 'RBRACKET',
+    ]);
+  });
+
   it('V^N 확장', () => {
     const tokens = tokenize('2V^3');
     expect(tokens.map((t) => [t.type, t.value ?? t.text])).toEqual([

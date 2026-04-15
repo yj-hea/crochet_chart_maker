@@ -15,6 +15,8 @@ export type TokenType =
   | 'COMMA'     // ,
   | 'LPAREN'    // (
   | 'RPAREN'    // )
+  | 'LBRACKET'  // [ — 한 코에 여러 기호 적용 그룹 시작
+  | 'RBRACKET'  // ] — 한 코 그룹 끝
   | 'STAR'      // *
   | 'CARET'     // ^
   | 'UNKNOWN';  // 별칭에 없는 문자
@@ -102,6 +104,8 @@ function tryStructural(ch: string): TokenType | undefined {
     case ',': return 'COMMA';
     case '(': return 'LPAREN';
     case ')': return 'RPAREN';
+    case '[': return 'LBRACKET';
+    case ']': return 'RBRACKET';
     case '*': return 'STAR';
     case '^': return 'CARET';
     default:  return undefined;

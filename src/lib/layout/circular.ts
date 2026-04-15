@@ -109,6 +109,7 @@ function placeRound(
   const thisStitchIndices: number[] = [];
   let parentCursor = 0;
   let slotCursor = 0;
+  let lastGroupParents: number[] = [];  // sameHoleContinuation op가 재사용할 이전 부모
 
   for (const op of round.ops) {
     // MAGIC: 중심에 배치
@@ -126,13 +127,19 @@ function placeRound(
       continue;
     }
 
-    // 부모 슬롯 소비
-    const parents: number[] = [];
-    for (let k = 0; k < op.consume; k++) {
-      const p = parentSlotMap[parentCursor + k];
-      if (p !== undefined) parents.push(p);
+    // 부모 슬롯 소비. sameHoleContinuation op는 이전 그룹의 부모를 공유.
+    let parents: number[];
+    if (op.sameHoleContinuation) {
+      parents = lastGroupParents;
+    } else {
+      parents = [];
+      for (let k = 0; k < op.consume; k++) {
+        const p = parentSlotMap[parentCursor + k];
+        if (p !== undefined) parents.push(p);
+      }
+      parentCursor += op.consume;
+      lastGroupParents = parents;
     }
-    parentCursor += op.consume;
 
     // SLIP: 부모 위 또는 가까이에 작은 마커. 슬롯 점유 없음.
     if (op.kind === 'SLIP' || op.produce === 0) {

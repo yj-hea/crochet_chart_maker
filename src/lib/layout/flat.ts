@@ -79,6 +79,7 @@ function placeRow(
   const thisStitchIndices: number[] = [];
   let parentCursor = 0;
   let slotCursor = 0;
+  let lastGroupParents: number[] = [];  // sameHoleContinuation op가 재사용할 이전 부모
 
   for (const op of round.ops) {
     if (op.kind === 'MAGIC') {
@@ -95,12 +96,18 @@ function placeRow(
       continue;
     }
 
-    const parents: number[] = [];
-    for (let k = 0; k < op.consume; k++) {
-      const p = parentSlotMap[parentCursor + k];
-      if (p !== undefined) parents.push(p);
+    let parents: number[];
+    if (op.sameHoleContinuation) {
+      parents = lastGroupParents;
+    } else {
+      parents = [];
+      for (let k = 0; k < op.consume; k++) {
+        const p = parentSlotMap[parentCursor + k];
+        if (p !== undefined) parents.push(p);
+      }
+      parentCursor += op.consume;
+      lastGroupParents = parents;
     }
-    parentCursor += op.consume;
 
     if (op.kind === 'SLIP' || op.produce === 0) {
       const refStitch = parents.length > 0 ? stitches[parents[0]!] : undefined;
