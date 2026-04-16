@@ -6,9 +6,25 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
+  import { validateRound } from '$lib/validate';
+  import type { ValidationError } from '$lib/model/errors';
   import RoundLine from './RoundLine.svelte';
 
   let focusTokens = $state<Record<string, number>>({});
+
+  // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
+  const validationByRound = $derived.by(() => {
+    const rounds = $pattern.rounds;
+    const map = new Map<string, ValidationError[]>();
+    for (let i = 0; i < rounds.length; i++) {
+      const r = rounds[i]!;
+      if (i === 0 || !r.expanded) { map.set(r.id, []); continue; }
+      const prev = rounds[i - 1];
+      if (!prev?.expanded) { map.set(r.id, []); continue; }
+      map.set(r.id, validateRound(r.expanded, prev.expanded));
+    }
+    return map;
+  });
 
   function bumpFocus(id: string) {
     focusTokens[id] = (focusTokens[id] ?? 0) + 1;
@@ -48,6 +64,7 @@
       source={round.source}
       index={i + 1}
       errors={round.parsed?.errors ?? []}
+      validationErrors={validationByRound.get(round.id) ?? []}
       stitchCount={round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}
       focusToken={focusTokens[round.id]}

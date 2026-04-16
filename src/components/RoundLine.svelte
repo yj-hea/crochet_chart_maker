@@ -3,12 +3,14 @@
   import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
   import { EditorState, StateField, StateEffect } from '@codemirror/state';
   import { history, historyKeymap } from '@codemirror/commands';
-  import type { ParseError } from '$lib/model/errors';
+  import type { ParseError, ValidationError } from '$lib/model/errors';
 
   interface Props {
     source: string;
     index: number;
     errors?: ParseError[];
+    /** 인접 단 비교 의미 오류 (초과/부족) */
+    validationErrors?: ValidationError[];
     /** 이 단에서 생성되는 총 코 수 (expanded.totalProduce). 미정의 시 '—' 표시 */
     stitchCount?: number;
     /** 이 단을 삭제할 수 있는지 (마지막 한 단은 삭제 불가). 버튼 활성화 제어용 */
@@ -26,6 +28,7 @@
     source,
     index,
     errors = [],
+    validationErrors = [],
     stitchCount,
     canDelete = true,
     focusToken,
@@ -66,13 +69,22 @@
     return tr;
   });
 
-  function applyErrors(view: EditorView, errs: ParseError[]) {
-    const docLen = view.state.doc.length;
-    const ranges = errs.map((e) => ({
+  function applyDecorations(v: EditorView, parseErrs: ParseError[], valErrs: ValidationError[]) {
+    const docLen = v.state.doc.length;
+    const ranges = parseErrs.map((e) => ({
       from: Math.min(e.range.start, docLen),
       to: Math.min(e.range.end, docLen),
     }));
-    view.dispatch({ effects: setErrorRanges.of(ranges) });
+    // 초과 오류: offending 지점부터 줄 끝까지 빨간 표시
+    for (const ve of valErrs) {
+      if (ve.kind === 'over_consumed' && ve.offendingRange) {
+        ranges.push({
+          from: Math.min(ve.offendingRange.start, docLen),
+          to: docLen,
+        });
+      }
+    }
+    v.dispatch({ effects: setErrorRanges.of(ranges) });
   }
 
   onMount(() => {
@@ -121,7 +133,7 @@
       parent: container,
     });
     view = v;
-    applyErrors(v, errors);
+    applyDecorations(v, errors, validationErrors);
     // 마운트 시점에 포커스 요청이 이미 걸려있으면 즉시 포커스.
     // ($effect가 $state 미사용 변수 `view`를 재추적하지 못해 놓치는 경우 대비)
     if (focusToken !== undefined) {
@@ -142,7 +154,7 @@
 
   // 에러 변화 시 데코레이션 갱신
   $effect(() => {
-    if (view) applyErrors(view, errors);
+    if (view) applyDecorations(view, errors, validationErrors);
   });
 
   // 외부 포커스 요청
@@ -161,6 +173,13 @@
       <ul class="error-list">
         {#each errors as err (err.range.start + ':' + err.kind)}
           <li>{err.message}</li>
+        {/each}
+      </ul>
+    {/if}
+    {#if validationErrors.length > 0}
+      <ul class="validation-list">
+        {#each validationErrors as ve (ve.kind)}
+          <li class={ve.kind === 'over_consumed' ? 'over' : 'under'}>{ve.message}</li>
         {/each}
       </ul>
     {/if}
@@ -262,5 +281,24 @@
   }
   .error-list li::before {
     content: '⚠ ';
+  }
+  .validation-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0 4px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .validation-list li.over {
+    color: #c0392b;
+  }
+  .validation-list li.over::before {
+    content: '🚫 ';
+  }
+  .validation-list li.under {
+    color: #b8860b;
+  }
+  .validation-list li.under::before {
+    content: '⚠️ ';
   }
 </style>
