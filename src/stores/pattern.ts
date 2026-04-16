@@ -2,13 +2,22 @@
  * 도안 상태 스토어.
  *
  * 단들의 텍스트 + 파싱 결과를 보관. 각 단의 source가 변경되면 즉시 재파싱·확장.
+ * 모든 상태 변경은 localStorage 에 자동 저장 (excalidraw 스타일).
  */
 
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { parseRound } from '$lib/parser/parser';
 import { expand } from '$lib/expand/expander';
 import type { ParsedRound } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
+import {
+  loadFromLocalStorage,
+  saveToLocalStorage,
+  clearLocalStorage,
+  downloadAsFile,
+  readFromFile,
+  type SavedPattern,
+} from '$lib/persistence';
 
 export type ShapeKind = 'circular' | 'flat';
 
@@ -34,14 +43,34 @@ function makeId(): string {
   return `r${idCounter}_${Date.now().toString(36)}`;
 }
 
-function initialState(): PatternState {
+function defaultState(): PatternState {
   return {
     shape: 'circular',
     rounds: [{ id: makeId(), source: '' }],
   };
 }
 
+function stateFromSaved(saved: SavedPattern): PatternState {
+  const rounds = saved.rounds.map((r) => ({ id: makeId(), source: r.source }));
+  return { shape: saved.shape, rounds: reparseAll(rounds) };
+}
+
+function initialState(): PatternState {
+  const saved = loadFromLocalStorage();
+  if (saved && saved.rounds.length > 0) return stateFromSaved(saved);
+  return defaultState();
+}
+
 export const pattern = writable<PatternState>(initialState());
+
+/** 마지막 자동 저장 시각. UI 피드백용 (null = 아직 저장 없음) */
+export const lastSavedAt = writable<Date | null>(null);
+
+// 상태 변경 시 자동 저장 구독
+pattern.subscribe((state) => {
+  saveToLocalStorage({ shape: state.shape, rounds: state.rounds });
+  lastSavedAt.set(new Date());
+});
 
 /**
  * 단 하나를 (re)파싱하여 parsed/expanded를 갱신.
@@ -115,4 +144,22 @@ export function deleteRound(id: string): string {
 
 export function setShape(shape: ShapeKind): void {
   pattern.update((p) => ({ ...p, shape }));
+}
+
+/** 현재 도안을 .crochet.json 파일로 다운로드 */
+export function exportToFile(): void {
+  const state = get(pattern);
+  downloadAsFile({ shape: state.shape, rounds: state.rounds });
+}
+
+/** 파일에서 도안 불러오기. 성공 시 현재 상태를 덮어쓴다. */
+export async function importFromFile(file: File): Promise<void> {
+  const saved = await readFromFile(file);
+  pattern.set(stateFromSaved(saved));
+}
+
+/** 현재 도안을 비우고 빈 상태로 초기화 */
+export function resetPattern(): void {
+  clearLocalStorage();
+  pattern.set(defaultState());
 }
