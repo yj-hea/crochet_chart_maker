@@ -3,6 +3,7 @@
   import ChartViewer from './components/ChartViewer.svelte';
   import ModeToggle from './components/ModeToggle.svelte';
   import RoundNavigator from './components/RoundNavigator.svelte';
+  import TabBar from './components/TabBar.svelte';
   import { mode } from './stores/mode';
   import { pattern, exportToFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
 
@@ -93,6 +94,8 @@
     <input type="file" accept=".json,.crochet.json,application/json" bind:this={fileInput} onchange={handleImport} style="display:none" />
   </div>
 </header>
+
+<TabBar />
 
 <!-- ===== Edit Mode ===== -->
 {#if $mode === 'edit'}
@@ -209,7 +212,7 @@
   .edit-layout {
     display: grid;
     grid-template-rows: 1fr;
-    height: calc(100vh - 52px);
+    height: calc(100vh - 50px - 37px);
     padding: 12px 16px;
     gap: 0;
   }
@@ -250,7 +253,7 @@
   .read-layout {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 52px);
+    height: calc(100vh - 50px - 37px);
     padding: 12px 16px;
     max-width: 1000px;
     margin: 0 auto;

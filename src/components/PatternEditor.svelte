@@ -6,12 +6,13 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
+  import { setRoundDirection } from '$stores/tabs';
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
-  import RoundLine from './RoundLine.svelte';
+  import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
 
-  let focusTokens = $state<Record<string, number>>({});
+  let focusRequests = $state<Record<string, FocusRequest>>({});
 
   // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
   const validationByRound = $derived.by(() => {
@@ -27,18 +28,27 @@
     return map;
   });
 
-  function bumpFocus(id: string) {
-    focusTokens[id] = (focusTokens[id] ?? 0) + 1;
+  function bumpFocus(id: string, cursor?: 'start' | 'end' | number) {
+    const prev = focusRequests[id]?.token ?? 0;
+    focusRequests[id] = { token: prev + 1, cursor };
   }
 
+  /** 일반 Enter: 다음 단으로 이동 (새 단 추가 안 함) */
   function handleEnter(roundId: string) {
+    const idx = $pattern.rounds.findIndex((r) => r.id === roundId);
+    if (idx < 0 || idx >= $pattern.rounds.length - 1) return;
+    bumpFocus($pattern.rounds[idx + 1]!.id, 'start');
+  }
+
+  /** Shift+Enter: 새 단 추가 */
+  function handleShiftEnter(roundId: string) {
     const newId = addRoundAfter(roundId);
     bumpFocus(newId);
   }
 
   function handleDelete(roundId: string) {
     const prevId = deleteRound(roundId);
-    if (prevId) bumpFocus(prevId);
+    if (prevId) bumpFocus(prevId, 'end');
   }
 
   function handleAppend() {
@@ -46,17 +56,44 @@
     bumpFocus(newId);
   }
 
-  function handleArrowUp(roundId: string) {
+  function handleArrowUp(roundId: string, col: number) {
     const idx = $pattern.rounds.findIndex((r) => r.id === roundId);
-    if (idx > 0) bumpFocus($pattern.rounds[idx - 1]!.id);
+    if (idx > 0) bumpFocus($pattern.rounds[idx - 1]!.id, col);
   }
 
-  function handleArrowDown(roundId: string) {
+  function handleArrowDown(roundId: string, col: number) {
     const idx = $pattern.rounds.findIndex((r) => r.id === roundId);
     if (idx >= 0 && idx < $pattern.rounds.length - 1) {
-      bumpFocus($pattern.rounds[idx + 1]!.id);
+      bumpFocus($pattern.rounds[idx + 1]!.id, col);
     }
   }
+
+  function handleArrowLeftBoundary(roundId: string) {
+    const idx = $pattern.rounds.findIndex((r) => r.id === roundId);
+    if (idx > 0) bumpFocus($pattern.rounds[idx - 1]!.id, 'end');
+  }
+
+  function handleArrowRightBoundary(roundId: string) {
+    const idx = $pattern.rounds.findIndex((r) => r.id === roundId);
+    if (idx >= 0 && idx < $pattern.rounds.length - 1) {
+      bumpFocus($pattern.rounds[idx + 1]!.id, 'start');
+    }
+  }
+
+  function handleToggleDirection(roundId: string) {
+    const r = $pattern.rounds.find((r) => r.id === roundId);
+    if (!r) return;
+    const current = r.direction ?? 'forward';
+    setRoundDirection(roundId, current === 'forward' ? 'reverse' : 'forward');
+  }
+
+  // 도형별 방향 아이콘/라벨
+  const dirIcon = $derived($pattern.shape === 'circular'
+    ? { forward: 'fa-solid fa-rotate-left', reverse: 'fa-solid fa-rotate-right' }
+    : { forward: 'fa-solid fa-arrow-right', reverse: 'fa-solid fa-arrow-left' });
+  const dirLabel = $derived($pattern.shape === 'circular'
+    ? { forward: '반시계 방향 (클릭하여 시계 방향으로)', reverse: '시계 방향 (클릭하여 반시계 방향으로)' }
+    : { forward: '왼→오 (클릭하여 오→왼으로)', reverse: '오→왼 (클릭하여 왼→오로)' });
 </script>
 
 <div class="pattern-editor">
@@ -72,12 +109,19 @@
       validationErrors={validationByRound.get(round.id) ?? []}
       stitchCount={round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}
-      focusToken={focusTokens[round.id]}
+      direction={round.direction ?? 'forward'}
+      directionIcon={dirIcon}
+      directionLabel={dirLabel}
+      focusRequest={focusRequests[round.id]}
       onChange={(s) => updateRoundSource(round.id, s)}
       onEnter={() => handleEnter(round.id)}
+      onShiftEnter={() => handleShiftEnter(round.id)}
       onDelete={() => handleDelete(round.id)}
-      onArrowUp={() => handleArrowUp(round.id)}
-      onArrowDown={() => handleArrowDown(round.id)}
+      onToggleDirection={() => handleToggleDirection(round.id)}
+      onArrowUp={(col) => handleArrowUp(round.id, col)}
+      onArrowDown={(col) => handleArrowDown(round.id, col)}
+      onArrowLeftBoundary={() => handleArrowLeftBoundary(round.id)}
+      onArrowRightBoundary={() => handleArrowRightBoundary(round.id)}
     />
   {/each}
   </div>

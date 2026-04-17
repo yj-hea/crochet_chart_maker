@@ -5,23 +5,37 @@
   import { history, historyKeymap } from '@codemirror/commands';
   import type { ParseError, ValidationError } from '$lib/model/errors';
 
+  export interface FocusRequest {
+    token: number;
+    cursor?: 'start' | 'end' | number;
+  }
+
   interface Props {
     source: string;
     index: number;
     errors?: ParseError[];
-    /** 인접 단 비교 의미 오류 (초과/부족) */
     validationErrors?: ValidationError[];
-    /** 이 단에서 생성되는 총 코 수 (expanded.totalProduce). 미정의 시 '—' 표시 */
     stitchCount?: number;
-    /** 이 단을 삭제할 수 있는지 (마지막 한 단은 삭제 불가). 버튼 활성화 제어용 */
     canDelete?: boolean;
-    /** 외부에서 이 단에 포커스 요청. 변경될 때마다 (true→false→true 등) 포커스 */
-    focusToken?: number;
+    /** 단 작업 방향 ('forward' 기본 / 'reverse') */
+    direction?: 'forward' | 'reverse';
+    /** 방향 아이콘 — 도형에 따라 다르므로 부모가 결정 */
+    directionIcon?: { forward: string; reverse: string };
+    /** 방향 라벨 (툴팁) */
+    directionLabel?: { forward: string; reverse: string };
+    /** 외부 포커스 요청. token 증가 시 포커스 이동, cursor로 커서 위치 지정 */
+    focusRequest?: FocusRequest;
     onChange: (source: string) => void;
+    /** 일반 Enter: 다음 단으로 커서 이동 (새 단 추가 안 함) */
     onEnter: () => void;
+    /** Shift+Enter: 새 단 추가 */
+    onShiftEnter: () => void;
     onDelete: () => void;
-    onArrowUp?: () => void;
-    onArrowDown?: () => void;
+    onToggleDirection?: () => void;
+    onArrowUp?: (col: number) => void;
+    onArrowDown?: (col: number) => void;
+    onArrowLeftBoundary?: () => void;
+    onArrowRightBoundary?: () => void;
   }
 
   let {
@@ -31,16 +45,24 @@
     validationErrors = [],
     stitchCount,
     canDelete = true,
-    focusToken,
+    direction = 'forward',
+    directionIcon,
+    directionLabel,
+    focusRequest,
     onChange,
     onEnter,
+    onShiftEnter,
     onDelete,
+    onToggleDirection,
     onArrowUp,
     onArrowDown,
+    onArrowLeftBoundary,
+    onArrowRightBoundary,
   }: Props = $props();
 
   let container: HTMLDivElement;
   let view: EditorView | undefined = $state();
+  let lastSeenFocusToken: number | undefined = undefined;
 
   // 에러 데코레이션을 동적으로 갱신하기 위한 StateField + StateEffect
   const setErrorRanges = StateEffect.define<Array<{ from: number; to: number }>>();
@@ -68,6 +90,18 @@
     if (tr.newDoc.lines > 1) return [];
     return tr;
   });
+
+  function applyFocus(v: EditorView, req: FocusRequest) {
+    v.focus();
+    const docLen = v.state.doc.length;
+    let pos: number | undefined;
+    if (req.cursor === 'start') pos = 0;
+    else if (req.cursor === 'end') pos = docLen;
+    else if (typeof req.cursor === 'number') pos = Math.min(Math.max(0, req.cursor), docLen);
+    if (pos !== undefined) {
+      v.dispatch({ selection: { anchor: pos } });
+    }
+  }
 
   function applyDecorations(v: EditorView, parseErrs: ParseError[], valErrs: ValidationError[]) {
     const docLen = v.state.doc.length;
@@ -102,16 +136,48 @@
               run: () => { onEnter(); return true; },
             },
             {
+              key: 'Shift-Enter',
+              run: () => { onShiftEnter(); return true; },
+            },
+            {
               key: 'Shift-Backspace',
               run: () => { if (canDelete) { onDelete(); return true; } return false; },
             },
             {
               key: 'ArrowUp',
-              run: () => { onArrowUp?.(); return !!onArrowUp; },
+              run: (v) => {
+                if (!onArrowUp) return false;
+                onArrowUp(v.state.selection.main.head);
+                return true;
+              },
             },
             {
               key: 'ArrowDown',
-              run: () => { onArrowDown?.(); return !!onArrowDown; },
+              run: (v) => {
+                if (!onArrowDown) return false;
+                onArrowDown(v.state.selection.main.head);
+                return true;
+              },
+            },
+            {
+              key: 'ArrowLeft',
+              run: (v) => {
+                if (onArrowLeftBoundary && v.state.selection.main.head === 0) {
+                  onArrowLeftBoundary();
+                  return true;
+                }
+                return false;
+              },
+            },
+            {
+              key: 'ArrowRight',
+              run: (v) => {
+                if (onArrowRightBoundary && v.state.selection.main.head === v.state.doc.length) {
+                  onArrowRightBoundary();
+                  return true;
+                }
+                return false;
+              },
             },
           ]),
           EditorView.updateListener.of((u) => {
@@ -139,9 +205,9 @@
     view = v;
     applyDecorations(v, errors, validationErrors);
     // 마운트 시점에 포커스 요청이 이미 걸려있으면 즉시 포커스.
-    // ($effect가 $state 미사용 변수 `view`를 재추적하지 못해 놓치는 경우 대비)
-    if (focusToken !== undefined) {
-      tick().then(() => v.focus());
+    if (focusRequest !== undefined) {
+      lastSeenFocusToken = focusRequest.token;
+      tick().then(() => applyFocus(v, focusRequest!));
     }
     return () => v.destroy();
   });
@@ -161,11 +227,14 @@
     if (view) applyDecorations(view, errors, validationErrors);
   });
 
-  // 외부 포커스 요청
+  // 외부 포커스 요청 — 토큰이 실제로 증가했을 때만 포커스
   $effect(() => {
-    if (focusToken === undefined || !view) return;
-    void focusToken; // depend on the value
-    tick().then(() => view?.focus());
+    const req = focusRequest;
+    if (!req || !view) return;
+    if (req.token === lastSeenFocusToken) return;
+    lastSeenFocusToken = req.token;
+    const v = view;
+    tick().then(() => applyFocus(v, req));
   });
 </script>
 
@@ -191,6 +260,17 @@
   <span class="stitch-count" title="이 단의 총 코 수">
     {stitchCount ?? '—'}<span class="unit">코</span>
   </span>
+  {#if onToggleDirection && directionIcon && directionLabel}
+    <button
+      type="button"
+      class="dir-btn"
+      onclick={onToggleDirection}
+      title={direction === 'forward' ? directionLabel.forward : directionLabel.reverse}
+      aria-label="작업 방향 전환"
+    >
+      <i class={direction === 'forward' ? directionIcon.forward : directionIcon.reverse}></i>
+    </button>
+  {/if}
   <button
     type="button"
     class="delete-btn"
@@ -252,6 +332,29 @@
     color: var(--text-muted);
     font-size: 11px;
     margin-left: 2px;
+  }
+  .dir-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin-top: 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dir-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
   }
   .delete-btn {
     flex-shrink: 0;

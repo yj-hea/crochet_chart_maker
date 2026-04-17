@@ -17,7 +17,11 @@ import { computeBounds, markerFarPoint } from './bounds';
 
 const MARKER_SIDE_OFFSET = 11;
 const START_ANGLE = -Math.PI / 2; // 12시 방향
-const DIRECTION = -1;              // 반시계방향(CCW)
+
+/** 단 방향에 해당하는 부호. forward=CCW(-1), reverse=CW(+1) */
+function directionSign(dir: 'forward' | 'reverse' | undefined): 1 | -1 {
+  return dir === 'reverse' ? 1 : -1;
+}
 
 export interface CircularOptions {
   stitchArc?: number;
@@ -71,8 +75,12 @@ export function layoutCircular(
     placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers);
   }
 
+  // 라운드별 direction sign 맵
+  const directionByRound = new Map<number, 1 | -1>();
+  for (const round of rounds) directionByRound.set(round.index, directionSign(round.direction));
+
   // 3) same-hole 사슬 기둥 (turning chain) 후처리
-  repositionTurningChains(stitches, baseRadiusByRound);
+  repositionTurningChains(stitches, baseRadiusByRound, directionByRound);
 
   // 4) same-hole SLIP 밀착 배치
   repositionSameHoleSlips(stitches, baseRadiusByRound);
@@ -136,6 +144,7 @@ function placeRound(
   const { index: roundIdx } = round;
   const ringSlots = slotCountByRound.get(roundIdx) ?? 0;
   const baseRadius = baseRadiusByRound.get(roundIdx) ?? FIRST_RING_RADIUS;
+  const dirSign = directionSign(round.direction);
 
   const parentSlotMap = slotMapByRound.get(roundIdx - 1) ?? [];
   const thisStitchIndices: number[] = [];
@@ -195,8 +204,8 @@ function placeRound(
     const slotsOccupied = op.produce;
     const startSlot = slotCursor;
     const endSlot = slotCursor + slotsOccupied - 1;
-    const startAngle = angleAt(startSlot, ringSlots);
-    const endAngle = angleAt(endSlot, ringSlots);
+    const startAngle = angleAt(startSlot, ringSlots, dirSign);
+    const endAngle = angleAt(endSlot, ringSlots, dirSign);
     const midAngle = (startAngle + endAngle) / 2;
 
     const r = stitchRadius(baseRadius, op);
@@ -297,6 +306,7 @@ function repositionSameHoleSlips(
 function repositionTurningChains(
   stitches: PositionedStitch[],
   baseRadiusByRound: Map<number, number>,
+  directionByRound: Map<number, 1 | -1>,
 ): void {
   for (let i = 0; i < stitches.length; i++) {
     const s = stitches[i]!;
@@ -334,8 +344,9 @@ function repositionTurningChains(
     for (let k = 0; k < count; k++) {
       const cs = stitches[chainIndices[k]!]!;
       const r = baseR + chainSymH + k * chainSymH * 2;
-      cs.position = polarToCartesian(r, anchorAngle - DIRECTION * angOffset);
-      cs.angle = anchorAngle - DIRECTION * angOffset + Math.PI / 2;
+      const sign = directionByRound.get(s.roundIndex) ?? -1;
+      cs.position = polarToCartesian(r, anchorAngle - sign * angOffset);
+      cs.angle = anchorAngle - sign * angOffset + Math.PI / 2;
     }
 
     i = j;
@@ -492,9 +503,9 @@ function bezierQuadDeriv(p0: number, c: number, p1: number, t: number): number {
   return 2 * (1 - t) * (c - p0) + 2 * t * (p1 - c);
 }
 
-function angleAt(i: number, total: number): number {
+function angleAt(i: number, total: number, sign: 1 | -1): number {
   if (total <= 0) return START_ANGLE;
-  return START_ANGLE + DIRECTION * ((2 * Math.PI * i) / total);
+  return START_ANGLE + sign * ((2 * Math.PI * i) / total);
 }
 
 function polarToCartesian(r: number, angle: number): Point {

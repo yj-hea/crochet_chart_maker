@@ -37,4 +37,6 @@ export interface ExpandedRound {
   ops: Op[];
   totalConsume: number;
   totalProduce: number;
+  /** 이 단의 작업 방향. 레이아웃 단계에서 사용. 미지정시 'forward' */
+  direction?: 'forward' | 'reverse';
 }
