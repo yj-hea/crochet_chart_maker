@@ -136,6 +136,7 @@
           history(),
           singleLineFilter,
           errorField,
+          EditorView.lineWrapping,
           keymap.of([
             ...historyKeymap,
             {
