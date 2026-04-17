@@ -14,6 +14,8 @@
   import ShapeSelector from './ShapeSelector.svelte';
 
   let focusRequests = $state<Record<string, FocusRequest>>({});
+  // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
+  let focusedRoundId = $state<string | null>(null);
 
   // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
   const validationByRound = $derived.by(() => {
@@ -53,8 +55,14 @@
   }
 
   function handleAppend() {
-    const newId = addRoundAtEnd();
-    bumpFocus(newId);
+    // 활성 단이 있으면 그 아래에 삽입, 없으면 맨 끝에 추가
+    if (focusedRoundId && $pattern.rounds.some((r) => r.id === focusedRoundId)) {
+      const newId = addRoundAfter(focusedRoundId);
+      bumpFocus(newId);
+    } else {
+      const newId = addRoundAtEnd();
+      bumpFocus(newId);
+    }
   }
 
   function handleArrowUp(roundId: string, col: number) {
@@ -155,6 +163,7 @@
       onArrowDown={(col) => handleArrowDown(round.id, col)}
       onArrowLeftBoundary={() => handleArrowLeftBoundary(round.id)}
       onArrowRightBoundary={() => handleArrowRightBoundary(round.id)}
+      onFocus={() => (focusedRoundId = round.id)}
     />
   {/each}
   </div>

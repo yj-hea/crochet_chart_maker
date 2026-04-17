@@ -41,6 +41,8 @@
     onArrowDown?: (col: number) => void;
     onArrowLeftBoundary?: () => void;
     onArrowRightBoundary?: () => void;
+    /** 에디터 포커스 획득 시 호출 — 부모가 현재 활성 단 추적 */
+    onFocus?: () => void;
   }
 
   let {
@@ -65,6 +67,7 @@
     onArrowDown,
     onArrowLeftBoundary,
     onArrowRightBoundary,
+    onFocus,
   }: Props = $props();
 
   let container: HTMLDivElement;
@@ -192,6 +195,9 @@
             if (u.docChanged) {
               onChange(u.state.doc.toString());
             }
+          }),
+          EditorView.domEventHandlers({
+            focus: () => { onFocus?.(); },
           }),
           EditorView.theme({
             '&': { fontSize: '14px', fontFamily: "'Noto Sans KR', system-ui, sans-serif" },
