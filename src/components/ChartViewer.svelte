@@ -29,7 +29,7 @@
 
   // SVG 컨테이너 ref — 렌더 후 g.round 요소에 직접 하이라이트 스타일 적용
   let svgWrap: HTMLDivElement | undefined = $state();
-  const HIGHLIGHT_COLOR = '#2563eb';
+  const HIGHLIGHT_COLOR = '#3a3632';  // --text warm dark
 
   $effect(() => {
     void $mode;
@@ -82,7 +82,7 @@
   <div class="toolbar">
     {#if $mode === 'read'}
       <button type="button" class="tool-btn download-btn" onclick={downloadSvg} disabled={!rendered}>
-        📥 SVG 다운로드
+        <i class="fa-solid fa-file-arrow-down"></i> SVG 다운로드
       </button>
     {/if}
     <span class="spacer"></span>
@@ -93,7 +93,7 @@
       onclick={() => showGrid.update((v) => !v)}
       aria-pressed={$showGrid}
       title={$showGrid ? '그리드 숨기기' : '그리드 표시'}
-    >▦ 그리드</button>
+    ><span class="grid-dot" class:on={$showGrid}></span> Grid {$showGrid ? 'On' : 'Off'}</button>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -122,54 +122,59 @@
 
 <style>
   .chart-viewer {
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
-    min-height: 300px;
-    flex: 1;           /* 부모 pane 안에서 남은 공간 채움 */
-    min-height: 0;     /* flex shrink 허용 */
+    flex: 1;
+    min-height: 0;
   }
   .toolbar {
     display: flex;
     gap: 4px;
-    padding: 6px 8px;
-    border-bottom: 1px solid #eee;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-light);
     justify-content: flex-end;
     align-items: center;
+    background: var(--bg-warm);
   }
   .tool-btn {
-    height: 26px;
+    height: 28px;
     padding: 0 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: white;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
     font-size: 13px;
     cursor: pointer;
-    color: #333;
+    color: var(--text-secondary);
+    transition: all 0.15s;
   }
   .tool-btn:hover:not(:disabled) {
-    background: #f0f0f0;
-    border-color: #888;
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
   }
   .tool-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
-  }
-  .download-btn {
-    font-family: system-ui, sans-serif;
   }
   .spacer {
     flex: 1;
   }
-  .toggle-btn {
-    font-family: system-ui, sans-serif;
+  .grid-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted, #9aa0a6);
+    margin-right: 2px;
+    vertical-align: middle;
+    transition: background 0.15s;
   }
-  .toggle-btn.active {
-    background: #e8f0ff;
-    border-color: #6a98d9;
-    color: #2563eb;
+  .grid-dot.on {
+    background: #4caf50;
   }
   .scroll-area {
     flex: 1;

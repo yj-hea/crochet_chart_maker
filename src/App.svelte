@@ -1,7 +1,6 @@
 <script lang="ts">
   import PatternEditor from './components/PatternEditor.svelte';
   import ChartViewer from './components/ChartViewer.svelte';
-  import ShapeSelector from './components/ShapeSelector.svelte';
   import ModeToggle from './components/ModeToggle.svelte';
   import RoundNavigator from './components/RoundNavigator.svelte';
   import { mode } from './stores/mode';
@@ -59,83 +58,70 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    try {
-      await importFromFile(file);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      alert(`불러오기 실패: ${msg}`);
-    }
+    try { await importFromFile(file); }
+    catch (err) { alert(`불러오기 실패: ${err instanceof Error ? err.message : String(err)}`); }
   }
 
   function handleReset() {
-    const ok = window.confirm(
-      '현재 도안을 모두 지우고 새로 시작할까요?\n저장되지 않은 작업은 사라집니다.',
-    );
-    if (ok) resetPattern();
+    if (window.confirm('현재 도안을 모두 지우고 새로 시작할까요?\n저장되지 않은 작업은 사라집니다.'))
+      resetPattern();
   }
 
-  const validRoundCount = $derived(
-    $pattern.rounds.filter((r) => r.expanded).length
-  );
-  const roundSources = $derived(
-    $pattern.rounds.map((r) => r.source)
-  );
+  const validRoundCount = $derived($pattern.rounds.filter((r) => r.expanded).length);
+  const roundSources = $derived($pattern.rounds.map((r) => r.source));
 </script>
 
-<header class="app-header">
-  <div class="header-left">
-    <h1>코바늘 도안 생성기</h1>
-    <ShapeSelector />
+<!-- ===== Header ===== -->
+<header class="header">
+  <div class="header-brand">
+    <i class="fa-solid fa-circle-nodes header-icon"></i>
+    <h1>코바늘 도안</h1>
   </div>
-  <div class="header-right">
-    <span class="save-status" class:visible={savedFlash} aria-live="polite">저장됨</span>
-    <button type="button" class="tool-btn" onclick={exportToFile} title="현재 도안을 파일로 다운로드">
-      💾 저장
-    </button>
-    <button type="button" class="tool-btn" onclick={() => fileInput.click()} title=".crochet.json 파일에서 불러오기">
-      📂 불러오기
-    </button>
-    <button type="button" class="tool-btn danger" onclick={handleReset} title="도안 비우고 새로 시작">
-      🆕 새 도안
-    </button>
+
+  <div class="header-actions">
+    <span class="save-badge" class:visible={savedFlash}>✓ 저장됨</span>
+
+    <div class="btn-group">
+      <button type="button" class="icon-btn" onclick={exportToFile} title="파일로 저장 (.crochet.json)"><i class="fa-solid fa-download"></i></button>
+      <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기"><i class="fa-solid fa-folder-open"></i></button>
+      <button type="button" class="icon-btn" onclick={handleReset} title="새 도안"><i class="fa-solid fa-file-circle-plus"></i></button>
+    </div>
+
+    <div class="header-divider"></div>
     <ModeToggle />
-    <input
-      type="file"
-      accept=".json,.crochet.json,application/json"
-      bind:this={fileInput}
-      onchange={handleImport}
-      style="display:none"
-    />
+
+    <input type="file" accept=".json,.crochet.json,application/json" bind:this={fileInput} onchange={handleImport} style="display:none" />
   </div>
 </header>
 
+<!-- ===== Edit Mode ===== -->
 {#if $mode === 'edit'}
-  <main class="app-main edit-layout" style="grid-template-columns: {splitRatio}fr 6px {1 - splitRatio}fr;" class:resizing>
-    <section class="pane editor-pane">
-      <h2>입력</h2>
+  <main class="edit-layout" style="grid-template-columns: {splitRatio}fr 8px {1 - splitRatio}fr;" class:resizing>
+    <section class="panel editor-panel">
       <PatternEditor />
     </section>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="splitter" onmousedown={startResize} title="드래그하여 패널 크기 조절">
-      <div class="splitter-handle"></div>
+    <div class="splitter" onmousedown={startResize}>
+      <div class="splitter-line"></div>
     </div>
-    <section class="pane viewer-pane">
-      <h2>미리보기</h2>
+    <section class="panel viewer-panel">
       <ChartViewer />
     </section>
   </main>
+
+<!-- ===== Preview / Read Mode ===== -->
 {:else}
-  <main class="app-main read-layout">
+  <main class="read-layout">
     {#if validRoundCount > 0}
-      <div class="read-nav">
+      <div class="read-nav-bar">
         <RoundNavigator totalRounds={validRoundCount} {roundSources} />
       </div>
     {/if}
     <section class="read-viewer">
       <ChartViewer />
     </section>
-    <details class="read-source">
-      <summary>도안 텍스트 보기</summary>
+    <details class="read-source-panel">
+      <summary><i class="fa-solid fa-list-ol"></i> 도안 텍스트 보기</summary>
       <ol class="source-list">
         {#each $pattern.rounds as round (round.id)}
           <li class:empty={!round.source}>{round.source || '(빈 단)'}</li>
@@ -146,150 +132,177 @@
 {/if}
 
 <style>
-  .app-header {
+  /* ===== Header ===== */
+  .header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 0.75rem 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
-    background: white;
-    flex-wrap: wrap;
+    padding: 0 20px;
+    height: 50px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 10;
   }
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-  .header-right {
+  .header-brand {
     display: flex;
     align-items: center;
     gap: 8px;
   }
+  .header-icon {
+    font-size: 18px;
+    color: var(--text-secondary);
+  }
   h1 {
-    font-size: 1.4rem;
+    font-size: 1rem;
+    font-weight: 600;
     margin: 0;
+    color: var(--text);
+    letter-spacing: -0.01em;
   }
-  .save-status {
-    font-size: 12px;
-    color: #2a7a3a;
-    margin-right: 4px;
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .save-badge {
+    font-size: 11px;
+    color: var(--success);
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.25s;
+    margin-right: 6px;
+    font-weight: 500;
   }
-  .save-status.visible {
+  .save-badge.visible {
     opacity: 1;
   }
-  .tool-btn {
-    padding: 6px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: white;
-    font-size: 13px;
+  .btn-group {
+    display: flex;
+    gap: 1px;
+  }
+  .icon-btn {
+    width: 34px;
+    height: 30px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 15px;
     cursor: pointer;
-    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    color: var(--text-secondary);
   }
-  .tool-btn:hover {
-    background: #f0f0f0;
-    border-color: #888;
+  .icon-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
   }
-  .tool-btn.danger:hover {
-    background: #fce4e4;
-    border-color: #c0392b;
-    color: #c0392b;
-  }
-  h2 {
-    font-size: 0.9rem;
-    margin: 0;
-    color: #666;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .header-divider {
+    width: 1px;
+    height: 22px;
+    background: var(--border-light);
+    margin: 0 8px;
   }
 
-  /* Edit layout — 3열 grid: editor | splitter | viewer */
+  /* ===== Edit Layout ===== */
   .edit-layout {
     display: grid;
     grid-template-rows: 1fr;
-    /* grid-template-columns 는 inline style로 동적 지정 */
-    padding: 16px 1.5rem;
-    max-width: 1400px;
-    margin: 0 auto;
-    height: calc(100vh - 60px);
+    height: calc(100vh - 52px);
+    padding: 12px 16px;
+    gap: 0;
   }
   .edit-layout.resizing {
     user-select: none;
     cursor: col-resize;
   }
-  .pane {
+  .panel {
     display: flex;
     flex-direction: column;
-    gap: 8px;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
   }
+
+  /* ===== Splitter ===== */
   .splitter {
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: col-resize;
-    padding: 0 2px;
+    transition: opacity 0.15s;
   }
-  .splitter-handle {
-    width: 4px;
-    height: 40px;
+  .splitter-line {
+    width: 3px;
+    height: 48px;
     border-radius: 2px;
-    background: #ccc;
-    transition: background 0.15s;
+    background: var(--border);
+    transition: all 0.15s;
   }
-  .splitter:hover .splitter-handle,
-  .edit-layout.resizing .splitter-handle {
-    background: #888;
+  .splitter:hover .splitter-line,
+  .edit-layout.resizing .splitter-line {
+    background: var(--accent);
+    height: 64px;
   }
 
-  /* Read layout */
+  /* ===== Read Layout ===== */
   .read-layout {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px 1.5rem;
+    height: calc(100vh - 52px);
+    padding: 12px 16px;
     max-width: 1000px;
     margin: 0 auto;
+    gap: 12px;
   }
-  .read-nav {
+  .read-nav-bar {
     text-align: center;
+    padding: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
   }
   .read-viewer {
     flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
-  .read-source {
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 8px 12px;
-    background: #fafafa;
+  .read-source-panel {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    background: var(--bg-card);
     font-size: 13px;
+    box-shadow: var(--shadow-sm);
   }
-  .read-source summary {
+  .read-source-panel summary {
     cursor: pointer;
-    color: #666;
+    color: var(--text-secondary);
     font-weight: 500;
+    user-select: none;
   }
   .source-list {
     margin: 8px 0 0;
     padding-left: 2em;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    line-height: 1.6;
-    color: #333;
+    font-family: var(--font-mono);
+    line-height: 1.7;
+    color: var(--text);
   }
   .source-list li.empty {
-    color: #bbb;
+    color: var(--text-muted);
     font-style: italic;
   }
 
   @media (max-width: 800px) {
     .edit-layout {
-      grid-template-columns: 1fr;
+      display: flex;
+      flex-direction: column;
+      height: auto;
     }
+    .splitter { display: none; }
+    .panel { min-height: 300px; }
   }
 </style>

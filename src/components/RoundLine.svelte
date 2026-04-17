@@ -116,7 +116,7 @@
             }
           }),
           EditorView.theme({
-            '&': { fontSize: '14px', fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace' },
+            '&': { fontSize: '14px', fontFamily: "'Noto Sans KR', system-ui, sans-serif" },
             '.cm-content': { padding: '6px 8px' },
             '.cm-line': { padding: '0' },
             '&.cm-focused': { outline: 'none' },
@@ -207,9 +207,9 @@
   .round-index {
     min-width: 28px;
     text-align: right;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
-    color: #888;
+    color: var(--text-muted);
     padding-top: 8px;
     user-select: none;
   }
@@ -222,16 +222,17 @@
   }
   .cm-host {
     width: 100%;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: white;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
     box-sizing: border-box;
+    transition: border-color 0.15s;
   }
   .cm-host :global(.cm-editor) {
     width: 100%;
   }
   .cm-host :global(.cm-editor.cm-focused) {
-    border-color: #888;
+    border-color: var(--border-focus);
   }
   .stitch-count {
     flex-shrink: 0;
@@ -239,12 +240,12 @@
     text-align: right;
     padding-top: 8px;
     font-size: 13px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    color: #555;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
     user-select: none;
   }
   .stitch-count .unit {
-    color: #999;
+    color: var(--text-muted);
     font-size: 11px;
     margin-left: 2px;
   }
@@ -255,20 +256,21 @@
     margin-top: 4px;
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #999;
+    color: var(--text-muted);
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
+    transition: all 0.15s;
   }
   .delete-btn:hover:not(:disabled) {
-    background: #fce4e4;
-    border-color: #e88;
-    color: #c0392b;
+    background: var(--danger-light);
+    border-color: var(--danger);
+    color: var(--danger);
   }
   .delete-btn:disabled {
-    opacity: 0.3;
+    opacity: 0.2;
     cursor: not-allowed;
   }
   .error-list {
@@ -290,13 +292,13 @@
     line-height: 1.35;
   }
   .validation-list li.over {
-    color: #c0392b;
+    color: var(--danger);
   }
   .validation-list li.over::before {
     content: '🚫 ';
   }
   .validation-list li.under {
-    color: #b8860b;
+    color: var(--warning);
   }
   .validation-list li.under::before {
     content: '⚠️ ';

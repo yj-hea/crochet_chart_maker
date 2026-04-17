@@ -9,6 +9,7 @@
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine from './RoundLine.svelte';
+  import ShapeSelector from './ShapeSelector.svelte';
 
   let focusTokens = $state<Record<string, number>>({});
 
@@ -59,6 +60,10 @@
 </script>
 
 <div class="pattern-editor">
+  <div class="editor-header">
+    <ShapeSelector />
+  </div>
+  <div class="rounds-area">
   {#each $pattern.rounds as round, i (round.id)}
     <RoundLine
       source={round.source}
@@ -75,6 +80,7 @@
       onArrowDown={() => handleArrowDown(round.id)}
     />
   {/each}
+  </div>
   <button type="button" class="append-btn" onclick={handleAppend}>
     + 단 추가
   </button>
@@ -84,27 +90,38 @@
   .pattern-editor {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    padding: 12px;
-    background: #f8f8f8;
-    border-radius: 6px;
-    min-height: 200px;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border, #e2e2e2);
+    border-radius: var(--radius, 8px);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.06));
+    overflow: hidden;
+  }
+  .editor-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border, #e2e2e2);
+    background: var(--bg, #f5f5f5);
+  }
+  .rounds-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
   }
   .append-btn {
-    align-self: flex-start;
-    margin: 8px 0 0 36px;
-    padding: 6px 14px;
-    border: 1px dashed #aaa;
-    border-radius: 4px;
-    background: transparent;
-    color: #555;
+    align-self: stretch;
+    margin: 0;
+    padding: 10px 14px;
+    border: none;
+    border-top: 1px solid var(--border, #e2e2e2);
+    background: var(--bg, #f5f5f5);
+    color: var(--text-secondary, #666);
     font-size: 13px;
     cursor: pointer;
+    transition: all 0.15s;
   }
   .append-btn:hover {
-    background: #eee;
-    border-color: #666;
-    border-style: solid;
-    color: #222;
+    background: var(--bg-hover, #f0f0f0);
+    color: var(--text, #1a1a1a);
   }
 </style>
