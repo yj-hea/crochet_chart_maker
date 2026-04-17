@@ -102,6 +102,10 @@
               run: () => { onEnter(); return true; },
             },
             {
+              key: 'Ctrl-Backspace',
+              run: () => { if (canDelete) { onDelete(); return true; } return false; },
+            },
+            {
               key: 'ArrowUp',
               run: () => { onArrowUp?.(); return !!onArrowUp; },
             },
