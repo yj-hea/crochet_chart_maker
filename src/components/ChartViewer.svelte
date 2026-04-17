@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
-  import { mode, currentRound, showGrid } from '$stores/mode';
+  import { mode, currentRound, showGrid, showConnections } from '$stores/mode';
   import { layoutCircular } from '$lib/layout/circular';
   import { layoutFlat } from '$lib/layout/flat';
   import { renderSvg } from '$lib/render/svg';
@@ -8,6 +8,15 @@
   import ZoomModal from './ZoomModal.svelte';
 
   let modalOpen = $state(false);
+  let modalSvg = $state('');
+
+  function openModal() {
+    if (!rendered) return;
+    // 현재 DOM의 하이라이트 상태를 그대로 스냅샷 (Read 모드면 색상·강조·배경 포함)
+    const svgEl = svgWrap?.querySelector('svg');
+    modalSvg = svgEl ? svgEl.outerHTML : rendered.svg;
+    modalOpen = true;
+  }
 
   const rendered = $derived.by(() => {
     const validRounds: ExpandedRound[] = [];
@@ -20,7 +29,7 @@
       ? layoutCircular(validRounds)
       : layoutFlat(validRounds);
     return {
-      svg: renderSvg({ layout, showGrid: $showGrid }),
+      svg: renderSvg({ layout, showGrid: $showGrid, showConnections: $showConnections }),
       width: layout.bounds.width,
       height: layout.bounds.height,
       totalRounds: validRounds.length,
@@ -157,11 +166,19 @@
       aria-pressed={$showGrid}
       title={$showGrid ? '그리드 숨기기' : '그리드 표시'}
     ><span class="grid-dot" class:on={$showGrid}></span> Grid {$showGrid ? 'On' : 'Off'}</button>
+    <button
+      type="button"
+      class="tool-btn toggle-btn"
+      class:active={$showConnections}
+      onclick={() => showConnections.update((v) => !v)}
+      aria-pressed={$showConnections}
+      title={$showConnections ? '연결선 숨기기' : '연결선 표시'}
+    ><span class="grid-dot" class:on={$showConnections}></span> Lines {$showConnections ? 'On' : 'Off'}</button>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="scroll-area"
-    ondblclick={() => { if (rendered) modalOpen = true; }}
+    ondblclick={openModal}
     title={rendered ? '더블클릭으로 확대' : ''}
   >
     {#if rendered}
@@ -176,7 +193,7 @@
 
 {#if modalOpen && rendered}
   <ZoomModal
-    svg={rendered.svg}
+    svg={modalSvg || rendered.svg}
     svgWidth={rendered.width}
     svgHeight={rendered.height}
     onClose={() => { modalOpen = false; }}

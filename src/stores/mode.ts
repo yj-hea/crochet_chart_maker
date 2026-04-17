@@ -14,6 +14,9 @@ export const currentRound = writable<number>(1);
 /** 미리보기 그리드 표시 여부. 사용자가 토글 버튼으로 제어. */
 export const showGrid = writable<boolean>(true);
 
+/** 부모-자식 연결선 표시 여부. */
+export const showConnections = writable<boolean>(true);
+
 const STORAGE_KEY = 'crochet-chart:read-progress';
 
 interface ReadProgress {

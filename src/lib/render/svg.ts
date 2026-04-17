@@ -33,16 +33,19 @@ export interface RenderOptions {
   layout: LayoutResult;
   /** 배경 그리드 표시 여부 (디버깅·확인용) */
   showGrid?: boolean;
+  /** 부모-자식 연결선 표시 여부 (기본 true) */
+  showConnections?: boolean;
 }
 
 export function renderSvg(opts: RenderOptions): string {
   const { layout } = opts;
   const showGrid = opts.showGrid ?? false;
+  const showConnections = opts.showConnections ?? true;
   const { bounds, stitches } = layout;
   const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
 
   const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
-  const connections = renderConnections(stitches);
+  const connections = showConnections ? renderConnections(stitches) : '';
   const roundGroups = renderRoundGroups(stitches);
   const markers = renderRoundMarkers(layout.roundMarkers);
 
