@@ -92,4 +92,83 @@ describe('layoutCircular', () => {
     expect(result.stitches).toEqual([]);
     expect(result.bounds.width).toBeGreaterThan(0);
   });
+
+  it('standalone 사슬은 arc 미적용 — 각자 링 슬롯 각도에 위치', () => {
+    // mr, 6x / 3ch, 5f : chains 는 slots 0,1,2 각도에 그대로
+    const res = layoutFromSources(['mr, 6x', '3ch, 5f']);
+    const chains = res.stitches.filter((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN');
+    expect(chains).toHaveLength(3);
+    // 모두 같은 반지름 (링 슬롯)
+    const radii = chains.map((c) => Math.hypot(c.position.x, c.position.y));
+    for (const r of radii) expect(r).toBeCloseTo(radii[0]!, 1);
+    // 각도 차이 = 2π/8 (8 슬롯 중 처음 3개)
+    const angles = chains.map((c) => Math.atan2(c.position.y, c.position.x));
+    expect(Math.abs(angles[1]! - angles[0]!)).toBeCloseTo(2 * Math.PI / 8, 1);
+  });
+
+  it('samehole 사슬은 arc 로 클러스터 — CHAIN_SPACING=9 인접', () => {
+    // [3ch, 1f] 의 chains 는 공유 부모 / 다음 non-chain 사이 arc 에 클러스터
+    const res = layoutFromSources(['mr, 6x', '[3ch, 1f], 5f']);
+    const chains = res.stitches.filter((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN');
+    expect(chains).toHaveLength(3);
+    // 인접 chain 거리 ≈ 9
+    for (let i = 1; i < chains.length; i++) {
+      const d = Math.hypot(
+        chains[i]!.position.x - chains[i - 1]!.position.x,
+        chains[i]!.position.y - chains[i - 1]!.position.y,
+      );
+      expect(d).toBeCloseTo(9, 0);
+    }
+  });
+
+  it('samehole 에서 chain 의 공유 부모가 올바르게 할당됨 (첫 op 강제 consumer)', () => {
+    // [3ch, 1f]: 첫 chain 이 anchor (consume=1)
+    const res = layoutFromSources(['mr, 6x', '[3ch, 1f], 5f']);
+    const ch1 = res.stitches.find((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN')!;
+    expect(ch1.parentIndices).toHaveLength(1);
+  });
+
+  it('samehole 내 두 chain run 이 서로 다른 위치에 배치됨', () => {
+    // [2ch, 1f, 2ch]: 2 개의 chain run — F 좌우로 분리
+    const res = layoutFromSources(['mr, 6x', '[2ch, 1f, 2ch], 4f']);
+    const chains = res.stitches.filter((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN');
+    expect(chains).toHaveLength(4);
+    // 첫 run 과 둘째 run 의 평균 위치가 달라야 함
+    const run1Mid = {
+      x: (chains[0]!.position.x + chains[1]!.position.x) / 2,
+      y: (chains[0]!.position.y + chains[1]!.position.y) / 2,
+    };
+    const run2Mid = {
+      x: (chains[2]!.position.x + chains[3]!.position.x) / 2,
+      y: (chains[2]!.position.y + chains[3]!.position.y) / 2,
+    };
+    const separation = Math.hypot(run1Mid.x - run2Mid.x, run1Mid.y - run2Mid.y);
+    expect(separation).toBeGreaterThan(20);
+  });
+
+  it('tc(...) 기둥코는 세로 스택 — 같은 각도, 반지름 증가', () => {
+    const res = layoutFromSources(['mr, 6x', 'tc(3ch), 5f']);
+    const chains = res.stitches.filter((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN');
+    expect(chains).toHaveLength(3);
+    const angles = chains.map((c) => Math.atan2(c.position.y, c.position.x));
+    // 모두 같은 각도
+    for (const a of angles) expect(a).toBeCloseTo(angles[0]!, 2);
+    // 반지름 증가 (세로 스택)
+    const radii = chains.map((c) => Math.hypot(c.position.x, c.position.y));
+    expect(radii[1]!).toBeGreaterThan(radii[0]!);
+    expect(radii[2]!).toBeGreaterThan(radii[1]!);
+  });
+
+  it('SLIP 은 이제 코수에 포함 (produce=1)', () => {
+    const res = layoutFromSources(['mr, 6x', '5x, 1sl']);
+    const r2 = res.stitches.filter((s) => s.roundIndex === 2);
+    expect(r2).toHaveLength(6);
+    // 모두 링 반지름 상에 (각자 슬롯)
+    const angles = r2.map((s) => Math.atan2(s.position.y, s.position.x));
+    const sorted = [...angles].sort((a, b) => a - b);
+    // 균등 간격
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i]! - sorted[i - 1]!).toBeCloseTo(2 * Math.PI / 6, 1);
+    }
+  });
 });

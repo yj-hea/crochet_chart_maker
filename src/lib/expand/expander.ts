@@ -113,29 +113,43 @@ function expandRepeat(node: RepeatNode, out: Op[]): void {
 
 /**
  * `[...]` 한 코 그룹: 그룹 전체가 부모 단 한 코를 공유.
- * 내부 ops를 평탄화한 뒤 첫 소비 op만 consume=1, 나머지는 consume=0 + sameHoleContinuation=true.
- * `tc(...)` 도 내부에 올 수 있으며 turningChain 플래그는 tc 확장 시 이미 설정되어 있음.
+ * 항상 그룹의 첫 op 를 samehole anchor (consume=1, shc=false) 로 만들고,
+ * 나머지는 consume=0, shc=true 로 표시해 같은 부모를 공유하도록 한다.
+ *
+ * 그룹 내 CHAIN op 는 produce=0 으로 설정 — 장식용 호로 렌더링되므로
+ * 링 슬롯도 차지하지 않고 다음 단 부모로도 카운트되지 않는다.
+ * 예: `[x, 12ch, x]` → 2 슬롯 (x1, x2), 12 chain 은 두 x 상단을 잇는 호.
+ *
+ * tc(...) 도 내부에 올 수 있으며 turningChain 플래그는 tc 확장 시 이미 설정되어 있음.
  */
 function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
   for (let i = 0; i < node.count; i++) {
     const groupOps: Op[] = [];
     expandSequence(node.body, groupOps);
+    if (groupOps.length === 0) continue;
 
-    let consumed = false;
-    for (const op of groupOps) {
-      if (!consumed && op.consume > 0) {
-        out.push({ ...op, consume: 1, sameHoleContinuation: false, inSameHoleGroup: true });
-        consumed = true;
+    for (let k = 0; k < groupOps.length; k++) {
+      const op = groupOps[k]!;
+      const isChain = op.kind === 'CHAIN';
+      const effectiveProduce = isChain ? 0 : op.produce;
+      if (k === 0) {
+        // 첫 op 는 그룹의 앵커 — consume 을 1 로 승격 (chain 등 consume=0 도 포함)
+        out.push({
+          ...op,
+          consume: 1,
+          produce: effectiveProduce,
+          sameHoleContinuation: false,
+          inSameHoleGroup: true,
+        });
       } else {
-        out.push({ ...op, consume: 0, sameHoleContinuation: consumed, inSameHoleGroup: true });
+        out.push({
+          ...op,
+          consume: 0,
+          produce: effectiveProduce,
+          sameHoleContinuation: true,
+          inSameHoleGroup: true,
+        });
       }
-    }
-    // 엣지: 소비 op가 하나도 없는 경우 (예: [O]). 그래도 그룹은 부모 1코를 차지하는 것이 자연스러우므로
-    // 첫 op를 consume=1로 끌어올린다.
-    if (!consumed && groupOps.length > 0) {
-      const firstIdx = out.length - groupOps.length;
-      const first = out[firstIdx]!;
-      out[firstIdx] = { ...first, consume: 1, sameHoleContinuation: false };
     }
   }
 }

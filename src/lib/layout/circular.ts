@@ -378,9 +378,8 @@ function stitchTop(s: PositionedStitch): Point {
 }
 
 /**
- * 연속된 CHAIN ops 를 찾아 양쪽 anchor 의 top 사이를 바깥쪽으로 볼록한 호로 연결.
- * 사슬 기호를 호 위에 균등 배치. 기둥코/same-hole CHAIN 은 제외.
- * SLIP 이 CHAIN 연속을 끊으면 그 구간은 arc 대상에서 제외 (SLIP 은 제자리).
+ * `[...]` 내부 연속된 CHAIN 을 공유 부모 top 과 samehole 내 non-chain anchor top 사이
+ * arc 위에 클러스터로 배치. 기둥코 / standalone chain 은 대상이 아님.
  */
 function repositionChainArcs(stitches: PositionedStitch[]): void {
   const byRound = new Map<number, number[]>();
@@ -395,61 +394,108 @@ function repositionChainArcs(stitches: PositionedStitch[]): void {
   }
 }
 
+function isSameholeArcChain(s: PositionedStitch | undefined): boolean {
+  if (!s) return false;
+  if (s.op.turningChain) return false;
+  if (!s.op.inSameHoleGroup) return false;
+  return s.op.kind === 'CHAIN';
+}
+
+/** 같은 단 내 인접 non-chain stitch 탐색. 원형 wrap-around. MAGIC/SKIP 은 건너뜀. */
+function findAdjacentNonChain(
+  stitches: PositionedStitch[],
+  indices: number[],
+  from: number,
+  direction: 1 | -1,
+): PositionedStitch | undefined {
+  const n = indices.length;
+  if (n === 0) return undefined;
+  let j = ((from % n) + n) % n;
+  for (let k = 0; k < n; k++) {
+    const t = stitches[indices[j]!]!;
+    if (t.op.kind !== 'CHAIN' && !t.op.turningChain && t.op.kind !== 'MAGIC' && t.op.kind !== 'SKIP') return t;
+    j = ((j + direction) % n + n) % n;
+  }
+  return undefined;
+}
+
 function repositionChainArcsInRound(stitches: PositionedStitch[], indices: number[]): void {
-  const isArcChain = (s: PositionedStitch | undefined): boolean => {
-    if (!s) return false;
-    if (s.op.inSameHoleGroup || s.op.turningChain) return false;
-    return s.op.kind === 'CHAIN';
-  };
+  let i = 0;
+  while (i < indices.length) {
+    if (!isSameholeArcChain(stitches[indices[i]!])) { i++; continue; }
+    const runStart = i;
+    while (i < indices.length && isSameholeArcChain(stitches[indices[i]!])) i++;
+    const runEnd = i;
+    const runLen = runEnd - runStart;
 
-  let runStart = -1;
-  for (let i = 0; i <= indices.length; i++) {
-    const idx = i < indices.length ? indices[i] : undefined;
-    const st = idx !== undefined ? stitches[idx] : undefined;
-    const isChain = isArcChain(st);
-    if (isChain && runStart < 0) {
-      runStart = i;
-    } else if (!isChain && runStart >= 0) {
-      const runLen = i - runStart;
-      // 왼쪽 anchor: runStart-1, 오른쪽 anchor: i (원형 wrap)
-      const leftIdx = runStart > 0 ? indices[runStart - 1]! : indices[indices.length - 1]!;
-      const rightIdx = i < indices.length ? indices[i]! : indices[0]!;
-      const leftS = stitches[leftIdx]!;
-      const rightS = stitches[rightIdx]!;
+    // 공유 부모 (fallback anchor)
+    const firstChain = stitches[indices[runStart]!]!;
+    const parentIdx = firstChain.parentIndices[0];
+    const parent = parentIdx !== undefined ? stitches[parentIdx] : undefined;
 
-      // 양쪽 모두 chain(드문 경우: 전체가 chain) 이면 스킵
-      if (isArcChain(leftS) && isArcChain(rightS)) { runStart = -1; continue; }
+    // prev anchor: 단 내 앞쪽 non-chain (samehole 내/외 상관없음), 없으면 공유 부모
+    let prev = findAdjacentNonChain(stitches, indices, runStart - 1, -1);
+    if (!prev) prev = parent;
 
-      const leftTop = stitchTop(leftS);
-      const rightTop = stitchTop(rightS);
+    // next anchor: 단 내 뒤쪽 non-chain, 없으면 공유 부모
+    let next = findAdjacentNonChain(stitches, indices, runEnd, 1);
+    if (!next) next = parent;
 
-      // bezier midpoint 가 top 반지름에 닿도록 C 위치 계산
-      const midX = (leftTop.x + rightTop.x) / 2;
-      const midY = (leftTop.y + rightTop.y) / 2;
-      const midDist = Math.sqrt(midX * midX + midY * midY);
-      const leftR = Math.sqrt(leftTop.x ** 2 + leftTop.y ** 2);
-      const rightR = Math.sqrt(rightTop.x ** 2 + rightTop.y ** 2);
-      const targetR = Math.max(leftR, rightR);
-      const cR = 2 * targetR - midDist;
-      let cx: number, cy: number;
-      if (midDist < 0.001) { cx = cR; cy = 0; }
-      else { const k = cR / midDist; cx = midX * k; cy = midY * k; }
+    if (!prev || !next) continue; // 앵커 없음
 
-      const CHAIN_SPACING = 11;
-      const tValues = sampleByArcLength(leftTop, { x: cx, y: cy }, rightTop, runLen, CHAIN_SPACING);
+    const leftTop = stitchTop(prev);
+    const rightTop = stitchTop(next);
 
-      for (let j = 0; j < runLen; j++) {
-        const t = tValues[j]!;
-        const bx = bezierQuad(leftTop.x, cx, rightTop.x, t);
-        const by = bezierQuad(leftTop.y, cy, rightTop.y, t);
-        const sIdx = indices[runStart + j]!;
-        const s = stitches[sIdx]!;
-        s.position = { x: bx, y: by };
-        const tx = bezierQuadDeriv(leftTop.x, cx, rightTop.x, t);
-        const ty = bezierQuadDeriv(leftTop.y, cy, rightTop.y, t);
-        s.angle = Math.atan2(ty, tx);
-      }
-      runStart = -1;
+    // chord: anchor tops 간 직선 길이
+    const dx = rightTop.x - leftTop.x;
+    const dy = rightTop.y - leftTop.y;
+    const chord = Math.sqrt(dx * dx + dy * dy);
+    const midX = (leftTop.x + rightTop.x) / 2;
+    const midY = (leftTop.y + rightTop.y) / 2;
+    const midDist = Math.sqrt(midX * midX + midY * midY);
+
+    // CHAIN ellipse width 10 → spacing 9 로 1px 겹쳐 연결된 느낌
+    const CHAIN_SPACING = 9;
+
+    // 필요한 arc 길이 — chain 이 겹치지 않고 배치되도록
+    const requiredArc = runLen * CHAIN_SPACING;
+    // bezier midpoint 의 chord 수직 offset h_bez: arc ≈ chord * (1 + (4/3)(h/chord)²)
+    // → h_bez = chord * sqrt((3/4) * max(0, arc/chord - 1))
+    const arcRatio = chord > 0.001 ? requiredArc / chord : 1;
+    const minBulgeRatio = 0.1; // 최소 볼록도 (좁은 arc 도 약간 굽게)
+    const h_bez = chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1))));
+    const cOffset = 2 * h_bez; // C 의 chord midpoint 로부터의 수직 거리
+
+    // outward perpendicular: chord 에 수직이며 원점에서 멀어지는 방향
+    let perpX: number, perpY: number;
+    if (chord < 0.001) {
+      perpX = 0; perpY = 0;
+    } else {
+      const cdx = dx / chord, cdy = dy / chord;
+      // perp 후보: (-cdy, cdx) 또는 (cdy, -cdx). midpoint 방향과 dot 가 양수인 것 선택
+      const p1x = -cdy, p1y = cdx;
+      const mUnitX = midDist > 0.001 ? midX / midDist : 0;
+      const mUnitY = midDist > 0.001 ? midY / midDist : 1;
+      const dot1 = p1x * mUnitX + p1y * mUnitY;
+      if (dot1 >= 0) { perpX = p1x; perpY = p1y; }
+      else { perpX = cdy; perpY = -cdx; }
+    }
+
+    const cx = midX + cOffset * perpX;
+    const cy = midY + cOffset * perpY;
+
+    const tValues = sampleByArcLength(leftTop, { x: cx, y: cy }, rightTop, runLen, CHAIN_SPACING);
+
+    for (let j = 0; j < runLen; j++) {
+      const t = tValues[j]!;
+      const bx = bezierQuad(leftTop.x, cx, rightTop.x, t);
+      const by = bezierQuad(leftTop.y, cy, rightTop.y, t);
+      const sIdx = indices[runStart + j]!;
+      const s = stitches[sIdx]!;
+      s.position = { x: bx, y: by };
+      const tx = bezierQuadDeriv(leftTop.x, cx, rightTop.x, t);
+      const ty = bezierQuadDeriv(leftTop.y, cy, rightTop.y, t);
+      s.angle = Math.atan2(ty, tx);
     }
   }
 }
