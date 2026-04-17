@@ -101,7 +101,9 @@
   </div>
 
   <div class="header-actions">
-    <span class="save-badge" class:visible={savedFlash}>✓ 저장됨</span>
+    {#if savedFlash}
+      <span class="save-badge">✓ 저장됨</span>
+    {/if}
 
     <div class="btn-group">
       <button type="button" class="icon-btn" onclick={exportToFile} title="파일로 저장 (.crochet.json)"><i class="fa-solid fa-download"></i></button>
@@ -113,7 +115,9 @@
     <div class="header-divider"></div>
     <ModeToggle />
 
-    <input type="file" accept=".json,.crochet.json,application/json" bind:this={fileInput} onchange={handleImport} style="display:none" />
+    <!-- 모바일 파일 탐색기는 accept 의 커스텀 확장자(.crochet.json)를 무시하거나 걸러내므로
+         .json 과 application/json 만 두어 파일 선택이 확실히 되도록 함 -->
+    <input type="file" accept=".json,application/json" bind:this={fileInput} onchange={handleImport} style="display:none" />
   </div>
 </header>
 
@@ -194,16 +198,19 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 20px;
-    height: 50px;
+    min-height: 50px;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     position: relative;
     z-index: 10;
+    gap: 8px;
   }
   .header-brand {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
   .header-icon {
     font-size: 18px;
@@ -215,22 +222,41 @@
     margin: 0;
     color: var(--text);
     letter-spacing: -0.01em;
+    white-space: nowrap;
   }
   .header-actions {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  /* 좁은 화면: 타이틀은 한 줄, 메뉴는 아래 줄로 */
+  @media (max-width: 640px) {
+    .header {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 8px 16px;
+      gap: 8px;
+    }
+    .header-brand {
+      justify-content: flex-start;
+    }
+    .header-actions {
+      justify-content: flex-start;
+    }
   }
   .save-badge {
     font-size: 11px;
     color: var(--success);
-    opacity: 0;
-    transition: opacity 0.25s;
     margin-right: 6px;
     font-weight: 500;
+    animation: fade-in 0.2s ease-out;
   }
-  .save-badge.visible {
-    opacity: 1;
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
   .btn-group {
     display: flex;
@@ -265,7 +291,8 @@
   .edit-layout {
     display: grid;
     grid-template-rows: 1fr;
-    height: calc(100vh - 50px - 37px);
+    flex: 1;
+    min-height: 0;
     padding: 12px 16px;
     gap: 0;
   }
@@ -306,11 +333,14 @@
   .read-layout {
     display: flex;
     flex-direction: column;
-    min-height: calc(100vh - 50px - 37px);
+    flex: 1;
+    min-height: 0;
     padding: 12px 16px;
     max-width: 1000px;
     margin: 0 auto;
     gap: 12px;
+    width: 100%;
+    overflow: auto;
   }
   .read-nav-bar {
     text-align: center;

@@ -213,7 +213,15 @@ function renderStitchUse(s: PositionedStitch): string {
   return `<use href="#${sym}" x="${x}" y="${y}" transform="rotate(${angleDeg} ${x} ${y})"${colorStyle}/>`;
 }
 
-const FAN_SPREAD_PER_LEG = 20;
+// V^2 의 각 leg 가 sym-INC 정적 기호와 비슷한 너비를 갖도록.
+// step 이 legs 간 각도. V^2 는 ±step/2, V^N 은 ±(N-1)*step/2.
+// 팁이 너무 벌어지지 않도록 total spread 를 90° 이하로 캡.
+function fanStep(expansion: number): number {
+  const base = 60; // V^2 의 양쪽 legs 간 각도 (≈ sym-INC 너비)
+  const maxTotal = 90; // V^N 의 최대 총 spread
+  if (expansion <= 2) return base;
+  return Math.min(base, maxTotal / (expansion - 1));
+}
 
 function renderFanStitch(
   s: PositionedStitch,
@@ -224,10 +232,11 @@ function renderFanStitch(
   const symH = STITCH_META[base].symbolHalfHeight;
   const isInc = s.op.kind === 'INC';
   const legSym = `leg-${base}`;
+  const step = fanStep(count);
 
   const legs: string[] = [];
   for (let i = 0; i < count; i++) {
-    const fanAngle = (i - (count - 1) / 2) * FAN_SPREAD_PER_LEG;
+    const fanAngle = (i - (count - 1) / 2) * step;
     if (isInc) {
       // anchor at (0, +symH) — 아래 점 공유, 위로 부채처럼
       legs.push(`<use href="#${legSym}" transform="rotate(${fmt(fanAngle)} 0 ${symH})"/>`);

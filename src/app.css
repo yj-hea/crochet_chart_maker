@@ -36,6 +36,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; min-height: 100vh; }
-body { background: var(--bg); color: var(--text); }
+html, body { margin: 0; padding: 0; height: 100vh; }
+body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+#app { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 button { font-family: inherit; }

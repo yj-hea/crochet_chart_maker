@@ -91,9 +91,20 @@ export function layoutCircular(
     }
   }
 
-  // 6) 바운딩 + 그리드 가이드
+  // 6) 바운딩 + 그리드 가이드 — stitch 기호 extent (±symH) 까지 포함해야
+  // arc 로 멀리 뻗은 chain 이나 키 큰 T/F/E 가 잘리지 않음.
+  const extentPoints: Point[] = [];
+  for (const s of stitches) {
+    const symH = effectiveSymH(s.op);
+    extentPoints.push(
+      { x: s.position.x + symH, y: s.position.y + symH },
+      { x: s.position.x + symH, y: s.position.y - symH },
+      { x: s.position.x - symH, y: s.position.y + symH },
+      { x: s.position.x - symH, y: s.position.y - symH },
+    );
+  }
   const bounds = computeBounds([
-    ...stitches.map((s) => s.position),
+    ...extentPoints,
     ...roundMarkers.map((m) => m.position),
     ...roundMarkers.map(markerFarPoint),
   ]);
@@ -456,9 +467,13 @@ function repositionChainArcsInRound(stitches: PositionedStitch[], indices: numbe
 
     // CHAIN ellipse width 10 → spacing 9 로 1px 겹쳐 연결된 느낌
     const CHAIN_SPACING = 9;
+    // anchor 기호와 체인이 겹치지 않고 시각적 여유도 주도록 양 끝에 여유
+    const ANCHOR_GAP = 12;
 
-    // 필요한 arc 길이 — chain 이 겹치지 않고 배치되도록
-    const requiredArc = runLen * CHAIN_SPACING;
+    // chain group 이 arc 에 fit 하도록 필요한 arc 길이:
+    //   (chain 중심 간격 = (runLen-1)*spacing) + 양 끝 anchor gap × 2
+    const chainSpan = (runLen - 1) * CHAIN_SPACING;
+    const requiredArc = chainSpan + 2 * ANCHOR_GAP;
     // bezier midpoint 의 chord 수직 offset h_bez: arc ≈ chord * (1 + (4/3)(h/chord)²)
     // → h_bez = chord * sqrt((3/4) * max(0, arc/chord - 1))
     const arcRatio = chord > 0.001 ? requiredArc / chord : 1;

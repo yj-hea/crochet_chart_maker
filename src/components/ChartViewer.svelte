@@ -259,17 +259,16 @@
   .scroll-area {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
-    padding: 16px;
-    position: relative;
+    padding: 20px;
     cursor: zoom-in;
   }
   .svg-wrap {
-    position: absolute;
-    inset: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
   }
   .svg-wrap :global(svg) {
     width: 100%;
