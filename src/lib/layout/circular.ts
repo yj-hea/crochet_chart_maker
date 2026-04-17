@@ -11,7 +11,7 @@
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from './types';
-import { FIRST_RING_RADIUS, HEIGHT_SCALE } from './constants';
+import { FIRST_RING_RADIUS } from './constants';
 import { STITCH_META } from '$lib/model/stitch';
 import { computeBounds, markerFarPoint } from './bounds';
 
@@ -40,11 +40,26 @@ export function layoutCircular(
     slotCountByRound.set(round.index, slots);
     baseRadiusByRound.set(round.index, currentBase);
 
-    const maxHeight = round.ops.reduce((max, op) => {
-      if (op.kind === 'MAGIC' || op.kind === 'SLIP') return max;
-      return Math.max(max, STITCH_META[op.kind].relativeHeight);
-    }, 1.0); // 최소 1.0 (빈 단 방지)
-    currentBase += maxHeight * HEIGHT_SCALE;
+    // 다음 단의 baseRadius = 심볼 높이 + 여백. 짧은 코도 최소 간격 보장.
+    const MIN_RING_SPACING = 48;
+    const ROUND_GAP = 30;
+    const MIN_SLOT_SPACING = 16; // 슬롯 간 최소 간격 (px)
+    const maxSymH = round.ops.reduce((max, op) => {
+      if (op.kind === 'MAGIC') return max;
+      return Math.max(max, STITCH_META[op.kind].symbolHalfHeight);
+    }, 5);
+    const heightBased = Math.max(maxSymH * 2 + ROUND_GAP, MIN_RING_SPACING);
+
+    // 다음 단의 슬롯 수가 많으면 원주가 충분하도록 반지름 보장
+    const nextRound = rounds[rounds.indexOf(round) + 1];
+    const nextSlots = nextRound
+      ? nextRound.ops.reduce((s, op) => s + op.produce, 0)
+      : 0;
+    const circumBased = nextSlots > 0
+      ? Math.max(0, (nextSlots * MIN_SLOT_SPACING) / (2 * Math.PI) - currentBase)
+      : 0;
+
+    currentBase += Math.max(heightBased, circumBased);
   }
 
   // 2) 각 단 배치
@@ -56,10 +71,26 @@ export function layoutCircular(
     placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers);
   }
 
-  // 3) 사슬 호 후처리
+  // 3) same-hole 사슬 기둥 (turning chain) 후처리
+  repositionTurningChains(stitches, baseRadiusByRound);
+
+  // 4) same-hole SLIP 밀착 배치
+  repositionSameHoleSlips(stitches, baseRadiusByRound);
+
+  // 5) 사슬 호 후처리
   repositionChainArcs(stitches);
 
-  // 4) 바운딩 + 그리드 가이드
+  // 5) 마커 위치 재계산 (후처리로 stitch 위치가 바뀌었을 수 있음)
+  for (const m of roundMarkers) {
+    const mExt = m as RoundMarker & { _stitchIdx?: number };
+    if (mExt._stitchIdx !== undefined) {
+      const s = stitches[mExt._stitchIdx]!;
+      m.position = { x: s.position.x + MARKER_SIDE_OFFSET, y: s.position.y };
+      delete mExt._stitchIdx;
+    }
+  }
+
+  // 6) 바운딩 + 그리드 가이드
   const bounds = computeBounds([
     ...stitches.map((s) => s.position),
     ...roundMarkers.map((m) => m.position),
@@ -89,9 +120,9 @@ export function layoutCircular(
   };
 }
 
+/** 기호 하단이 baseRadius에 맞도록 심볼 반높이만큼 밀어냄 */
 function stitchRadius(baseRadius: number, op: Op): number {
-  const height = STITCH_META[op.kind].relativeHeight;
-  return baseRadius + height * HEIGHT_SCALE * 0.5;
+  return baseRadius + STITCH_META[op.kind].symbolHalfHeight;
 }
 
 function placeRound(
@@ -142,13 +173,12 @@ function placeRound(
       let pos: Point;
       let angle = 0;
       if (refStitch) {
-        // 현재 단의 baseRadius에 배치 (이전 단 기호와 겹치지 않도록)
-        const px = refStitch.position.x;
-        const py = refStitch.position.y;
-        const parentAngle = Math.atan2(py, px);
-        const slipR = baseRadius + STITCH_META[op.kind].relativeHeight * HEIGHT_SCALE * 0.5;
-        pos = polarToCartesian(slipR, parentAngle);
-        angle = parentAngle + Math.PI / 2;
+        // SLIP은 현재 단의 baseRadius에 부모 각도 방향으로 배치 (ch와 동일)
+        const parentAngle = Math.atan2(refStitch.position.y, refStitch.position.x);
+        const slipR = baseRadius + STITCH_META[op.kind].symbolHalfHeight;
+        const angOff = op.sameHoleContinuation ? 0.04 : 0;
+        pos = polarToCartesian(slipR, parentAngle + angOff);
+        angle = parentAngle + angOff + Math.PI / 2;
       } else {
         pos = { x: 0, y: 0 };
       }
@@ -193,17 +223,122 @@ function placeRound(
   }
   slotMapByRound.set(roundIdx, slotMap);
 
-  // 시작 마커
+  // 시작 마커: MAGIC, CHAIN, SLIP 제외한 첫 visible stitch
   const firstVisible = thisStitchIndices.find(
-    (i) => stitches[i]!.op.kind !== 'MAGIC' && stitches[i]!.op.produce > 0
+    (i) => {
+      const k = stitches[i]!.op.kind;
+      return k !== 'MAGIC' && k !== 'CHAIN' && k !== 'SLIP' && stitches[i]!.op.produce > 0;
+    }
   );
   if (firstVisible !== undefined) {
-    const s = stitches[firstVisible]!;
     roundMarkers.push({
       roundIndex: roundIdx,
-      position: { x: s.position.x + MARKER_SIDE_OFFSET, y: s.position.y },
+      position: { x: 0, y: 0 }, // 후처리에서 재계산
       direction: 'left',
-    });
+      _stitchIdx: firstVisible, // 임시 참조
+    } as RoundMarker & { _stitchIdx: number });
+  }
+}
+
+// ============================================================
+// same-hole SLIP 밀착
+// ============================================================
+
+/**
+ * same-hole 그룹 내 SLIP(produce=0)을 가장 가까운 produce>0 기호 근처로 이동.
+ * 기본 배치에서는 SLIP이 부모 각도에 놓여 그룹 내 다른 기호와 멀어질 수 있음.
+ */
+function repositionSameHoleSlips(
+  stitches: PositionedStitch[],
+  _baseRadiusByRound: Map<number, number>,
+): void {
+  for (let i = 0; i < stitches.length; i++) {
+    const s = stitches[i]!;
+    if (s.op.kind !== 'SLIP' || !s.op.inSameHoleGroup) continue;
+
+    // 그룹 내 가장 가까운 produce>0 기호 찾기 (앞뒤로 탐색)
+    let anchor: PositionedStitch | undefined;
+    // 뒤쪽 탐색
+    for (let j = i + 1; j < stitches.length; j++) {
+      const t = stitches[j]!;
+      if (t.roundIndex !== s.roundIndex) break;
+      if (!t.op.inSameHoleGroup && !t.op.sameHoleContinuation) break;
+      if (t.op.produce > 0 && t.op.kind !== 'SLIP') { anchor = t; break; }
+    }
+    // 앞쪽 탐색 (fallback)
+    if (!anchor) {
+      for (let j = i - 1; j >= 0; j--) {
+        const t = stitches[j]!;
+        if (t.roundIndex !== s.roundIndex) break;
+        if (t.op.produce > 0 && t.op.kind !== 'SLIP') { anchor = t; break; }
+      }
+    }
+    if (!anchor) continue;
+
+    // SLIP은 부모 기호 근처에 놓되, 그룹 내 anchor 방향으로 살짝 이동
+    // anchor 방향, 현재 단 baseRadius에 배치
+    const anchorAngle = Math.atan2(anchor.position.y, anchor.position.x);
+    const baseR = _baseRadiusByRound.get(s.roundIndex) ?? FIRST_RING_RADIUS;
+    const slipR = baseR + STITCH_META[s.op.kind].symbolHalfHeight;
+    const angOff = s.op.sameHoleContinuation ? 0.04 : 0;
+    s.position = polarToCartesian(slipR, anchorAngle + angOff);
+    s.angle = anchorAngle + angOff + Math.PI / 2;
+  }
+}
+
+// ============================================================
+// same-hole 사슬 기둥 (turning chain) 재배치
+// ============================================================
+
+/**
+ * [2ch, F] 같은 same-hole 그룹에서 사슬을 F 아래 세로(방사 방향)로 쌓는다.
+ * 감지: inSameHoleGroup=true인 CHAIN 연속 뒤에 inSameHoleGroup=true인 non-CHAIN.
+ */
+function repositionTurningChains(
+  stitches: PositionedStitch[],
+  baseRadiusByRound: Map<number, number>,
+): void {
+  for (let i = 0; i < stitches.length; i++) {
+    const s = stitches[i]!;
+    if (s.op.kind !== 'CHAIN' || !s.op.inSameHoleGroup) continue;
+    // group 시작 위치(first consumer 이전)의 chain만 turning chain으로 처리
+    if (s.op.sameHoleContinuation) continue;
+
+    // 연속된 CHAIN 수집 (같은 단, sameHoleContinuation=false)
+    const chainIndices: number[] = [i];
+    let j = i + 1;
+    while (j < stitches.length
+      && stitches[j]!.op.kind === 'CHAIN'
+      && stitches[j]!.op.inSameHoleGroup
+      && !stitches[j]!.op.sameHoleContinuation
+      && stitches[j]!.roundIndex === s.roundIndex) {
+      chainIndices.push(j);
+      j++;
+    }
+    // 뒤에 같은 same-hole 그룹의 non-CHAIN anchor가 있어야 함
+    if (j >= stitches.length) continue;
+    const anchor = stitches[j]!;
+    if (anchor.roundIndex !== s.roundIndex) continue;
+    if (!anchor.op.inSameHoleGroup) continue;
+    if (anchor.op.kind === 'CHAIN') continue;
+
+    // anchor 아래 공간(baseRadius ~ anchor 위치)에 균등 분포
+    const baseR = baseRadiusByRound.get(s.roundIndex) ?? FIRST_RING_RADIUS;
+    const anchorAngle = Math.atan2(anchor.position.y, anchor.position.x);
+    const count = chainIndices.length;
+
+    // 사슬을 anchor 옆(각도 오프셋)에 세로 배치. DC는 원래 위치 유지.
+    const chainSymH = STITCH_META['CHAIN'].symbolHalfHeight;
+    // chains는 진행 방향상 anchor 앞(시계방향)에 배치
+    const angOffset = 0.22;
+    for (let k = 0; k < count; k++) {
+      const cs = stitches[chainIndices[k]!]!;
+      const r = baseR + chainSymH + k * chainSymH * 2;
+      cs.position = polarToCartesian(r, anchorAngle - DIRECTION * angOffset);
+      cs.angle = anchorAngle - DIRECTION * angOffset + Math.PI / 2;
+    }
+
+    i = j;
   }
 }
 
@@ -238,7 +373,10 @@ function repositionChainArcsInRound(
   // 연속 CHAIN run 탐지
   let runStart = -1;
   for (let i = 0; i <= indices.length; i++) {
-    const isChain = i < indices.length && stitches[indices[i]!]!.op.kind === 'CHAIN';
+    // turning chain(group 시작 chains)만 arc 처리 제외. group 중간 chains는 arc 대상.
+    const st = i < indices.length ? stitches[indices[i]!]! : undefined;
+    const isTurningChain = st !== undefined && st.op.inSameHoleGroup && !st.op.sameHoleContinuation;
+    const isChain = st !== undefined && st.op.kind === 'CHAIN' && !isTurningChain;
     if (isChain && runStart < 0) {
       runStart = i;
     } else if (!isChain && runStart >= 0) {

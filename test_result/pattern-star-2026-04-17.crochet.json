@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-17T02:22:35.679Z",
+  "shape": "circular",
+  "rounds": [
+    {
+      "source": "mr, [2ch,1F], 9F,"
+    },
+    {
+      "source": "[2_,2ch], ([f,3ch,2x], [_,2ch])*5,[f,3ch,2x]"
+    },
+    {
+      "source": "2ch, (x,t,f,e)*12"
+    }
+  ]
+}
