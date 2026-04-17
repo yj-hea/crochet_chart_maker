@@ -20,6 +20,7 @@
 
 import type { LayoutResult, PositionedStitch, LayoutBounds, GridGuide } from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
+import { STITCH_META } from '$lib/model/stitch';
 import {
   STITCH_COLOR,
   CONNECTION_COLOR,
@@ -157,6 +158,8 @@ function renderConnections(stitches: PositionedStitch[]): string {
   const seen = new Set<string>();
   for (let i = 0; i < stitches.length; i++) {
     const s = stitches[i]!;
+    // SKIP 은 건너뜀 표시일 뿐 실제 연결 관계가 아니므로 연결선 생략
+    if (s.op.kind === 'SKIP') continue;
     for (const pidx of s.parentIndices) {
       const key = `${pidx}-${i}`;
       if (seen.has(key)) continue;
@@ -196,12 +199,44 @@ function renderRoundGroups(stitches: PositionedStitch[]): string {
 }
 
 function renderStitchUse(s: PositionedStitch): string {
-  const sym = stitchSymbolId(s.op.kind);
   const x = fmt(s.position.x);
   const y = fmt(s.position.y);
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
   const colorStyle = s.op.color ? ` style="color: ${escapeAttr(s.op.color)}"` : '';
+
+  // INC/DEC는 fan 형태(다리 여러 개)로 출력
+  if (s.op.kind === 'INC' || s.op.kind === 'DEC') {
+    return renderFanStitch(s, x, y, angleDeg, colorStyle);
+  }
+
+  const sym = stitchSymbolId(s.op.kind);
   return `<use href="#${sym}" x="${x}" y="${y}" transform="rotate(${angleDeg} ${x} ${y})"${colorStyle}/>`;
+}
+
+const FAN_SPREAD_PER_LEG = 20;
+
+function renderFanStitch(
+  s: PositionedStitch,
+  x: string, y: string, angleDeg: string, colorStyle: string,
+): string {
+  const base = s.op.baseKind ?? 'SC';
+  const count = Math.max(2, s.op.expansion);
+  const symH = STITCH_META[base].symbolHalfHeight;
+  const isInc = s.op.kind === 'INC';
+  const legSym = `leg-${base}`;
+
+  const legs: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const fanAngle = (i - (count - 1) / 2) * FAN_SPREAD_PER_LEG;
+    if (isInc) {
+      // anchor at (0, +symH) — 아래 점 공유, 위로 부채처럼
+      legs.push(`<use href="#${legSym}" transform="rotate(${fmt(fanAngle)} 0 ${symH})"/>`);
+    } else {
+      // anchor at (0, -symH) — 위 점 공유, 아래로 수렴. scale(1,-1)로 다리 뒤집고 회전
+      legs.push(`<use href="#${legSym}" transform="rotate(${fmt(fanAngle)} 0 ${-symH}) scale(1 -1)"/>`);
+    }
+  }
+  return `<g transform="translate(${x} ${y}) rotate(${angleDeg})"${colorStyle}>${legs.join('')}</g>`;
 }
 
 function escapeAttr(s: string): string {

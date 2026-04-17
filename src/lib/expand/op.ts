@@ -25,6 +25,10 @@ export interface Op {
   sameHoleContinuation?: boolean;
   /** `[...]` 한 코 그룹에 속한 op인지. 첫 번째 op 포함. turning chain 감지 등에 사용 */
   inSameHoleGroup?: boolean;
+  /** `[^...]` 기둥코 그룹에 속한 op. true 면 그룹 전체가 슬롯 1개로 축약되고 세로 스택 렌더 */
+  turningChain?: boolean;
+  /** V/A의 base stitch — 렌더 시 심볼 선택용 */
+  baseKind?: StitchKind;
   /** 인라인 코멘트 — 각 코별 주의사항 */
   comment?: string;
   /** 인라인 색상 — 배색 도안용 (기호 색상) */

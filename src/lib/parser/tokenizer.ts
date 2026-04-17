@@ -168,11 +168,11 @@ interface AliasMatch {
 function tryAliasMatch(input: string, start: number): AliasMatch | undefined {
   for (const key of ALIAS_KEYS_BY_LENGTH) {
     if (input.startsWith(key, start)) {
-      // 식별자형 별칭(sc, hdc, blo 등)의 경우 뒤 문자가 또다른 알파벳이면
-      // 부분 일치일 가능성이 있음 → 다음 문자가 알파벳이면 매칭 거부.
-      // 단, 단일 특수기호(@, _)는 이 체크에서 예외.
+      // 다자 식별자 별칭(sc, hdc, blo 등)의 경우 뒤 문자가 또다른 알파벳이면
+      // 부분 일치일 가능성이 있음 → 매칭 거부. 단일 문자 별칭(V, A, X, T, F, E 등)은
+      // 연속 작성(VT, AF) 허용을 위해 거부하지 않음.
       const last = key[key.length - 1]!;
-      if (/[A-Za-z]/.test(last)) {
+      if (key.length > 1 && /[A-Za-z]/.test(last)) {
         const next = input[start + key.length];
         if (next !== undefined && /[A-Za-z]/.test(next)) continue;
       }

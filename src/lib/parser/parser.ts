@@ -17,7 +17,7 @@
 
 import { tokenize, type Token } from './tokenizer';
 import type { ParseError, ParseErrorKind, SourceRange } from '$lib/model/errors';
-import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, ElementNode, ParsedRound } from './ast';
+import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode, ElementNode, ParsedRound } from './ast';
 import type { StitchKind, ModifierKind } from '$lib/model/stitch';
 import { STITCH_META } from '$lib/model/stitch';
 
@@ -152,7 +152,105 @@ class Parser {
       this.error('unopened_bracket', token.range, '`]` 앞에 `[` 가 필요합니다');
       return undefined;
     }
+    if (token.type === 'STITCH' && token.value === 'SKIP') {
+      return this.parseSkipElement();
+    }
+    if (token.type === 'STITCH' && token.value === 'TC') {
+      return this.parseTcElement();
+    }
     return this.parseStitchElement();
+  }
+
+  /**
+   * tcElement ::= "tc" "(" sequence ")"
+   */
+  private parseTcElement(): TcNode | undefined {
+    const tcTok = this.advance()!;
+    const lparen = this.peek();
+    if (!lparen || lparen.type !== 'LPAREN') {
+      this.error('unexpected_token', lparen?.range ?? this.eofRange(), 'tc 뒤에는 `(...)` 가 필요합니다');
+      return undefined;
+    }
+    this.advance();
+
+    const body = this.parseSequence('paren');
+    if (this.aborted) return undefined;
+
+    const rparen = this.peek();
+    if (!rparen || rparen.type !== 'RPAREN') {
+      this.error('unclosed_paren', rparen?.range ?? this.eofRange(), 'tc( 에 대응하는 `)` 가 필요합니다');
+      return undefined;
+    }
+    this.advance();
+
+    if (body.elements.length === 0) {
+      this.error('unexpected_token',
+        { start: lparen.range.start, end: rparen.range.end },
+        'tc(...) 가 비어 있습니다');
+      return undefined;
+    }
+
+    const violation = findTcViolation(body);
+    if (violation) {
+      this.error(violation.kind, violation.range, violation.message);
+      return undefined;
+    }
+
+    return {
+      type: 'tc',
+      body,
+      range: { start: tcTok.range.start, end: rparen.range.end },
+    };
+  }
+
+  /**
+   * skipElement ::= "skip" "(" NUMBER ")"
+   */
+  private parseSkipElement(): SkipNode | undefined {
+    const skipTok = this.advance()!;
+    const lparen = this.peek();
+    if (!lparen || lparen.type !== 'LPAREN') {
+      this.error(
+        'unexpected_token',
+        lparen?.range ?? this.eofRange(),
+        'skip 뒤에는 `(N)` 이 필요합니다',
+      );
+      return undefined;
+    }
+    this.advance();
+
+    const numTok = this.peek();
+    if (!numTok || numTok.type !== 'NUMBER') {
+      this.error(
+        'invalid_number',
+        numTok?.range ?? this.eofRange(),
+        'skip(N) 의 N (양의 정수) 이 필요합니다',
+      );
+      return undefined;
+    }
+    const count = numTok.value as number;
+    if (count < 1) {
+      this.error('invalid_number', numTok.range, 'skip(N) 의 N 은 1 이상이어야 합니다');
+      return undefined;
+    }
+    this.advance();
+
+    const rparen = this.peek();
+    if (!rparen || rparen.type !== 'RPAREN') {
+      this.error(
+        'unclosed_paren',
+        rparen?.range ?? this.eofRange(),
+        'skip( 에 대응하는 `)` 가 필요합니다',
+      );
+      return undefined;
+    }
+    this.advance();
+
+    return {
+      type: 'skip',
+      count,
+      range: { start: skipTok.range.start, end: rparen.range.end },
+    };
   }
 
   /**
@@ -208,6 +306,19 @@ class Parser {
     }
     const kind = stitchTok.value as StitchKind;
     this.advance();
+
+    // V/A 뒤에 선택적 base stitch (T/F/E/X): VT^2, AF^3 등
+    let baseKind: StitchKind | undefined;
+    if (kind === 'INC' || kind === 'DEC') {
+      const maybeBase = this.peek();
+      if (maybeBase?.type === 'STITCH') {
+        const bk = maybeBase.value as StitchKind;
+        if (bk === 'SC' || bk === 'HDC' || bk === 'DC' || bk === 'TR') {
+          baseKind = bk;
+          this.advance();
+        }
+      }
+    }
 
     // 선택적 expansion: ^NUMBER
     const caret = this.peek();
@@ -276,6 +387,7 @@ class Parser {
       count,
       expansion,
       modifier,
+      baseKind,
       comment,
       color,
       range: { start: startPos, end: (this.peek(-1)?.range.end) ?? startPos },
@@ -373,14 +485,15 @@ class Parser {
     }
     this.advance();
 
+    // `*N` 생략 시 count=1 로 기본 처리
     const star = this.peek();
     if (!star || star.type !== 'STAR') {
-      this.error(
-        'missing_repeat_count',
-        star?.range ?? this.eofRange(),
-        '`(...)` 뒤에는 `*N` 이 필요합니다',
-      );
-      return undefined;
+      return {
+        type: 'repeat',
+        body,
+        count: 1,
+        range: { start: startPos, end: rparen.range.end },
+      };
     }
     this.advance();
 
@@ -414,6 +527,47 @@ class Parser {
 }
 
 /**
+ * tc(...) body 의 재귀 검증. 허용: stitch, repeat. 금지: [...], skip, nested tc, V/A.
+ */
+function findTcViolation(
+  seq: SequenceNode,
+): { kind: ParseErrorKind; range: SourceRange; message: string } | undefined {
+  for (const el of seq.elements) {
+    if (el.type === 'stitch') {
+      if (el.kind === 'INC' || el.kind === 'DEC') {
+        return {
+          kind: 'invalid_samehole',
+          range: el.range,
+          message: `tc(...) 안에는 V/A 를 사용할 수 없습니다`,
+        };
+      }
+    } else if (el.type === 'samehole') {
+      return {
+        kind: 'invalid_samehole',
+        range: el.range,
+        message: 'tc(...) 안에 `[...]` 는 사용할 수 없습니다',
+      };
+    } else if (el.type === 'skip') {
+      return {
+        kind: 'invalid_samehole',
+        range: el.range,
+        message: 'tc(...) 안에서 skip 은 사용할 수 없습니다',
+      };
+    } else if (el.type === 'tc') {
+      return {
+        kind: 'invalid_samehole',
+        range: el.range,
+        message: 'tc(...) 는 중첩할 수 없습니다',
+      };
+    } else if (el.type === 'repeat') {
+      const nested = findTcViolation(el.body);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
+}
+
+/**
  * samehole body의 재귀 검증. V/A 또는 중첩 `[...]` 발견 시 첫 위반 반환.
  */
 function findSameHoleViolation(
@@ -433,6 +587,12 @@ function findSameHoleViolation(
         kind: 'invalid_samehole',
         range: el.range,
         message: '`[...]` 안에 다른 `[...]` 를 중첩할 수 없습니다',
+      };
+    } else if (el.type === 'skip') {
+      return {
+        kind: 'invalid_samehole',
+        range: el.range,
+        message: '`[...]` 안에서 skip 은 사용할 수 없습니다',
       };
     } else if (el.type === 'repeat') {
       const nested = findSameHoleViolation(el.body);

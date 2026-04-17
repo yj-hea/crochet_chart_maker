@@ -57,10 +57,15 @@ describe('tokenize', () => {
     }
   });
 
-  it('슬립 스티치 별칭: S, sl, _ 만 인식', () => {
-    expect(tokenize('S')[0]!.value).toBe('SLIP');
+  it('슬립 스티치 별칭: sl, slst, _ 인식', () => {
     expect(tokenize('sl')[0]!.value).toBe('SLIP');
+    expect(tokenize('slst')[0]!.value).toBe('SLIP');
     expect(tokenize('_')[0]!.value).toBe('SLIP');
+  });
+
+  it('단일 대문자 S 는 SLIP 으로 인식되지 않음', () => {
+    const tokens = tokenize('S,');
+    expect(tokens[0]!.type).toBe('UNKNOWN');
   });
 
   it('단일 소문자 s는 SLIP으로 인식되지 않음 (UNKNOWN)', () => {

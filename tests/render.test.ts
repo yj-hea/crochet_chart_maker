@@ -73,13 +73,14 @@ describe('renderSvg', () => {
     expect(uses.length).toBe(7);
   });
 
-  it('INC는 sym-INC로, DEC는 sym-DEC로 렌더링', () => {
+  it('INC는 fan 형태(leg 다리 N개)로 렌더링', () => {
     const svg = render(['@, 6X', '6V']);
-    // round 1: MAGIC + 6 SC = 7 use, round 2: 6 INC = 6 use
-    const incUses = svg.match(/href="#sym-INC"/g) ?? [];
-    expect(incUses.length).toBe(6);
+    // round 1: 6 SC 기호
     const scUses = svg.match(/href="#sym-SC"/g) ?? [];
     expect(scUses.length).toBe(6);
+    // round 2: V^2 × 6 = leg-SC 12개
+    const legUses = svg.match(/href="#leg-SC"/g) ?? [];
+    expect(legUses.length).toBe(12);
   });
 
   it('평면 도안도 정상 렌더링', () => {

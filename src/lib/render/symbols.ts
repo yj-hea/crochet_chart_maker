@@ -20,7 +20,7 @@ export const SYMBOL_DEFS = `
   <circle cx="0" cy="0" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
 </g>
 <g id="sym-CHAIN">
-  <ellipse cx="0" cy="0" rx="6" ry="3.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+  <ellipse cx="0" cy="0" rx="5" ry="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
 </g>
 <g id="sym-SLIP">
   <circle cx="0" cy="0" r="2.2" fill="currentColor" stroke="currentColor"/>
@@ -52,6 +52,25 @@ export const SYMBOL_DEFS = `
   <line x1="-5" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   <line x1="5" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 </g>
+<!-- fan 늘림/줄임용 base leg (anchor=bottom at (0, +symH), 위로 뻗음) -->
+<g id="leg-SC">
+  <line x1="0" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+</g>
+<g id="leg-HDC">
+  <line x1="0" y1="7" x2="0" y2="-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-4" y1="-7" x2="4" y2="-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+</g>
+<g id="leg-DC">
+  <line x1="0" y1="9" x2="0" y2="-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-4" y1="-9" x2="4" y2="-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-3" y1="1" x2="3" y2="-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+</g>
+<g id="leg-TR">
+  <line x1="0" y1="11" x2="0" y2="-11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-4" y1="-11" x2="4" y2="-11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-3" y1="-2" x2="3" y2="-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="-3" y1="3" x2="3" y2="1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+</g>
 <g id="sym-POPCORN">
   <!-- 팝콘뜨기: 잎/꽃잎 외곽선 + 위에서 방사되는 4선 -->
   <path d="M 0,-9 C -7,-4 -6,6 0,9 C 6,6 7,-4 0,-9 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -59,6 +78,10 @@ export const SYMBOL_DEFS = `
   <line x1="0" y1="-9" x2="-1.5" y2="8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
   <line x1="0" y1="-9" x2="1.5" y2="8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
   <line x1="0" y1="-9" x2="4" y2="5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+</g>
+<g id="sym-SKIP">
+  <!-- 바늘 비우기: 위로 볼록한 작은 점선 호 (건너뜀 표시) -->
+  <path d="M -6,3 Q 0,-5 6,3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-dasharray="2 1.5"/>
 </g>
 <g id="sym-BUBBLE">
   <!-- 구슬(버블)뜨기: 상단 가로선 + 구체 외곽 + 세로 중심선 + 중앙 교차 해칭 -->

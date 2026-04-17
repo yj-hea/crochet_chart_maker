@@ -30,7 +30,12 @@ function renderElement(el: ElementNode, comments: string[]): string {
   if (el.type === 'repeat') {
     return `(${renderSequence(el.body, comments)}) * ${el.count}`;
   }
-  // samehole
+  if (el.type === 'skip') {
+    return `<span class="stitch-token">skip(${el.count})</span>`;
+  }
+  if (el.type === 'tc') {
+    return `<span class="stitch-token">tc</span>(${renderSequence(el.body, comments)})`;
+  }
   const prefix = el.count > 1 ? String(el.count) : '';
   return `${prefix}[${renderSequence(el.body, comments)}]`;
 }

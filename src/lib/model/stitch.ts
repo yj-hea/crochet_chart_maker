@@ -15,7 +15,9 @@ export type StitchKind =
   | 'INC'      // V 늘림
   | 'DEC'      // A 줄임
   | 'POPCORN'  // P 팝콘뜨기
-  | 'BUBBLE';  // B 버블뜨기 (bobble)
+  | 'BUBBLE'   // B 버블뜨기 (bobble)
+  | 'SKIP'     // skip(N) 바늘 비우기 (N개 부모 건너뛰기)
+  | 'TC';      // tc(...) 기둥코 마커 — 파서 토큰 전용 (Op 에는 나타나지 않음)
 
 export type ModifierKind = 'BLO'; // blo 뒤이랑뜨기 (future: FLO 앞이랑뜨기)
 
@@ -38,7 +40,7 @@ export interface StitchMeta {
 export const STITCH_META: Record<StitchKind, StitchMeta> = {
   MAGIC: { kind: 'MAGIC', canonical: '@', korean: '매직링',     english: 'magic ring',          baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 7   },
   CHAIN: { kind: 'CHAIN', canonical: 'O', korean: '사슬뜨기',   english: 'chain (ch)',          baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: 3.5 },
-  SLIP:  { kind: 'SLIP',  canonical: 'S', korean: '빼뜨기',     english: 'slip stitch (sl)',    baseConsume: 1, baseProduce: 0, expandable: false, symbolHalfHeight: 2.2 },
+  SLIP:  { kind: 'SLIP',  canonical: 'sl', korean: '빼뜨기',    english: 'slip stitch (sl)',    baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 2.2 },
   SC:    { kind: 'SC',    canonical: 'X', korean: '짧은뜨기',   english: 'single crochet (sc)', baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 5   },
   HDC:   { kind: 'HDC',   canonical: 'T', korean: '긴뜨기',     english: 'half double (hdc)',   baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 7   },
   DC:    { kind: 'DC',    canonical: 'F', korean: '한길긴뜨기', english: 'double (dc)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
@@ -47,6 +49,8 @@ export const STITCH_META: Record<StitchKind, StitchMeta> = {
   DEC:   { kind: 'DEC',   canonical: 'A', korean: '줄임',       english: 'decrease',            baseConsume: 2, baseProduce: 1, expandable: true,  symbolHalfHeight: 5   },
   POPCORN:{ kind: 'POPCORN', canonical: 'P', korean: '팝콘뜨기', english: 'popcorn (pop)',      baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
   BUBBLE:{ kind: 'BUBBLE',canonical: 'B', korean: '버블뜨기',   english: 'bobble (bo)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
+  SKIP:  { kind: 'SKIP',  canonical: 'skip', korean: '바늘 비우기', english: 'skip',             baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 4   },
+  TC:    { kind: 'TC',    canonical: 'tc',   korean: '기둥코',      english: 'turning chain',    baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 0   },
 };
 
 /**
@@ -91,12 +95,14 @@ export const ALIAS_MAP: Readonly<Record<string, StitchKind | ModifierKind>> = Ob
   'CH':  'CHAIN',
   'Ch':  'CHAIN',
 
-  // SLIP (no single lowercase 's')
-  'S':   'SLIP',
-  'sl':  'SLIP',
-  'SL':  'SLIP',
-  'Sl':  'SLIP',
-  '_':   'SLIP',
+  // SLIP — 단일 대문자 'S' 는 의도적으로 제외 (sc/stitch 와의 혼동 회피)
+  'sl':   'SLIP',
+  'SL':   'SLIP',
+  'Sl':   'SLIP',
+  'slst': 'SLIP',
+  'SLST': 'SLIP',
+  'Slst': 'SLIP',
+  '_':    'SLIP',
 
   // SC
   'X':   'SC',
@@ -162,6 +168,16 @@ export const ALIAS_MAP: Readonly<Record<string, StitchKind | ModifierKind>> = Ob
   'bbl': 'BUBBLE',
   'BBL': 'BUBBLE',
   'Bbl': 'BUBBLE',
+
+  // SKIP (바늘 비우기) — 파서에서 skip(N) 형태로 파싱. 다른 alias 와 혼동 없게 길이 4 키만 등록
+  'skip': 'SKIP',
+  'SKIP': 'SKIP',
+  'Skip': 'SKIP',
+
+  // TC (기둥코) — 파서에서 tc(...) 형태로 파싱
+  'tc':   'TC',
+  'TC':   'TC',
+  'Tc':   'TC',
 
   // BLO modifier
   'blo': 'BLO',

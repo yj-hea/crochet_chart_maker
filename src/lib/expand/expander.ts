@@ -10,7 +10,7 @@
  *   "(1X, 1V)*2"  → [Op(SC), Op(INC), Op(SC), Op(INC)]
  */
 
-import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode } from '$lib/parser/ast';
+import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode } from '$lib/parser/ast';
 import type { Op, ExpandedRound } from './op';
 import { resolveStitchFootprint } from '$lib/model/stitch';
 
@@ -34,8 +34,55 @@ function expandSequence(node: SequenceNode, out: Op[]): void {
       expandStitch(el, out);
     } else if (el.type === 'repeat') {
       expandRepeat(el, out);
+    } else if (el.type === 'skip') {
+      expandSkip(el, out);
+    } else if (el.type === 'tc') {
+      expandTc(el, out);
     } else {
       expandSameHole(el, out);
+    }
+  }
+}
+
+function expandSkip(node: SkipNode, out: Op[]): void {
+  out.push({
+    kind: 'SKIP',
+    expansion: 1,
+    consume: node.count,
+    produce: 0,
+    sourceRange: node.range,
+  });
+}
+
+/**
+ * `tc(...)` 기둥코: 내부 시퀀스를 평탄화한 뒤 그룹 전체를 링 슬롯 1개로 축약.
+ * 첫 op: consume=1, produce=1, turningChain=true.
+ * 나머지: consume=0, produce=0, turningChain=true, sameHoleContinuation=true.
+ * 결과로 기둥에 속한 모든 op 는 turningChain=true 마킹 → 레이아웃에서 세로 스택 처리.
+ */
+function expandTc(node: TcNode, out: Op[]): void {
+  const bodyOps: Op[] = [];
+  expandSequence(node.body, bodyOps);
+  if (bodyOps.length === 0) return;
+
+  for (let i = 0; i < bodyOps.length; i++) {
+    const op = bodyOps[i]!;
+    if (i === 0) {
+      out.push({
+        ...op,
+        consume: 1,
+        produce: 1,
+        sameHoleContinuation: false,
+        turningChain: true,
+      });
+    } else {
+      out.push({
+        ...op,
+        consume: 0,
+        produce: 0,
+        sameHoleContinuation: true,
+        turningChain: true,
+      });
     }
   }
 }
@@ -50,6 +97,7 @@ function expandStitch(node: StitchNode, out: Op[]): void {
       expansion,
       consume,
       produce,
+      baseKind: node.baseKind,
       comment: node.comment,
       color: node.color,
       sourceRange: node.range,
@@ -66,11 +114,13 @@ function expandRepeat(node: RepeatNode, out: Op[]): void {
 /**
  * `[...]` 한 코 그룹: 그룹 전체가 부모 단 한 코를 공유.
  * 내부 ops를 평탄화한 뒤 첫 소비 op만 consume=1, 나머지는 consume=0 + sameHoleContinuation=true.
+ * `tc(...)` 도 내부에 올 수 있으며 turningChain 플래그는 tc 확장 시 이미 설정되어 있음.
  */
 function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
   for (let i = 0; i < node.count; i++) {
     const groupOps: Op[] = [];
     expandSequence(node.body, groupOps);
+
     let consumed = false;
     for (const op of groupOps) {
       if (!consumed && op.consume > 0) {
