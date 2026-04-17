@@ -4,27 +4,22 @@
  * 핵심 원칙:
  *   - 각 Op은 정확히 1개의 PositionedStitch를 생성한다.
  *   - 단의 "슬롯"은 단의 totalProduce(생성 코 수)와 같다. 슬롯들은 원주에 균등 각도로 분포.
- *   - 일반 코(SC, HDC, DC, TR, CHAIN)는 1 슬롯을 차지하고 다음 단에 부모 슬롯 1개를 노출.
- *   - V(INC^N)는 1개의 PositionedStitch이지만 N개의 슬롯을 차지하며,
- *     다음 단에 부모 슬롯 N개를 노출 → N개의 자식이 모두 V를 부모로 가짐.
- *     V의 위치는 점유한 슬롯들의 각도 중간값.
- *   - A(DEC^N)는 1 슬롯을 차지하고 1 슬롯을 노출하며, 부모로 N개를 소비 → 자식 1개에 부모 N개.
- *   - MAGIC: 중심 (0,0). 슬롯 영향 없음.
- *   - SLIP: 부모 위에 작게 표시, 다음 단에 슬롯 노출 안 함.
+ *   - 일반 코는 1 슬롯, V(INC^N)는 N 슬롯, A(DEC^N)는 1 슬롯.
+ *   - 코 종류별 반지름이 다르다: relativeHeight에 비례 (SC=1.0, DC=2.0 등).
+ *   - 사슬(CHAIN) run은 양쪽 anchor 사이를 잇는 안쪽 호(arc)로 재배치.
  */
 
-import type { ExpandedRound } from '$lib/expand/op';
+import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from './types';
-import { FIRST_RING_RADIUS, RING_SPACING } from './constants';
+import { FIRST_RING_RADIUS, HEIGHT_SCALE } from './constants';
+import { STITCH_META } from '$lib/model/stitch';
 import { computeBounds, markerFarPoint } from './bounds';
 
-const MARKER_SIDE_OFFSET = 11;  // 시작코 옆에서 마커 삼각형 중심까지의 수평 거리
-
-const START_ANGLE = -Math.PI / 2;  // 12시 방향
-const DIRECTION = -1;               // -1: 반시계방향(CCW). 12시 → 11시 → 10시 → ...
+const MARKER_SIDE_OFFSET = 11;
+const START_ANGLE = -Math.PI / 2; // 12시 방향
+const DIRECTION = -1;              // 반시계방향(CCW)
 
 export interface CircularOptions {
-  spacing?: 'uniform' | 'proportional';
   stitchArc?: number;
   minRadius?: number;
 }
@@ -33,47 +28,48 @@ export function layoutCircular(
   rounds: ExpandedRound[],
   opts: CircularOptions = {},
 ): LayoutResult {
-  const spacing = opts.spacing ?? 'uniform';
-  const stitchArc = opts.stitchArc ?? 22;
   const minRadius = opts.minRadius ?? FIRST_RING_RADIUS;
 
-  // 각 단의 totalProduce (= 슬롯 수). MAGIC/SLIP은 produce=0이라 자동 제외됨.
+  // 1) 각 단의 슬롯 수, baseRadius 사전 계산
   const slotCountByRound = new Map<number, number>();
+  const baseRadiusByRound = new Map<number, number>();
+  let currentBase = minRadius;
+
   for (const round of rounds) {
-    const n = round.ops.reduce((sum, op) => sum + op.produce, 0);
-    slotCountByRound.set(round.index, n);
+    const slots = round.ops.reduce((sum, op) => sum + op.produce, 0);
+    slotCountByRound.set(round.index, slots);
+    baseRadiusByRound.set(round.index, currentBase);
+
+    const maxHeight = round.ops.reduce((max, op) => {
+      if (op.kind === 'MAGIC' || op.kind === 'SLIP') return max;
+      return Math.max(max, STITCH_META[op.kind].relativeHeight);
+    }, 1.0); // 최소 1.0 (빈 단 방지)
+    currentBase += maxHeight * HEIGHT_SCALE;
   }
 
-  function radiusFor(roundIdx: number): number {
-    if (spacing === 'uniform') {
-      return FIRST_RING_RADIUS + (roundIdx - 1) * RING_SPACING;
-    }
-    const n = slotCountByRound.get(roundIdx) ?? 0;
-    if (n <= 0) return minRadius;
-    return Math.max(minRadius, (stitchArc * n) / (2 * Math.PI));
-  }
-
+  // 2) 각 단 배치
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
-  // 각 단의 부모 슬롯 매핑: prevRound stitches에서 exposedSlots만큼 stitch 인덱스를 push.
-  // 다음 단의 부모 인덱스는 이 매핑의 cursor에서 op.consume 만큼 가져감.
   const slotMapByRound = new Map<number, number[]>();
 
   for (const round of rounds) {
-    placeRound(round, stitches, slotMapByRound, radiusFor, slotCountByRound, roundMarkers);
+    placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers);
   }
 
+  // 3) 사슬 호 후처리
+  repositionChainArcs(stitches);
+
+  // 4) 바운딩 + 그리드 가이드
   const bounds = computeBounds([
     ...stitches.map((s) => s.position),
     ...roundMarkers.map((m) => m.position),
     ...roundMarkers.map(markerFarPoint),
   ]);
 
-  // 가이드: 동심원 반지름 (실제 stitch가 있는 단들), 방사선 개수 (첫 비-empty 단의 슬롯 수)
   const ringRadii: number[] = [];
   for (const round of rounds) {
     const n = slotCountByRound.get(round.index) ?? 0;
-    if (n > 0) ringRadii.push(radiusFor(round.index));
+    if (n > 0) ringRadii.push(baseRadiusByRound.get(round.index) ?? 0);
   }
   const sectorCount = ringRadii.length === 0
     ? 0
@@ -93,41 +89,41 @@ export function layoutCircular(
   };
 }
 
+function stitchRadius(baseRadius: number, op: Op): number {
+  const height = STITCH_META[op.kind].relativeHeight;
+  return baseRadius + height * HEIGHT_SCALE * 0.5;
+}
+
 function placeRound(
   round: ExpandedRound,
   stitches: PositionedStitch[],
   slotMapByRound: Map<number, number[]>,
-  radiusFor: (idx: number) => number,
+  baseRadiusByRound: Map<number, number>,
   slotCountByRound: Map<number, number>,
   roundMarkers: RoundMarker[],
 ): void {
   const { index: roundIdx } = round;
   const ringSlots = slotCountByRound.get(roundIdx) ?? 0;
-  const radius = radiusFor(roundIdx);
+  const baseRadius = baseRadiusByRound.get(roundIdx) ?? FIRST_RING_RADIUS;
 
   const parentSlotMap = slotMapByRound.get(roundIdx - 1) ?? [];
   const thisStitchIndices: number[] = [];
   let parentCursor = 0;
   let slotCursor = 0;
-  let lastGroupParents: number[] = [];  // sameHoleContinuation op가 재사용할 이전 부모
+  let lastGroupParents: number[] = [];
 
   for (const op of round.ops) {
-    // MAGIC: 중심에 배치
     if (op.kind === 'MAGIC') {
       const idx = stitches.length;
       stitches.push({
-        op,
-        roundIndex: roundIdx,
-        position: { x: 0, y: 0 },
-        angle: 0,
-        parentIndices: [],
-        exposedSlots: 0,
+        op, roundIndex: roundIdx,
+        position: { x: 0, y: 0 }, angle: 0,
+        parentIndices: [], exposedSlots: 0,
       });
       thisStitchIndices.push(idx);
       continue;
     }
 
-    // 부모 슬롯 소비. sameHoleContinuation op는 이전 그룹의 부모를 공유.
     let parents: number[];
     if (op.sameHoleContinuation) {
       parents = lastGroupParents;
@@ -141,50 +137,53 @@ function placeRound(
       lastGroupParents = parents;
     }
 
-    // SLIP: 부모 위 또는 가까이에 작은 마커. 슬롯 점유 없음.
     if (op.kind === 'SLIP' || op.produce === 0) {
       const refStitch = parents.length > 0 ? stitches[parents[0]!] : undefined;
-      const pos = refStitch ? refStitch.position : { x: 0, y: 0 };
+      let pos: Point;
+      let angle = 0;
+      if (refStitch) {
+        // 현재 단의 baseRadius에 배치 (이전 단 기호와 겹치지 않도록)
+        const px = refStitch.position.x;
+        const py = refStitch.position.y;
+        const parentAngle = Math.atan2(py, px);
+        const slipR = baseRadius + STITCH_META[op.kind].relativeHeight * HEIGHT_SCALE * 0.5;
+        pos = polarToCartesian(slipR, parentAngle);
+        angle = parentAngle + Math.PI / 2;
+      } else {
+        pos = { x: 0, y: 0 };
+      }
       const idx = stitches.length;
       stitches.push({
-        op,
-        roundIndex: roundIdx,
-        position: pos,
-        angle: refStitch?.angle ?? 0,
-        parentIndices: parents,
-        exposedSlots: 0,
+        op, roundIndex: roundIdx,
+        position: pos, angle,
+        parentIndices: parents, exposedSlots: 0,
       });
       thisStitchIndices.push(idx);
       continue;
     }
 
-    // 일반 코 + V/A:
-    //   slotsOccupied = op.produce.
-    //   V^N: N슬롯 차지, 1개의 PositionedStitch (위치=슬롯 중간 각도)
-    //   기타: 1슬롯 차지, 1 PositionedStitch
     const slotsOccupied = op.produce;
     const startSlot = slotCursor;
     const endSlot = slotCursor + slotsOccupied - 1;
     const startAngle = angleAt(startSlot, ringSlots);
     const endAngle = angleAt(endSlot, ringSlots);
     const midAngle = (startAngle + endAngle) / 2;
-    const pos = polarToCartesian(radius, midAngle);
+
+    const r = stitchRadius(baseRadius, op);
+    const pos = polarToCartesian(r, midAngle);
     const symbolAngle = midAngle + Math.PI / 2;
 
     const idx = stitches.length;
     stitches.push({
-      op,
-      roundIndex: roundIdx,
-      position: pos,
-      angle: symbolAngle,
-      parentIndices: parents,
-      exposedSlots: slotsOccupied,
+      op, roundIndex: roundIdx,
+      position: pos, angle: symbolAngle,
+      parentIndices: parents, exposedSlots: slotsOccupied,
     });
     thisStitchIndices.push(idx);
     slotCursor += slotsOccupied;
   }
 
-  // 다음 단을 위한 슬롯 매핑 빌드
+  // 슬롯 매핑
   const slotMap: number[] = [];
   for (const sIdx of thisStitchIndices) {
     const s = stitches[sIdx]!;
@@ -194,9 +193,7 @@ function placeRound(
   }
   slotMapByRound.set(roundIdx, slotMap);
 
-  // 단 시작 마커: 첫 visible(MAGIC 제외) stitch 옆에 배치.
-  // 원형은 반시계방향(CCW) 진행 — 시작코(12시)에서 좌측으로 진행.
-  // 삼각형이 왼쪽(◀)을 가리켜 진행 방향을 표시, 마커는 시작코의 오른쪽에 위치.
+  // 시작 마커
   const firstVisible = thisStitchIndices.find(
     (i) => stitches[i]!.op.kind !== 'MAGIC' && stitches[i]!.op.produce > 0
   );
@@ -208,6 +205,153 @@ function placeRound(
       direction: 'left',
     });
   }
+}
+
+// ============================================================
+// 사슬 호(arc) 재배치
+// ============================================================
+
+/**
+ * 한 단 안에서 연속된 CHAIN ops를 찾아, 양쪽 non-chain anchor 사이의
+ * 안쪽 호(quadratic bezier)로 시각적 위치를 재배치.
+ * 슬롯/부모 매핑은 변경하지 않음 — 렌더 위치만 조정.
+ */
+function repositionChainArcs(stitches: PositionedStitch[]): void {
+  // 단별로 그룹핑
+  const byRound = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    const ri = stitches[i]!.roundIndex;
+    const arr = byRound.get(ri) ?? [];
+    arr.push(i);
+    byRound.set(ri, arr);
+  }
+
+  for (const indices of byRound.values()) {
+    repositionChainArcsInRound(stitches, indices);
+  }
+}
+
+function repositionChainArcsInRound(
+  stitches: PositionedStitch[],
+  indices: number[],
+): void {
+  // 연속 CHAIN run 탐지
+  let runStart = -1;
+  for (let i = 0; i <= indices.length; i++) {
+    const isChain = i < indices.length && stitches[indices[i]!]!.op.kind === 'CHAIN';
+    if (isChain && runStart < 0) {
+      runStart = i;
+    } else if (!isChain && runStart >= 0) {
+      // run: [runStart, i)
+      const runLen = i - runStart;
+      // 왼쪽 anchor: runStart-1, 오른쪽 anchor: i (원형이므로 wrap)
+      const leftIdx = runStart > 0
+        ? indices[runStart - 1]!
+        : indices[indices.length - 1]!; // wrap
+      const rightIdx = i < indices.length
+        ? indices[i]!
+        : indices[0]!; // wrap
+
+      const leftS = stitches[leftIdx]!;
+      const rightS = stitches[rightIdx]!;
+
+      // anchor 중 하나가 CHAIN이면 스킵 (전체가 chain인 단)
+      if (leftS.op.kind === 'CHAIN' || rightS.op.kind === 'CHAIN') {
+        runStart = -1;
+        continue;
+      }
+
+      // 바깥쪽 호: 두 anchor의 중점에서 원점 반대 방향(바깥)으로 밀어낸 control point
+      const midX = (leftS.position.x + rightS.position.x) / 2;
+      const midY = (leftS.position.y + rightS.position.y) / 2;
+      const dist = Math.sqrt(midX * midX + midY * midY);
+      // 밀어내는 정도: anchor 간 거리의 25% + chain 수에 비례
+      const anchorDist = Math.sqrt(
+        (rightS.position.x - leftS.position.x) ** 2 +
+        (rightS.position.y - leftS.position.y) ** 2
+      );
+      const outward = anchorDist * 0.25 + runLen * 4;
+      const cx = dist > 0 ? midX * (1 + outward / dist) : midX;
+      const cy = dist > 0 ? midY * (1 + outward / dist) : midY;
+
+      // arc-length 등간격으로 밀착 배치 (사슬 타원 지름 2*rx=12, 약간 겹쳐서 연결감)
+      const CHAIN_SPACING = 11;
+      const cp: Point = { x: cx, y: cy };
+      const tValues = sampleByArcLength(
+        leftS.position, cp, rightS.position, runLen, CHAIN_SPACING,
+      );
+
+      for (let j = 0; j < runLen; j++) {
+        const t = tValues[j]!;
+        const bx = bezierQuad(leftS.position.x, cx, rightS.position.x, t);
+        const by = bezierQuad(leftS.position.y, cy, rightS.position.y, t);
+        const sIdx = indices[runStart + j]!;
+        const s = stitches[sIdx]!;
+        s.position = { x: bx, y: by };
+        // 사슬 타원의 장축(rx)이 곡선 접선 방향을 따르도록 회전
+        const tx = bezierQuadDeriv(leftS.position.x, cx, rightS.position.x, t);
+        const ty = bezierQuadDeriv(leftS.position.y, cy, rightS.position.y, t);
+        s.angle = Math.atan2(ty, tx);
+      }
+
+      runStart = -1;
+    }
+  }
+}
+
+/**
+ * 베지어 곡선 위에 arc-length 등간격으로 count개 점의 t값을 반환.
+ * spacing px 간격으로 곡선 중앙에 밀착 배치.
+ */
+function sampleByArcLength(
+  p0: Point, c: Point, p1: Point,
+  count: number, spacing: number,
+): number[] {
+  // 1) 곡선을 미세 샘플링하여 arc-length → t 테이블 구축
+  const N = 60;
+  const table: Array<{ t: number; len: number }> = [{ t: 0, len: 0 }];
+  let totalLen = 0;
+  let px = p0.x, py = p0.y;
+  for (let i = 1; i <= N; i++) {
+    const t = i / N;
+    const x = bezierQuad(p0.x, c.x, p1.x, t);
+    const y = bezierQuad(p0.y, c.y, p1.y, t);
+    totalLen += Math.sqrt((x - px) ** 2 + (y - py) ** 2);
+    table.push({ t, len: totalLen });
+    px = x; py = y;
+  }
+
+  // 2) 원하는 총 길이를 곡선 중앙에 정렬
+  const chainGroupLen = (count - 1) * spacing;
+  const startLen = (totalLen - chainGroupLen) / 2;
+
+  // 3) 각 사슬의 목표 arc-length → t 보간
+  const result: number[] = [];
+  for (let j = 0; j < count; j++) {
+    const target = startLen + j * spacing;
+    const clamped = Math.max(0, Math.min(totalLen, target));
+    // 선형 보간으로 t 찾기
+    let lo = 0;
+    for (let k = 1; k < table.length; k++) {
+      if (table[k]!.len >= clamped) { lo = k - 1; break; }
+      lo = k - 1;
+    }
+    const a = table[lo]!;
+    const b = table[lo + 1] ?? a;
+    const seg = b.len - a.len;
+    const frac = seg > 0 ? (clamped - a.len) / seg : 0;
+    result.push(a.t + frac * (b.t - a.t));
+  }
+  return result;
+}
+
+function bezierQuad(p0: number, c: number, p1: number, t: number): number {
+  const mt = 1 - t;
+  return mt * mt * p0 + 2 * mt * t * c + t * t * p1;
+}
+
+function bezierQuadDeriv(p0: number, c: number, p1: number, t: number): number {
+  return 2 * (1 - t) * (c - p0) + 2 * t * (p1 - c);
 }
 
 function angleAt(i: number, total: number): number {

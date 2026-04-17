@@ -29,18 +29,20 @@ export interface StitchMeta {
   baseConsume: number;
   baseProduce: number;
   expandable: boolean;   // V/A만 true
+  /** SC 기준 상대 높이. SC=1.0, HDC=1.5, DC=2.0, TR=2.5 등 */
+  relativeHeight: number;
 }
 
 export const STITCH_META: Record<StitchKind, StitchMeta> = {
-  MAGIC: { kind: 'MAGIC', canonical: '@', korean: '매직링',     english: 'magic ring',          baseConsume: 0, baseProduce: 0, expandable: false },
-  CHAIN: { kind: 'CHAIN', canonical: 'O', korean: '사슬뜨기',   english: 'chain (ch)',          baseConsume: 0, baseProduce: 1, expandable: false },
-  SLIP:  { kind: 'SLIP',  canonical: 'S', korean: '빼뜨기',     english: 'slip stitch (sl)',    baseConsume: 1, baseProduce: 0, expandable: false },
-  SC:    { kind: 'SC',    canonical: 'X', korean: '짧은뜨기',   english: 'single crochet (sc)', baseConsume: 1, baseProduce: 1, expandable: false },
-  HDC:   { kind: 'HDC',   canonical: 'T', korean: '긴뜨기',     english: 'half double (hdc)',   baseConsume: 1, baseProduce: 1, expandable: false },
-  DC:    { kind: 'DC',    canonical: 'F', korean: '한길긴뜨기', english: 'double (dc)',         baseConsume: 1, baseProduce: 1, expandable: false },
-  TR:    { kind: 'TR',    canonical: 'E', korean: '두길긴뜨기', english: 'treble (tr)',         baseConsume: 1, baseProduce: 1, expandable: false },
-  INC:   { kind: 'INC',   canonical: 'V', korean: '늘림',       english: 'increase',            baseConsume: 1, baseProduce: 2, expandable: true  },
-  DEC:   { kind: 'DEC',   canonical: 'A', korean: '줄임',       english: 'decrease',            baseConsume: 2, baseProduce: 1, expandable: true  },
+  MAGIC: { kind: 'MAGIC', canonical: '@', korean: '매직링',     english: 'magic ring',          baseConsume: 0, baseProduce: 0, expandable: false, relativeHeight: 0   },
+  CHAIN: { kind: 'CHAIN', canonical: 'O', korean: '사슬뜨기',   english: 'chain (ch)',          baseConsume: 0, baseProduce: 1, expandable: false, relativeHeight: 0.3 },
+  SLIP:  { kind: 'SLIP',  canonical: 'S', korean: '빼뜨기',     english: 'slip stitch (sl)',    baseConsume: 1, baseProduce: 0, expandable: false, relativeHeight: 0.3 },
+  SC:    { kind: 'SC',    canonical: 'X', korean: '짧은뜨기',   english: 'single crochet (sc)', baseConsume: 1, baseProduce: 1, expandable: false, relativeHeight: 1.0 },
+  HDC:   { kind: 'HDC',   canonical: 'T', korean: '긴뜨기',     english: 'half double (hdc)',   baseConsume: 1, baseProduce: 1, expandable: false, relativeHeight: 1.5 },
+  DC:    { kind: 'DC',    canonical: 'F', korean: '한길긴뜨기', english: 'double (dc)',         baseConsume: 1, baseProduce: 1, expandable: false, relativeHeight: 2.0 },
+  TR:    { kind: 'TR',    canonical: 'E', korean: '두길긴뜨기', english: 'treble (tr)',         baseConsume: 1, baseProduce: 1, expandable: false, relativeHeight: 2.5 },
+  INC:   { kind: 'INC',   canonical: 'V', korean: '늘림',       english: 'increase',            baseConsume: 1, baseProduce: 2, expandable: true,  relativeHeight: 1.0 },
+  DEC:   { kind: 'DEC',   canonical: 'A', korean: '줄임',       english: 'decrease',            baseConsume: 2, baseProduce: 1, expandable: true,  relativeHeight: 1.0 },
 };
 
 /**
