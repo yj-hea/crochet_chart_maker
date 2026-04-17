@@ -102,7 +102,7 @@
               run: () => { onEnter(); return true; },
             },
             {
-              key: 'Ctrl-Backspace',
+              key: 'Shift-Backspace',
               run: () => { if (canDelete) { onDelete(); return true; } return false; },
             },
             {
