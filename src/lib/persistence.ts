@@ -19,16 +19,28 @@ export interface SavedRound {
   direction?: 'forward' | 'reverse';
 }
 
+export interface SavedComment {
+  id: string;
+  text: string;
+  color: string;
+  open?: boolean;
+  target:
+    | { kind: 'pattern' }
+    | { kind: 'round'; roundId: string };
+}
+
 export interface SavedPattern {
   version: 1;
   savedAt: string;  // ISO 8601
   shape: ShapeKind;
   rounds: SavedRound[];
+  comments?: SavedComment[];
 }
 
 export interface SerializeInput {
   shape: ShapeKind;
   rounds: ReadonlyArray<{ source: string; direction?: 'forward' | 'reverse' }>;
+  comments?: ReadonlyArray<SavedComment>;
 }
 
 /** 현재 상태를 저장용 객체로 직렬화. id/parsed/expanded 등 파생값은 제외 */
@@ -42,6 +54,7 @@ export function serialize(state: SerializeInput): SavedPattern {
       if (r.direction) out.direction = r.direction;
       return out;
     }),
+    ...(state.comments && state.comments.length > 0 ? { comments: [...state.comments] } : {}),
   };
 }
 
@@ -74,11 +87,13 @@ export function validate(data: unknown): SavedPattern {
     }
     return out;
   });
+  const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
   return {
     version: 1,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : '',
     shape: d.shape,
     rounds,
+    ...(comments ? { comments } : {}),
   };
 }
 
@@ -151,6 +166,7 @@ export interface SavedWorkspaceTab {
   name: string;
   shape: ShapeKind;
   rounds: SavedRound[];
+  comments?: SavedComment[];
 }
 
 export interface SavedWorkspace {
@@ -175,6 +191,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
         if (r.direction) out.direction = r.direction;
         return out;
       }),
+      ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
     })),
     activeTabId: ws.activeTabId,
   };
@@ -207,6 +224,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
         }
         return out;
       }),
+      ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
     };
   });
   const activeTabId = typeof d.activeTabId === 'string' ? d.activeTabId : (tabs[0]?.id ?? '');

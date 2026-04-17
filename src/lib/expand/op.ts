@@ -25,6 +25,10 @@ export interface Op {
   sameHoleContinuation?: boolean;
   /** `[...]` 한 코 그룹에 속한 op인지. 첫 번째 op 포함. turning chain 감지 등에 사용 */
   inSameHoleGroup?: boolean;
+  /** 인라인 코멘트 — 각 코별 주의사항 */
+  comment?: string;
+  /** 인라인 색상 — 배색 도안용 (기호 색상) */
+  color?: string;
   /** 원본 AST 노드의 소스 위치 (같은 AST 노드에서 확장된 Op들은 동일 range 공유) */
   sourceRange: SourceRange;
 }

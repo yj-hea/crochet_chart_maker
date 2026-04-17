@@ -19,14 +19,17 @@ export type TokenType =
   | 'RBRACKET'  // ] — 한 코 그룹 끝
   | 'STAR'      // *
   | 'CARET'     // ^
+  | 'COLON'     // : (색상 주석 시작)
+  | 'STRING'    // "..." (코 코멘트)
+  | 'HEX_COLOR' // #rgb | #rrggbb 등
   | 'UNKNOWN';  // 별칭에 없는 문자
 
 export interface Token {
   type: TokenType;
   range: SourceRange;
   text: string;
-  /** NUMBER: 숫자값. STITCH/MODIFIER: 정규화된 kind. 그 외: undefined */
-  value?: number | StitchKind | ModifierKind;
+  /** NUMBER: 숫자값. STITCH/MODIFIER: 정규화된 kind. STRING: 내부 텍스트. 그 외: undefined */
+  value?: number | StitchKind | ModifierKind | string;
 }
 
 const DIGIT = /[0-9]/;
@@ -55,6 +58,45 @@ export function tokenize(input: string): Token[] {
     if (structural) {
       tokens.push({ type: structural, range: { start: i, end: i + 1 }, text: ch });
       i++;
+      continue;
+    }
+
+    // 2.5) HEX 색상: # + hex digits
+    if (ch === '#') {
+      const start = i;
+      i++;
+      while (i < input.length && /[0-9a-fA-F]/.test(input[i]!)) i++;
+      if (i - start > 1) {
+        tokens.push({ type: 'HEX_COLOR', range: { start, end: i }, text: input.slice(start, i) });
+      } else {
+        tokens.push({ type: 'UNKNOWN', range: { start, end: i }, text: '#' });
+      }
+      continue;
+    }
+
+    // 2.6) 문자열: "..."
+    if (ch === '"') {
+      const start = i;
+      i++;
+      let value = '';
+      let closed = false;
+      while (i < input.length) {
+        const c = input[i]!;
+        if (c === '\\' && i + 1 < input.length) {
+          value += input[i + 1]!;
+          i += 2;
+          continue;
+        }
+        if (c === '"') { i++; closed = true; break; }
+        value += c;
+        i++;
+      }
+      if (closed) {
+        tokens.push({ type: 'STRING', range: { start, end: i }, text: input.slice(start, i), value });
+      } else {
+        // 닫히지 않음 → UNKNOWN
+        tokens.push({ type: 'UNKNOWN', range: { start, end: i }, text: input.slice(start, i) });
+      }
       continue;
     }
 
@@ -108,6 +150,7 @@ function tryStructural(ch: string): TokenType | undefined {
     case ']': return 'RBRACKET';
     case '*': return 'STAR';
     case '^': return 'CARET';
+    case ':': return 'COLON';
     default:  return undefined;
   }
 }

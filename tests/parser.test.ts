@@ -223,3 +223,61 @@ describe('parseRound — samehole [...]', () => {
     expect(r.body?.elements.map((e) => e.type)).toEqual(['stitch', 'samehole', 'stitch']);
   });
 });
+
+describe('parseRound — stitch annotations', () => {
+  it('X"comment" → comment attached', () => {
+    const r = parseRound(1, 'X"주의"');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0] as any;
+    expect(el.type).toBe('stitch');
+    expect(el.kind).toBe('SC');
+    expect(el.comment).toBe('주의');
+  });
+
+  it('X:#ff0000 → color attached', () => {
+    const r = parseRound(1, 'X:#ff0000');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0] as any;
+    expect(el.color).toBe('#ff0000');
+  });
+
+  it('X"a":#ff0000 → both', () => {
+    const r = parseRound(1, 'X"hello":#ededed');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0] as any;
+    expect(el.comment).toBe('hello');
+    expect(el.color).toBe('#ededed');
+  });
+
+  it('순서 무관: X:#abc"hi"', () => {
+    const r = parseRound(1, 'X:#abc"hi"');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0] as any;
+    expect(el.color).toBe('#abc');
+    expect(el.comment).toBe('hi');
+  });
+
+  it(': 뒤에 색상 없으면 오류', () => {
+    const r = parseRound(1, 'X:');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('unexpected_token');
+  });
+});
+
+import { expand as expandAst } from '../src/lib/expand/expander';
+
+describe('expander — stitch annotations propagation', () => {
+  it('2X:#ff0000 → 모든 op에 색상 전파', () => {
+    const r = parseRound(1, '2X:#ff0000');
+    const e = expandAst(r.body!, 1);
+    expect(e.ops).toHaveLength(2);
+    expect((e.ops[0] as any).color).toBe('#ff0000');
+    expect((e.ops[1] as any).color).toBe('#ff0000');
+  });
+
+  it('X"comment" → op.comment', () => {
+    const r = parseRound(1, 'X"note"');
+    const e = expandAst(r.body!, 1);
+    expect((e.ops[0] as any).comment).toBe('note');
+  });
+});

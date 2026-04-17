@@ -4,6 +4,8 @@
   import { EditorState, StateField, StateEffect } from '@codemirror/state';
   import { history, historyKeymap } from '@codemirror/commands';
   import type { ParseError, ValidationError } from '$lib/model/errors';
+  import type { Comment } from '$stores/tabs';
+  import CommentPin from './CommentPin.svelte';
 
   export interface FocusRequest {
     token: number;
@@ -17,6 +19,8 @@
     validationErrors?: ValidationError[];
     stitchCount?: number;
     canDelete?: boolean;
+    /** 이 단에 연결된 코멘트 (없으면 []) */
+    roundComment?: Comment;
     /** 단 작업 방향 ('forward' 기본 / 'reverse') */
     direction?: 'forward' | 'reverse';
     /** 방향 아이콘 — 도형에 따라 다르므로 부모가 결정 */
@@ -32,6 +36,7 @@
     onShiftEnter: () => void;
     onDelete: () => void;
     onToggleDirection?: () => void;
+    onAddComment?: () => void;
     onArrowUp?: (col: number) => void;
     onArrowDown?: (col: number) => void;
     onArrowLeftBoundary?: () => void;
@@ -45,6 +50,7 @@
     validationErrors = [],
     stitchCount,
     canDelete = true,
+    roundComment,
     direction = 'forward',
     directionIcon,
     directionLabel,
@@ -54,6 +60,7 @@
     onShiftEnter,
     onDelete,
     onToggleDirection,
+    onAddComment,
     onArrowUp,
     onArrowDown,
     onArrowLeftBoundary,
@@ -240,6 +247,13 @@
 
 <div class="round-line">
   <span class="round-index">{index}:</span>
+  {#if roundComment}
+    <CommentPin comment={roundComment} />
+  {:else if onAddComment}
+    <button type="button" class="add-comment-btn" onclick={onAddComment} title="단 메모 추가" aria-label="단 메모 추가">
+      <i class="fa-regular fa-comment"></i>
+    </button>
+  {/if}
   <div class="cm-wrap">
     <div class="cm-host" bind:this={container}></div>
     {#if errors.length > 0}
@@ -296,6 +310,26 @@
     color: var(--text-muted);
     padding-top: 8px;
     user-select: none;
+  }
+  .add-comment-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-top: 6px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  .round-line:hover .add-comment-btn {
+    opacity: 1;
+  }
+  .add-comment-btn:hover {
+    color: var(--text);
   }
   .cm-wrap {
     flex: 1;

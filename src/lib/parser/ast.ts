@@ -25,6 +25,10 @@ export interface StitchNode {
   expansion?: number;
   /** 선행 수식자 (blo 등) */
   modifier?: ModifierKind;
+  /** 인라인 코멘트 "..." — 각 코에 대한 주의사항 */
+  comment?: string;
+  /** 인라인 색상 :#rrggbb — 기호/폰트 색상 (배색 도안용) */
+  color?: string;
   range: SourceRange;
 }
 

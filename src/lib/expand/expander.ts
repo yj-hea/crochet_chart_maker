@@ -50,6 +50,8 @@ function expandStitch(node: StitchNode, out: Op[]): void {
       expansion,
       consume,
       produce,
+      comment: node.comment,
+      color: node.color,
       sourceRange: node.range,
     });
   }
