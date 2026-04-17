@@ -115,3 +115,22 @@ describe('tokenize', () => {
     ]);
   });
 });
+
+describe('tokenize — stitch annotations', () => {
+  it('STRING 토큰: "..."', () => {
+    const tokens = tokenize('X"hello"');
+    expect(tokens.map((t: any) => t.type)).toEqual(['STITCH', 'STRING']);
+    expect(tokens[1].value).toBe('hello');
+  });
+
+  it('COLON + HEX_COLOR', () => {
+    const tokens = tokenize('X:#ededed');
+    expect(tokens.map((t: any) => t.type)).toEqual(['STITCH', 'COLON', 'HEX_COLOR']);
+    expect(tokens[2].text).toBe('#ededed');
+  });
+
+  it('unclosed string → UNKNOWN', () => {
+    const tokens = tokenize('X"oops');
+    expect(tokens.map((t: any) => t.type)).toEqual(['STITCH', 'UNKNOWN']);
+  });
+});

@@ -1,11 +1,28 @@
 <script lang="ts">
   import { currentRound, saveProgress, hashSources, loadProgress } from '$stores/mode';
+  import { workspace, type Comment } from '$stores/tabs';
+  import { renderNarrative } from '$lib/narrative';
+  import CommentPin from './CommentPin.svelte';
 
   interface Props {
     totalRounds: number;
     roundSources: string[];
   }
   let { totalRounds, roundSources }: Props = $props();
+
+  // 활성 탭과 현재 단의 parsed + 코멘트 조회
+  const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
+  const currentRoundData = $derived(activeTab?.rounds[$currentRound - 1]);
+  const narrative = $derived.by(() => {
+    if (!currentRoundData) return { html: '', comments: [] as string[] };
+    return renderNarrative(currentRoundData.parsed, currentRoundData.source);
+  });
+  const currentRoundComment = $derived.by<Comment | undefined>(() => {
+    if (!activeTab || !currentRoundData) return undefined;
+    return activeTab.comments.find(
+      (c) => c.target.kind === 'round' && c.target.roundId === currentRoundData.id,
+    );
+  });
 
   // 도안이 바뀌면 진행 상태 복원/clamp
   $effect(() => {
@@ -41,7 +58,7 @@
     editing = false;
   }
 
-  // 현재 단의 소스 텍스트
+  // 현재 단의 원본 소스 (narrative 미적용 시 fallback)
   const currentText = $derived(roundSources[$currentRound - 1] ?? '');
 </script>
 
@@ -79,8 +96,23 @@
   <button type="button" class="nav-btn" onclick={next} disabled={$currentRound >= totalRounds} aria-label="다음 단">▶</button>
 </div>
 
+{#if currentRoundComment}
+  <div class="round-comment-row">
+    <CommentPin comment={currentRoundComment} />
+  </div>
+{/if}
+
 {#if currentText}
-  <p class="current-text">{currentText}</p>
+  <div class="current-narrative">
+    <p class="narrative">{@html narrative.html}</p>
+    {#if narrative.comments.length > 0}
+      <ol class="footnotes">
+        {#each narrative.comments as c, i (i)}
+          <li><sup>{'*'.repeat(i + 1)}</sup> {c}</li>
+        {/each}
+      </ol>
+    {/if}
+  </div>
 {/if}
 
 <style>
@@ -140,11 +172,38 @@
     outline: none;
     color: var(--text, #3a3632);
   }
-  .current-text {
+  .round-comment-row {
+    margin-top: 6px;
     text-align: center;
-    margin: 4px 0 0;
-    font-size: 13px;
+  }
+  .current-narrative {
+    margin: 6px 0 0;
+    text-align: center;
+  }
+  .current-narrative .narrative {
+    margin: 0;
+    font-size: 14px;
     font-family: var(--font-mono);
-    color: var(--text-secondary, #7a756d);
+    color: var(--text);
+  }
+  .current-narrative .narrative :global(.stitch-token) {
+    font-weight: 500;
+  }
+  .current-narrative .narrative :global(.footnote-marker) {
+    font-size: 0.7em;
+    color: var(--text-secondary);
+  }
+  .footnotes {
+    margin: 6px 0 0;
+    padding: 0;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    list-style: none;
+    text-align: center;
+  }
+  .footnotes sup {
+    margin-right: 4px;
   }
 </style>

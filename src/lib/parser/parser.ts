@@ -242,12 +242,42 @@ class Parser {
       this.advance();
     }
 
+    // 선택적 annotation: STRING(코멘트) | COLON HEX_COLOR(색상). 순서 무관, 여러 개 가능
+    let comment: string | undefined;
+    let color: string | undefined;
+    while (true) {
+      const tok = this.peek();
+      if (tok?.type === 'STRING') {
+        comment = tok.value as string;
+        this.advance();
+        continue;
+      }
+      if (tok?.type === 'COLON') {
+        this.advance();
+        const hex = this.peek();
+        if (!hex || hex.type !== 'HEX_COLOR') {
+          this.error(
+            'unexpected_token',
+            hex?.range ?? this.eofRange(),
+            '`:` 뒤에 색상(#RRGGBB)이 필요합니다',
+          );
+          return undefined;
+        }
+        color = hex.text;
+        this.advance();
+        continue;
+      }
+      break;
+    }
+
     return {
       type: 'stitch',
       kind,
       count,
       expansion,
       modifier,
+      comment,
+      color,
       range: { start: startPos, end: (this.peek(-1)?.range.end) ?? startPos },
     };
   }

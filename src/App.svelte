@@ -6,6 +6,9 @@
   import TabBar from './components/TabBar.svelte';
   import { mode } from './stores/mode';
   import { pattern, exportToFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
+  import { workspace } from './stores/tabs';
+  import { renderNarrative } from './lib/narrative';
+  import { marked } from 'marked';
 
   let fileInput: HTMLInputElement;
   let savedFlash = $state(false);
@@ -70,6 +73,22 @@
 
   const validRoundCount = $derived($pattern.rounds.filter((r) => r.expanded).length);
   const roundSources = $derived($pattern.rounds.map((r) => r.source));
+
+  // Read 모드 서술 도안 — 활성 탭의 코멘트 조회
+  const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
+  const patternComment = $derived(activeTab?.comments.find((c) => c.target.kind === 'pattern'));
+  const roundCommentMap = $derived.by(() => {
+    const map = new Map<string, import('./stores/tabs').Comment>();
+    if (!activeTab) return map;
+    for (const c of activeTab.comments) {
+      if (c.target.kind === 'round') map.set(c.target.roundId, c);
+    }
+    return map;
+  });
+
+  function renderMarkdown(text: string): string {
+    return marked.parse(text || '', { async: false, breaks: true }) as string;
+  }
 </script>
 
 <!-- ===== Header ===== -->
@@ -125,9 +144,36 @@
     </section>
     <details class="read-source-panel">
       <summary><i class="fa-solid fa-list-ol"></i> 도안 텍스트 보기</summary>
+
+      {#if patternComment}
+        <div class="pattern-callout" style="border-left-color: {patternComment.color}; background: {patternComment.color}22;">
+          <div class="markdown">{@html renderMarkdown(patternComment.text)}</div>
+        </div>
+      {/if}
+
       <ol class="source-list">
         {#each $pattern.rounds as round (round.id)}
-          <li class:empty={!round.source}>{round.source || '(빈 단)'}</li>
+          {@const narr = renderNarrative(round.parsed, round.source)}
+          {@const rc = roundCommentMap.get(round.id)}
+          <li class:empty={!round.source}>
+            {#if !round.source}
+              (빈 단)
+            {:else}
+              <div class="narrative">{@html narr.html}</div>
+              {#if narr.comments.length > 0}
+                <ol class="footnotes">
+                  {#each narr.comments as c, i (i)}
+                    <li><sup>{'*'.repeat(i + 1)}</sup> {c}</li>
+                  {/each}
+                </ol>
+              {/if}
+              {#if rc}
+                <div class="round-note" style="background: {rc.color}4D;">
+                  - 참고: <span class="round-note-text markdown">{@html renderMarkdown(rc.text)}</span>
+                </div>
+              {/if}
+            {/if}
+          </li>
         {/each}
       </ol>
     </details>
@@ -253,7 +299,7 @@
   .read-layout {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 50px - 37px);
+    min-height: calc(100vh - 50px - 37px);
     padding: 12px 16px;
     max-width: 1000px;
     margin: 0 auto;
@@ -269,7 +315,7 @@
   }
   .read-viewer {
     flex: 1;
-    min-height: 0;
+    min-height: 400px;
     display: flex;
     flex-direction: column;
   }
@@ -294,9 +340,67 @@
     line-height: 1.7;
     color: var(--text);
   }
+  .source-list > li {
+    margin-bottom: 6px;
+  }
   .source-list li.empty {
     color: var(--text-muted);
     font-style: italic;
+  }
+  .source-list .narrative :global(.stitch-token) {
+    font-weight: 500;
+  }
+  .source-list .narrative :global(.footnote-marker) {
+    font-size: 0.7em;
+    color: var(--text-secondary);
+    margin-left: 1px;
+  }
+  .pattern-callout {
+    margin: 8px 0 12px;
+    padding: 10px 14px;
+    border-left: 4px solid;
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+  }
+  .markdown :global(p) { margin: 0 0 6px; }
+  .markdown :global(p:last-child) { margin-bottom: 0; }
+  .markdown :global(ul), .markdown :global(ol) { margin: 4px 0; padding-left: 1.4em; }
+  .markdown :global(code) {
+    background: rgba(0,0,0,0.08);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .round-note {
+    display: inline-block;
+    margin: 4px 0 0 0;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .round-note .round-note-text :global(p) {
+    display: inline;
+    margin: 0;
+  }
+  .footnotes {
+    margin: 4px 0 0 0;
+    padding-left: 2em;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    list-style: none;
+  }
+  .footnotes li {
+    margin-bottom: 2px;
+  }
+  .footnotes sup {
+    margin-right: 4px;
   }
 
   @media (max-width: 800px) {
