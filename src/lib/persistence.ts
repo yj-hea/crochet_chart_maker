@@ -11,6 +11,7 @@ import type { ShapeKind } from '$stores/pattern';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
 export const FILE_VERSION = 1;
+export const WORKSPACE_VERSION = 2;
 export const FILE_EXTENSION = '.crochet.json';
 
 export interface SavedPattern {
@@ -125,4 +126,102 @@ export async function readFromFile(file: File): Promise<SavedPattern> {
     throw new Error('파일이 유효한 JSON이 아닙니다');
   }
   return validate(parsed);
+}
+
+// ============================================================
+// 워크스페이스 (다중 탭) localStorage — v2
+// ============================================================
+
+export interface SavedWorkspaceTab {
+  id: string;
+  name: string;
+  shape: ShapeKind;
+  rounds: Array<{ source: string }>;
+}
+
+export interface SavedWorkspace {
+  version: 2;
+  savedAt: string;
+  tabs: SavedWorkspaceTab[];
+  activeTabId: string;
+}
+
+const WORKSPACE_KEY = 'crochet-chart:workspace';
+
+export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId: string }): SavedWorkspace {
+  return {
+    version: WORKSPACE_VERSION,
+    savedAt: new Date().toISOString(),
+    tabs: ws.tabs.map((t) => ({
+      id: t.id,
+      name: t.name,
+      shape: t.shape,
+      rounds: t.rounds.map((r) => ({ source: r.source })),
+    })),
+    activeTabId: ws.activeTabId,
+  };
+}
+
+export function validateWorkspace(data: unknown): SavedWorkspace {
+  if (!data || typeof data !== 'object') throw new Error('잘못된 워크스페이스 형식');
+  const d = data as Record<string, unknown>;
+  if (d.version !== 2) throw new Error(`지원하지 않는 워크스페이스 버전: ${String(d.version)}`);
+  if (!Array.isArray(d.tabs)) throw new Error('tabs 배열이 없습니다');
+  const tabs: SavedWorkspaceTab[] = d.tabs.map((t, i) => {
+    if (!t || typeof t !== 'object') throw new Error(`tabs[${i}]: 객체가 아님`);
+    const tt = t as Record<string, unknown>;
+    if (typeof tt.id !== 'string') throw new Error(`tabs[${i}].id 문자열 필요`);
+    if (typeof tt.name !== 'string') throw new Error(`tabs[${i}].name 문자열 필요`);
+    if (tt.shape !== 'circular' && tt.shape !== 'flat') throw new Error(`tabs[${i}].shape 잘못됨`);
+    if (!Array.isArray(tt.rounds)) throw new Error(`tabs[${i}].rounds 배열 필요`);
+    return {
+      id: tt.id,
+      name: tt.name,
+      shape: tt.shape,
+      rounds: tt.rounds.map((r, j) => {
+        if (!r || typeof (r as Record<string, unknown>).source !== 'string') {
+          throw new Error(`tabs[${i}].rounds[${j}].source 필요`);
+        }
+        return { source: (r as { source: string }).source };
+      }),
+    };
+  });
+  const activeTabId = typeof d.activeTabId === 'string' ? d.activeTabId : (tabs[0]?.id ?? '');
+  return { version: 2, savedAt: String(d.savedAt ?? ''), tabs, activeTabId };
+}
+
+export function saveWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId: string }): void {
+  if (!hasLocalStorage()) return;
+  try {
+    globalThis.localStorage.setItem(WORKSPACE_KEY, JSON.stringify(serializeWorkspace(ws)));
+  } catch { /* ignore */ }
+}
+
+/** 워크스페이스 로드. 없으면 v1 단일 pattern을 한 탭으로 마이그레이션. */
+export function loadWorkspace(): SavedWorkspace | null {
+  if (!hasLocalStorage()) return null;
+  try {
+    const raw = globalThis.localStorage.getItem(WORKSPACE_KEY);
+    if (raw) return validateWorkspace(JSON.parse(raw));
+    // v1 마이그레이션
+    const legacy = loadFromLocalStorage();
+    if (legacy) {
+      const tabId = `tab_${Date.now().toString(36)}`;
+      return {
+        version: 2,
+        savedAt: new Date().toISOString(),
+        tabs: [{ id: tabId, name: '도안 1', shape: legacy.shape, rounds: legacy.rounds }],
+        activeTabId: tabId,
+      };
+    }
+    return null;
+  } catch (e) {
+    console.warn('워크스페이스 복원 실패:', e);
+    return null;
+  }
+}
+
+export function clearWorkspace(): void {
+  if (!hasLocalStorage()) return;
+  globalThis.localStorage.removeItem(WORKSPACE_KEY);
 }
