@@ -40,7 +40,7 @@
   }: Props = $props();
 
   let container: HTMLDivElement;
-  let view: EditorView | undefined;
+  let view: EditorView | undefined = $state();
 
   // 에러 데코레이션을 동적으로 갱신하기 위한 StateField + StateEffect
   const setErrorRanges = StateEffect.define<Array<{ from: number; to: number }>>();
