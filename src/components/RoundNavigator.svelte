@@ -93,16 +93,18 @@
   .nav-btn {
     width: 36px;
     height: 36px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: white;
+    border: 1px solid var(--border, #ddd9d2);
+    border-radius: var(--radius-sm, 5px);
+    background: var(--bg-card, #fff);
     font-size: 16px;
     cursor: pointer;
-    color: #333;
+    color: var(--text-secondary, #7a756d);
+    transition: all 0.15s;
   }
   .nav-btn:hover:not(:disabled) {
-    background: #f0f0f0;
-    border-color: #888;
+    background: var(--bg-hover, #f0eee9);
+    border-color: var(--border-focus, #b0aa9f);
+    color: var(--text, #3a3632);
   }
   .nav-btn:disabled {
     opacity: 0.3;
@@ -111,36 +113,38 @@
   .round-display {
     min-width: 80px;
     padding: 6px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: white;
+    border: 1px solid var(--border, #ddd9d2);
+    border-radius: var(--radius-sm, 5px);
+    background: var(--bg-card, #fff);
     font-size: 16px;
     font-weight: 600;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     text-align: center;
     cursor: pointer;
-    color: #333;
+    color: var(--text, #3a3632);
+    transition: all 0.15s;
   }
   .round-display:hover {
-    background: #f0f0f0;
-    border-color: #888;
+    background: var(--bg-hover, #f0eee9);
+    border-color: var(--border-focus, #b0aa9f);
   }
   .round-input {
     width: 64px;
     padding: 6px 8px;
-    border: 2px solid #4a90d9;
-    border-radius: 4px;
+    border: 2px solid var(--accent, #5a554d);
+    border-radius: var(--radius-sm, 5px);
     font-size: 16px;
     font-weight: 600;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     text-align: center;
     outline: none;
+    color: var(--text, #3a3632);
   }
   .current-text {
     text-align: center;
     margin: 4px 0 0;
     font-size: 13px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    color: #555;
+    font-family: var(--font-mono);
+    color: var(--text-secondary, #7a756d);
   }
 </style>
