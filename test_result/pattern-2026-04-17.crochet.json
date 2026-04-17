@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-17T01:37:41.658Z",
+  "shape": "circular",
+  "rounds": [
+    {
+      "source": "MR, 6x"
+    },
+    {
+      "source": "6v"
+    },
+    {
+      "source": "(1x,1v)*6"
+    },
+    {
+      "source": "(2x,1v)*6"
+    },
+    {
+      "source": "1x,1v,(3x,1v)*5,2x"
+    },
+    {
+      "source": "(4x,1v)*6"
+    },
+    {
+      "source": "2x,1v,(5x,1v)*5,3x"
+    },
+    {
+      "source": "4x,1v,(6x,1v)*5,2x"
+    }
+  ]
+}

@@ -72,10 +72,10 @@ function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
     let consumed = false;
     for (const op of groupOps) {
       if (!consumed && op.consume > 0) {
-        out.push({ ...op, consume: 1, sameHoleContinuation: false });
+        out.push({ ...op, consume: 1, sameHoleContinuation: false, inSameHoleGroup: true });
         consumed = true;
       } else {
-        out.push({ ...op, consume: 0, sameHoleContinuation: consumed });
+        out.push({ ...op, consume: 0, sameHoleContinuation: consumed, inSameHoleGroup: true });
       }
     }
     // 엣지: 소비 op가 하나도 없는 경우 (예: [O]). 그래도 그룹은 부모 1코를 차지하는 것이 자연스러우므로
