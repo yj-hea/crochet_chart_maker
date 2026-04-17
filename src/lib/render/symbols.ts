@@ -52,6 +52,24 @@ export const SYMBOL_DEFS = `
   <line x1="-5" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   <line x1="5" y1="5" x2="0" y2="-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 </g>
+<g id="sym-POPCORN">
+  <!-- 팝콘뜨기: 잎/꽃잎 외곽선 + 위에서 방사되는 4선 -->
+  <path d="M 0,-9 C -7,-4 -6,6 0,9 C 6,6 7,-4 0,-9 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+  <line x1="0" y1="-9" x2="-4" y2="5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+  <line x1="0" y1="-9" x2="-1.5" y2="8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+  <line x1="0" y1="-9" x2="1.5" y2="8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+  <line x1="0" y1="-9" x2="4" y2="5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+</g>
+<g id="sym-BUBBLE">
+  <!-- 구슬(버블)뜨기: 상단 가로선 + 구체 외곽 + 세로 중심선 + 중앙 교차 해칭 -->
+  <line x1="-2.5" y1="-10" x2="2.5" y2="-10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M 0,-8 C -7,-5 -7,5 0,9 C 7,5 7,-5 0,-8 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+  <line x1="0" y1="-8" x2="0" y2="9" stroke="currentColor" stroke-width="1"/>
+  <line x1="-5" y1="-1" x2="-3" y2="1.5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="-3" y1="-1" x2="-1" y2="1.5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="1" y1="-1" x2="3" y2="1.5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="3" y1="-1" x2="5" y2="1.5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+</g>
 `.trim();
 
 /** PositionedStitch의 kind를 SVG symbol id로 매핑 */

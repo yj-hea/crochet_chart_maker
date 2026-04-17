@@ -5,15 +5,17 @@
  */
 
 export type StitchKind =
-  | 'MAGIC' // @ 매직링
-  | 'CHAIN' // O 사슬뜨기
-  | 'SLIP'  // S 빼뜨기
-  | 'SC'    // X 짧은뜨기
-  | 'HDC'   // T 긴뜨기 (half double crochet)
-  | 'DC'    // F 한길긴뜨기 (double crochet)
-  | 'TR'    // E 두길긴뜨기 (treble crochet)
-  | 'INC'   // V 늘림
-  | 'DEC';  // A 줄임
+  | 'MAGIC'    // @ 매직링
+  | 'CHAIN'    // O 사슬뜨기
+  | 'SLIP'     // S 빼뜨기
+  | 'SC'       // X 짧은뜨기
+  | 'HDC'      // T 긴뜨기 (half double crochet)
+  | 'DC'       // F 한길긴뜨기 (double crochet)
+  | 'TR'       // E 두길긴뜨기 (treble crochet)
+  | 'INC'      // V 늘림
+  | 'DEC'      // A 줄임
+  | 'POPCORN'  // P 팝콘뜨기
+  | 'BUBBLE';  // B 버블뜨기 (bobble)
 
 export type ModifierKind = 'BLO'; // blo 뒤이랑뜨기 (future: FLO 앞이랑뜨기)
 
@@ -43,6 +45,8 @@ export const STITCH_META: Record<StitchKind, StitchMeta> = {
   TR:    { kind: 'TR',    canonical: 'E', korean: '두길긴뜨기', english: 'treble (tr)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 11  },
   INC:   { kind: 'INC',   canonical: 'V', korean: '늘림',       english: 'increase',            baseConsume: 1, baseProduce: 2, expandable: true,  symbolHalfHeight: 5   },
   DEC:   { kind: 'DEC',   canonical: 'A', korean: '줄임',       english: 'decrease',            baseConsume: 2, baseProduce: 1, expandable: true,  symbolHalfHeight: 5   },
+  POPCORN:{ kind: 'POPCORN', canonical: 'P', korean: '팝콘뜨기', english: 'popcorn (pop)',      baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
+  BUBBLE:{ kind: 'BUBBLE',canonical: 'B', korean: '버블뜨기',   english: 'bobble (bo)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
 };
 
 /**
@@ -135,6 +139,29 @@ export const ALIAS_MAP: Readonly<Record<string, StitchKind | ModifierKind>> = Ob
   'dec': 'DEC',
   'DEC': 'DEC',
   'Dec': 'DEC',
+
+  // POPCORN
+  'P':   'POPCORN',
+  'p':   'POPCORN',
+  'pc':  'POPCORN',
+  'PC':  'POPCORN',
+  'Pc':  'POPCORN',
+  'pop': 'POPCORN',
+  'POP': 'POPCORN',
+  'Pop': 'POPCORN',
+
+  // BUBBLE (bobble)
+  'B':   'BUBBLE',
+  'b':   'BUBBLE',
+  'bo':  'BUBBLE',
+  'BO':  'BUBBLE',
+  'Bo':  'BUBBLE',
+  'bob': 'BUBBLE',
+  'BOB': 'BUBBLE',
+  'Bob': 'BUBBLE',
+  'bbl': 'BUBBLE',
+  'BBL': 'BUBBLE',
+  'Bbl': 'BUBBLE',
 
   // BLO modifier
   'blo': 'BLO',

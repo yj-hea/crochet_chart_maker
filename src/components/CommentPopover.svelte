@@ -49,6 +49,65 @@
   function pickPaletteColor(c: string) {
     draftColor = c;
   }
+
+  // ---- 이미지 업로드 ----
+  let textareaEl: HTMLTextAreaElement | undefined = $state();
+  let fileInputEl: HTMLInputElement | undefined = $state();
+  const IMAGE_SIZE_WARN = 1.5 * 1024 * 1024; // 1.5MB 이상이면 경고
+
+  function insertAtCursor(text: string) {
+    const el = textareaEl;
+    if (!el) { draftText += text; return; }
+    const start = el.selectionStart ?? draftText.length;
+    const end = el.selectionEnd ?? draftText.length;
+    draftText = draftText.slice(0, start) + text + draftText.slice(end);
+    queueMicrotask(() => {
+      el.focus();
+      const pos = start + text.length;
+      el.selectionStart = el.selectionEnd = pos;
+    });
+  }
+
+  async function insertImage(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > IMAGE_SIZE_WARN) {
+      const kb = Math.round(file.size / 1024);
+      const ok = window.confirm(
+        `이미지 크기가 ${kb}KB 입니다. 저장 용량이 커질 수 있습니다. 계속할까요?`,
+      );
+      if (!ok) return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const alt = file.name.replace(/\.[^.]+$/, '');
+    insertAtCursor(`![${alt}](${dataUrl})`);
+  }
+
+  function handleFileChange(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) insertImage(file);
+    input.value = '';
+  }
+
+  function handlePaste(e: ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          insertImage(file);
+          return;
+        }
+      }
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_interactive_supports_focus -->
@@ -74,10 +133,18 @@
   </div>
 
   {#if editing}
+    <div class="editor-toolbar">
+      <button type="button" class="tb-btn" onclick={() => fileInputEl?.click()} title="이미지 추가">
+        <i class="fa-regular fa-image"></i> 이미지
+      </button>
+      <input type="file" accept="image/*" bind:this={fileInputEl} onchange={handleFileChange} style="display:none" />
+    </div>
     <textarea
       class="editor"
+      bind:this={textareaEl}
       bind:value={draftText}
-      placeholder="마크다운으로 메모를 작성하세요..."
+      onpaste={handlePaste}
+      placeholder="마크다운으로 메모 작성. 이미지는 드래그·붙여넣기 또는 버튼으로 추가"
       rows="5"
     ></textarea>
 
@@ -181,6 +248,28 @@
     padding-left: 1.4em;
   }
   .markdown :global(a) { color: #1a5bbf; }
+  .markdown :global(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 4px 0;
+  }
+  .editor-toolbar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .tb-btn {
+    padding: 3px 8px;
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 3px;
+    background: rgba(255,255,255,0.7);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .tb-btn:hover {
+    background: rgba(255,255,255,0.95);
+  }
   .editor {
     width: 100%;
     min-height: 80px;

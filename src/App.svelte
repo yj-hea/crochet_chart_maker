@@ -373,6 +373,12 @@
     font-family: var(--font-mono);
     font-size: 12px;
   }
+  .markdown :global(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 4px 0;
+  }
   .round-note {
     display: inline-block;
     margin: 4px 0 0 0;
