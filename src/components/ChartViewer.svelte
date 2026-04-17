@@ -45,6 +45,9 @@
       });
       return;
     }
+    // 이전 하이라이트 배경 제거
+    svgWrap.querySelectorAll('.round-highlight-bg').forEach((el) => el.remove());
+
     const cr = $currentRound;
     groups.forEach((g) => {
       const round = parseInt(g.dataset.round ?? '0', 10);
@@ -52,6 +55,13 @@
         g.style.opacity = '1';
         g.style.strokeWidth = '2.6';
         g.style.color = HIGHLIGHT_COLOR;
+        // 현재 단 뒤에 하이라이트 배경 삽입
+        const isCircular = $pattern.shape === 'circular';
+        if (isCircular) {
+          insertDonutHighlight(g);
+        } else {
+          insertRectHighlight(g);
+        }
       } else if (round < cr) {
         g.style.opacity = '0.45';
         g.style.strokeWidth = '';
@@ -63,6 +73,59 @@
       }
     });
   });
+
+  function insertRectHighlight(g: SVGGElement) {
+    const bbox = g.getBBox();
+    if (bbox.width <= 0 || bbox.height <= 0) return;
+    const pad = 6;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', String(bbox.x - pad));
+    rect.setAttribute('y', String(bbox.y - pad));
+    rect.setAttribute('width', String(bbox.width + pad * 2));
+    rect.setAttribute('height', String(bbox.height + pad * 2));
+    rect.setAttribute('rx', '4');
+    rect.setAttribute('fill', '#fff9c4');
+    rect.setAttribute('opacity', '0.5');
+    rect.classList.add('round-highlight-bg');
+    g.parentNode?.insertBefore(rect, g);
+  }
+
+  function insertDonutHighlight(g: SVGGElement) {
+    // <use> 요소들의 원점 거리로 링 반지름 계산
+    const uses = g.querySelectorAll('use');
+    const distances: number[] = [];
+    uses.forEach((u) => {
+      const x = parseFloat(u.getAttribute('x') || '0');
+      const y = parseFloat(u.getAttribute('y') || '0');
+      const d = Math.sqrt(x * x + y * y);
+      if (d > 0) distances.push(d);
+    });
+    if (distances.length === 0) {
+      insertRectHighlight(g); // fallback (매직링 등)
+      return;
+    }
+    const avgR = distances.reduce((a, b) => a + b, 0) / distances.length;
+    const band = 10;
+    const outerR = avgR + band;
+    const innerR = Math.max(0, avgR - band);
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    // 도넛: 외원 시계방향 + 내원 반시계방향 (evenodd)
+    const d = [
+      `M ${outerR},0`,
+      `A ${outerR},${outerR} 0 1,1 ${-outerR},0`,
+      `A ${outerR},${outerR} 0 1,1 ${outerR},0 Z`,
+      `M ${innerR},0`,
+      `A ${innerR},${innerR} 0 1,0 ${-innerR},0`,
+      `A ${innerR},${innerR} 0 1,0 ${innerR},0 Z`,
+    ].join(' ');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', '#fff9c4');
+    path.setAttribute('opacity', '0.45');
+    path.setAttribute('fill-rule', 'evenodd');
+    path.classList.add('round-highlight-bg');
+    g.parentNode?.insertBefore(path, g);
+  }
 
   function downloadSvg() {
     if (!rendered) return;
