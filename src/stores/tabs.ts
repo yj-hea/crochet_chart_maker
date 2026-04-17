@@ -22,9 +22,14 @@ import {
 
 export type ShapeKind = 'circular' | 'flat';
 
+/** 'forward' = 기본 방향 (원형 CCW, 평면 LTR) / 'reverse' = 반대 */
+export type RoundDirection = 'forward' | 'reverse';
+
 export interface PatternRoundState {
   id: string;
   source: string;
+  /** 이 단의 작업 방향. 미지정시 'forward' */
+  direction?: RoundDirection;
   parsed?: ParsedRound;
   expanded?: ExpandedRound;
 }
@@ -51,16 +56,17 @@ function makeTabId(): string {
   return `tab${idCounter}_${Date.now().toString(36)}`;
 }
 
-function reparse(idx: number, source: string) {
+function reparse(idx: number, source: string, direction?: RoundDirection) {
   const parsed = parseRound(idx, source);
   const tree = parsed.body ?? parsed.lastValid;
   const expanded = tree ? expand(tree, idx) : undefined;
+  if (expanded) expanded.direction = direction ?? 'forward';
   return { parsed, expanded };
 }
 
 function reparseAll(rounds: PatternRoundState[]): PatternRoundState[] {
   return rounds.map((r, i) => {
-    const { parsed, expanded } = reparse(i + 1, r.source);
+    const { parsed, expanded } = reparse(i + 1, r.source, r.direction);
     return { ...r, parsed, expanded };
   });
 }
@@ -75,7 +81,11 @@ function defaultTab(name = '도안 1'): Tab {
 }
 
 function tabFromSaved(saved: SavedWorkspaceTab): Tab {
-  const rounds = saved.rounds.map((r) => ({ id: makeRoundId(), source: r.source }));
+  const rounds: PatternRoundState[] = saved.rounds.map((r) => ({
+    id: makeRoundId(),
+    source: r.source,
+    direction: r.direction,
+  }));
   return {
     id: saved.id,
     name: saved.name,
@@ -199,9 +209,10 @@ export function updateRoundSource(id: string, source: string): void {
   updateActiveTab((t) => {
     const idx = t.rounds.findIndex((r) => r.id === id);
     if (idx < 0) return t;
-    const { parsed, expanded } = reparse(idx + 1, source);
+    const current = t.rounds[idx]!;
+    const { parsed, expanded } = reparse(idx + 1, source, current.direction);
     const newRounds = [...t.rounds];
-    newRounds[idx] = { ...newRounds[idx]!, source, parsed, expanded };
+    newRounds[idx] = { ...current, source, parsed, expanded };
     return { ...t, rounds: newRounds };
   });
 }
@@ -245,6 +256,18 @@ export function setShape(shape: ShapeKind): void {
   updateActiveTab((t) => ({ ...t, shape }));
 }
 
+export function setRoundDirection(id: string, direction: RoundDirection): void {
+  updateActiveTab((t) => ({
+    ...t,
+    rounds: t.rounds.map((r) => {
+      if (r.id !== id) return r;
+      // expanded.direction 도 함께 갱신 (레이아웃이 이 값을 사용)
+      const expanded = r.expanded ? { ...r.expanded, direction } : r.expanded;
+      return { ...r, direction, expanded };
+    }),
+  }));
+}
+
 // ============================================================
 // 파일 I/O (활성 탭 기준)
 // ============================================================
@@ -253,7 +276,10 @@ export function exportToFile(): void {
   const ws = get(workspace);
   const active = ws.tabs.find((t) => t.id === ws.activeTabId);
   if (!active) return;
-  downloadAsFile({ shape: active.shape, rounds: active.rounds }, active.name || 'pattern');
+  downloadAsFile(
+    { shape: active.shape, rounds: active.rounds.map((r) => ({ source: r.source, direction: r.direction })) },
+    active.name || 'pattern',
+  );
 }
 
 /** 파일에서 새 탭으로 불러오기 (현재 탭 덮어쓰지 않음) */
@@ -266,7 +292,11 @@ export async function importFromFile(file: File): Promise<void> {
       id: tabId,
       name,
       shape: saved.shape,
-      rounds: reparseAll(saved.rounds.map((r) => ({ id: makeRoundId(), source: r.source }))),
+      rounds: reparseAll(saved.rounds.map((r) => ({
+        id: makeRoundId(),
+        source: r.source,
+        direction: r.direction,
+      }))),
     };
     return { tabs: [...ws.tabs, newTab], activeTabId: tabId };
   });

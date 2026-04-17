@@ -38,10 +38,10 @@ describe('layoutFlat', () => {
     for (const s of result.stitches) {
       expect(s.angle).toBe(0);
     }
-    // 작업 방향은 마커 direction으로 표현됨
+    // 기본 방향은 forward(LTR) — 모든 단 오른쪽 진행 마커
     const markers = result.roundMarkers;
     expect(markers.find((m) => m.roundIndex === 1)?.direction).toBe('right');
-    expect(markers.find((m) => m.roundIndex === 2)?.direction).toBe('left');
+    expect(markers.find((m) => m.roundIndex === 2)?.direction).toBe('right');
   });
 
   it('V는 1개의 stitch지만 2슬롯 차지', () => {

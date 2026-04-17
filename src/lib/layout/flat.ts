@@ -72,7 +72,8 @@ function placeRow(
 
   const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
   const startX = -((rowSlots - 1) * FLAT_CELL_WIDTH) / 2;
-  const direction: 1 | -1 = roundIdx % 2 === 1 ? 1 : -1;
+  // forward = LTR (direction=+1), reverse = RTL (direction=-1). 기본 forward.
+  const direction: 1 | -1 = round.direction === 'reverse' ? -1 : 1;
   const angle = 0;
 
   const parentSlotMap = slotMapByRound.get(roundIdx - 1) ?? [];

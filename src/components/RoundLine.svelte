@@ -17,6 +17,12 @@
     validationErrors?: ValidationError[];
     stitchCount?: number;
     canDelete?: boolean;
+    /** 단 작업 방향 ('forward' 기본 / 'reverse') */
+    direction?: 'forward' | 'reverse';
+    /** 방향 아이콘 — 도형에 따라 다르므로 부모가 결정 */
+    directionIcon?: { forward: string; reverse: string };
+    /** 방향 라벨 (툴팁) */
+    directionLabel?: { forward: string; reverse: string };
     /** 외부 포커스 요청. token 증가 시 포커스 이동, cursor로 커서 위치 지정 */
     focusRequest?: FocusRequest;
     onChange: (source: string) => void;
@@ -25,6 +31,7 @@
     /** Shift+Enter: 새 단 추가 */
     onShiftEnter: () => void;
     onDelete: () => void;
+    onToggleDirection?: () => void;
     onArrowUp?: (col: number) => void;
     onArrowDown?: (col: number) => void;
     onArrowLeftBoundary?: () => void;
@@ -38,11 +45,15 @@
     validationErrors = [],
     stitchCount,
     canDelete = true,
+    direction = 'forward',
+    directionIcon,
+    directionLabel,
     focusRequest,
     onChange,
     onEnter,
     onShiftEnter,
     onDelete,
+    onToggleDirection,
     onArrowUp,
     onArrowDown,
     onArrowLeftBoundary,
@@ -249,6 +260,17 @@
   <span class="stitch-count" title="이 단의 총 코 수">
     {stitchCount ?? '—'}<span class="unit">코</span>
   </span>
+  {#if onToggleDirection && directionIcon && directionLabel}
+    <button
+      type="button"
+      class="dir-btn"
+      onclick={onToggleDirection}
+      title={direction === 'forward' ? directionLabel.forward : directionLabel.reverse}
+      aria-label="작업 방향 전환"
+    >
+      <i class={direction === 'forward' ? directionIcon.forward : directionIcon.reverse}></i>
+    </button>
+  {/if}
   <button
     type="button"
     class="delete-btn"
@@ -310,6 +332,29 @@
     color: var(--text-muted);
     font-size: 11px;
     margin-left: 2px;
+  }
+  .dir-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin-top: 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dir-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
   }
   .delete-btn {
     flex-shrink: 0;

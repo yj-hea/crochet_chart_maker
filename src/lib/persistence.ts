@@ -14,16 +14,21 @@ export const FILE_VERSION = 1;
 export const WORKSPACE_VERSION = 2;
 export const FILE_EXTENSION = '.crochet.json';
 
+export interface SavedRound {
+  source: string;
+  direction?: 'forward' | 'reverse';
+}
+
 export interface SavedPattern {
   version: 1;
   savedAt: string;  // ISO 8601
   shape: ShapeKind;
-  rounds: Array<{ source: string }>;
+  rounds: SavedRound[];
 }
 
 export interface SerializeInput {
   shape: ShapeKind;
-  rounds: ReadonlyArray<{ source: string }>;
+  rounds: ReadonlyArray<{ source: string; direction?: 'forward' | 'reverse' }>;
 }
 
 /** 현재 상태를 저장용 객체로 직렬화. id/parsed/expanded 등 파생값은 제외 */
@@ -32,7 +37,11 @@ export function serialize(state: SerializeInput): SavedPattern {
     version: FILE_VERSION,
     savedAt: new Date().toISOString(),
     shape: state.shape,
-    rounds: state.rounds.map((r) => ({ source: r.source })),
+    rounds: state.rounds.map((r) => {
+      const out: SavedRound = { source: r.source };
+      if (r.direction) out.direction = r.direction;
+      return out;
+    }),
   };
 }
 
@@ -54,11 +63,16 @@ export function validate(data: unknown): SavedPattern {
   if (!Array.isArray(d.rounds)) {
     throw new Error('rounds 배열이 없습니다');
   }
-  const rounds: Array<{ source: string }> = d.rounds.map((r, i) => {
+  const rounds: SavedRound[] = d.rounds.map((r, i) => {
     if (!r || typeof r !== 'object' || typeof (r as Record<string, unknown>).source !== 'string') {
       throw new Error(`rounds[${i}]: source 문자열이 필요합니다`);
     }
-    return { source: (r as { source: string }).source };
+    const rr = r as Record<string, unknown>;
+    const out: SavedRound = { source: rr.source as string };
+    if (rr.direction === 'forward' || rr.direction === 'reverse') {
+      out.direction = rr.direction;
+    }
+    return out;
   });
   return {
     version: 1,
@@ -136,7 +150,7 @@ export interface SavedWorkspaceTab {
   id: string;
   name: string;
   shape: ShapeKind;
-  rounds: Array<{ source: string }>;
+  rounds: SavedRound[];
 }
 
 export interface SavedWorkspace {
@@ -156,7 +170,11 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
       id: t.id,
       name: t.name,
       shape: t.shape,
-      rounds: t.rounds.map((r) => ({ source: r.source })),
+      rounds: t.rounds.map((r) => {
+        const out: SavedRound = { source: r.source };
+        if (r.direction) out.direction = r.direction;
+        return out;
+      }),
     })),
     activeTabId: ws.activeTabId,
   };
@@ -182,7 +200,12 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
         if (!r || typeof (r as Record<string, unknown>).source !== 'string') {
           throw new Error(`tabs[${i}].rounds[${j}].source 필요`);
         }
-        return { source: (r as { source: string }).source };
+        const rr = r as Record<string, unknown>;
+        const out: SavedRound = { source: rr.source as string };
+        if (rr.direction === 'forward' || rr.direction === 'reverse') {
+          out.direction = rr.direction;
+        }
+        return out;
       }),
     };
   });

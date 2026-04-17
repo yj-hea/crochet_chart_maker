@@ -6,6 +6,7 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
+  import { setRoundDirection } from '$stores/tabs';
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
@@ -78,6 +79,21 @@
       bumpFocus($pattern.rounds[idx + 1]!.id, 'start');
     }
   }
+
+  function handleToggleDirection(roundId: string) {
+    const r = $pattern.rounds.find((r) => r.id === roundId);
+    if (!r) return;
+    const current = r.direction ?? 'forward';
+    setRoundDirection(roundId, current === 'forward' ? 'reverse' : 'forward');
+  }
+
+  // 도형별 방향 아이콘/라벨
+  const dirIcon = $derived($pattern.shape === 'circular'
+    ? { forward: 'fa-solid fa-rotate-left', reverse: 'fa-solid fa-rotate-right' }
+    : { forward: 'fa-solid fa-arrow-right', reverse: 'fa-solid fa-arrow-left' });
+  const dirLabel = $derived($pattern.shape === 'circular'
+    ? { forward: '반시계 방향 (클릭하여 시계 방향으로)', reverse: '시계 방향 (클릭하여 반시계 방향으로)' }
+    : { forward: '왼→오 (클릭하여 오→왼으로)', reverse: '오→왼 (클릭하여 왼→오로)' });
 </script>
 
 <div class="pattern-editor">
@@ -93,11 +109,15 @@
       validationErrors={validationByRound.get(round.id) ?? []}
       stitchCount={round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}
+      direction={round.direction ?? 'forward'}
+      directionIcon={dirIcon}
+      directionLabel={dirLabel}
       focusRequest={focusRequests[round.id]}
       onChange={(s) => updateRoundSource(round.id, s)}
       onEnter={() => handleEnter(round.id)}
       onShiftEnter={() => handleShiftEnter(round.id)}
       onDelete={() => handleDelete(round.id)}
+      onToggleDirection={() => handleToggleDirection(round.id)}
       onArrowUp={(col) => handleArrowUp(round.id, col)}
       onArrowDown={(col) => handleArrowDown(round.id, col)}
       onArrowLeftBoundary={() => handleArrowLeftBoundary(round.id)}
