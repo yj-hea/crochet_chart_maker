@@ -2,13 +2,15 @@
   import PatternEditor from './components/PatternEditor.svelte';
   import ChartViewer from './components/ChartViewer.svelte';
   import ShapeSelector from './components/ShapeSelector.svelte';
-  import { exportToFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
+  import ModeToggle from './components/ModeToggle.svelte';
+  import RoundNavigator from './components/RoundNavigator.svelte';
+  import { mode } from './stores/mode';
+  import { pattern, exportToFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
 
   let fileInput: HTMLInputElement;
   let savedFlash = $state(false);
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // 저장 직후 "저장됨" 뱃지를 잠깐 표시
   $effect(() => {
     void $lastSavedAt;
     if (!$lastSavedAt) return;
@@ -20,7 +22,7 @@
   async function handleImport(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
-    input.value = '';  // 같은 파일을 다시 선택해도 change 이벤트가 발생하도록
+    input.value = '';
     if (!file) return;
     try {
       await importFromFile(file);
@@ -36,6 +38,13 @@
     );
     if (ok) resetPattern();
   }
+
+  const validRoundCount = $derived(
+    $pattern.rounds.filter((r) => r.expanded).length
+  );
+  const roundSources = $derived(
+    $pattern.rounds.map((r) => r.source)
+  );
 </script>
 
 <header class="app-header">
@@ -54,6 +63,7 @@
     <button type="button" class="tool-btn danger" onclick={handleReset} title="도안 비우고 새로 시작">
       🆕 새 도안
     </button>
+    <ModeToggle />
     <input
       type="file"
       accept=".json,.crochet.json,application/json"
@@ -64,16 +74,37 @@
   </div>
 </header>
 
-<main class="app-main">
-  <section class="pane editor-pane">
-    <h2>입력</h2>
-    <PatternEditor />
-  </section>
-  <section class="pane viewer-pane">
-    <h2>미리보기</h2>
-    <ChartViewer />
-  </section>
-</main>
+{#if $mode === 'edit'}
+  <main class="app-main edit-layout">
+    <section class="pane editor-pane">
+      <h2>입력</h2>
+      <PatternEditor />
+    </section>
+    <section class="pane viewer-pane">
+      <h2>미리보기</h2>
+      <ChartViewer />
+    </section>
+  </main>
+{:else}
+  <main class="app-main read-layout">
+    {#if validRoundCount > 0}
+      <div class="read-nav">
+        <RoundNavigator totalRounds={validRoundCount} {roundSources} />
+      </div>
+    {/if}
+    <section class="read-viewer">
+      <ChartViewer />
+    </section>
+    <details class="read-source">
+      <summary>도안 텍스트 보기</summary>
+      <ol class="source-list">
+        {#each $pattern.rounds as round (round.id)}
+          <li class:empty={!round.source}>{round.source || '(빈 단)'}</li>
+        {/each}
+      </ol>
+    </details>
+  </main>
+{/if}
 
 <style>
   .app-header {
@@ -128,7 +159,17 @@
     border-color: #c0392b;
     color: #c0392b;
   }
-  .app-main {
+  h2 {
+    font-size: 0.9rem;
+    margin: 0;
+    color: #666;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Edit layout */
+  .edit-layout {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
@@ -141,16 +182,48 @@
     flex-direction: column;
     gap: 8px;
   }
-  h2 {
-    font-size: 0.9rem;
-    margin: 0;
+
+  /* Read layout */
+  .read-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 1.5rem;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .read-nav {
+    text-align: center;
+  }
+  .read-viewer {
+    flex: 1;
+  }
+  .read-source {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: #fafafa;
+    font-size: 13px;
+  }
+  .read-source summary {
+    cursor: pointer;
     color: #666;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
+  .source-list {
+    margin: 8px 0 0;
+    padding-left: 2em;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    line-height: 1.6;
+    color: #333;
+  }
+  .source-list li.empty {
+    color: #bbb;
+    font-style: italic;
+  }
+
   @media (max-width: 800px) {
-    .app-main {
+    .edit-layout {
       grid-template-columns: 1fr;
     }
   }
