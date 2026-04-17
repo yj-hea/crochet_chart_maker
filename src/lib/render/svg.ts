@@ -47,7 +47,7 @@ export function renderSvg(opts: RenderOptions): string {
   const markers = renderRoundMarkers(layout.roundMarkers);
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${bounds.width}" height="${bounds.height}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${SYMBOL_DEFS}</defs>`,
     grid,
     connections,

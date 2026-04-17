@@ -11,6 +11,41 @@
   let savedFlash = $state(false);
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // ---- 패널 리사이즈 ----
+  const SPLIT_STORAGE_KEY = 'crochet-chart:split-ratio';
+  const DEFAULT_RATIO = 0.42;
+
+  function loadSplitRatio(): number {
+    try {
+      const v = localStorage.getItem(SPLIT_STORAGE_KEY);
+      if (v) { const n = parseFloat(v); if (n > 0.15 && n < 0.85) return n; }
+    } catch {}
+    return DEFAULT_RATIO;
+  }
+
+  let splitRatio = $state(loadSplitRatio());
+  let resizing = $state(false);
+
+  function startResize(e: MouseEvent) {
+    e.preventDefault();
+    resizing = true;
+    const onMove = (ev: MouseEvent) => {
+      const container = document.querySelector('.edit-layout') as HTMLElement | null;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const ratio = (ev.clientX - rect.left) / rect.width;
+      splitRatio = Math.min(0.8, Math.max(0.2, ratio));
+    };
+    const onUp = () => {
+      resizing = false;
+      try { localStorage.setItem(SPLIT_STORAGE_KEY, String(splitRatio)); } catch {}
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
   $effect(() => {
     void $lastSavedAt;
     if (!$lastSavedAt) return;
@@ -75,11 +110,15 @@
 </header>
 
 {#if $mode === 'edit'}
-  <main class="app-main edit-layout">
+  <main class="app-main edit-layout" style="grid-template-columns: {splitRatio}fr 6px {1 - splitRatio}fr;" class:resizing>
     <section class="pane editor-pane">
       <h2>입력</h2>
       <PatternEditor />
     </section>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="splitter" onmousedown={startResize} title="드래그하여 패널 크기 조절">
+      <div class="splitter-handle"></div>
+    </div>
     <section class="pane viewer-pane">
       <h2>미리보기</h2>
       <ChartViewer />
@@ -168,19 +207,45 @@
     letter-spacing: 0.5px;
   }
 
-  /* Edit layout */
+  /* Edit layout — 3열 grid: editor | splitter | viewer */
   .edit-layout {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    grid-template-rows: 1fr;
+    /* grid-template-columns 는 inline style로 동적 지정 */
     padding: 16px 1.5rem;
     max-width: 1400px;
     margin: 0 auto;
+    height: calc(100vh - 60px);
+  }
+  .edit-layout.resizing {
+    user-select: none;
+    cursor: col-resize;
   }
   .pane {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .splitter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    padding: 0 2px;
+  }
+  .splitter-handle {
+    width: 4px;
+    height: 40px;
+    border-radius: 2px;
+    background: #ccc;
+    transition: background 0.15s;
+  }
+  .splitter:hover .splitter-handle,
+  .edit-layout.resizing .splitter-handle {
+    background: #888;
   }
 
   /* Read layout */

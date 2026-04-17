@@ -5,12 +5,9 @@
   import { layoutFlat } from '$lib/layout/flat';
   import { renderSvg } from '$lib/render/svg';
   import type { ExpandedRound } from '$lib/expand/op';
+  import ZoomModal from './ZoomModal.svelte';
 
-  const ZOOM_MIN = 0.25;
-  const ZOOM_MAX = 4;
-  const ZOOM_STEP = 0.25;
-
-  let zoom = $state(1);
+  let modalOpen = $state(false);
 
   const rendered = $derived.by(() => {
     const validRounds: ExpandedRound[] = [];
@@ -32,10 +29,9 @@
 
   // SVG 컨테이너 ref — 렌더 후 g.round 요소에 직접 하이라이트 스타일 적용
   let svgWrap: HTMLDivElement | undefined = $state();
-  const HIGHLIGHT_COLOR = '#2563eb';  // 현재 단 강조색 (파랑)
+  const HIGHLIGHT_COLOR = '#2563eb';
 
   $effect(() => {
-    // 의존성 추적: rendered.svg(내용 변경), mode, currentRound
     void $mode;
     void $currentRound;
     void rendered?.svg;
@@ -68,13 +64,6 @@
     });
   });
 
-  function clamp(v: number): number {
-    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
-  }
-  function zoomIn() { zoom = clamp(+(zoom + ZOOM_STEP).toFixed(2)); }
-  function zoomOut() { zoom = clamp(+(zoom - ZOOM_STEP).toFixed(2)); }
-  function zoomReset() { zoom = 1; }
-
   function downloadSvg() {
     if (!rendered) return;
     const blob = new Blob([rendered.svg], { type: 'image/svg+xml' });
@@ -92,31 +81,28 @@
 <div class="chart-viewer">
   <div class="toolbar">
     {#if $mode === 'read'}
-      <button type="button" class="download-btn" onclick={downloadSvg} disabled={!rendered} aria-label="SVG 다운로드">
+      <button type="button" class="tool-btn download-btn" onclick={downloadSvg} disabled={!rendered}>
         📥 SVG 다운로드
       </button>
     {/if}
     <span class="spacer"></span>
     <button
       type="button"
-      class="toggle-btn"
+      class="tool-btn toggle-btn"
       class:active={$showGrid}
       onclick={() => showGrid.update((v) => !v)}
       aria-pressed={$showGrid}
       title={$showGrid ? '그리드 숨기기' : '그리드 표시'}
     >▦ 그리드</button>
-    <span class="divider"></span>
-    <button type="button" onclick={zoomOut} disabled={zoom <= ZOOM_MIN} aria-label="축소">−</button>
-    <button type="button" onclick={zoomReset} aria-label="원본 크기">{Math.round(zoom * 100)}%</button>
-    <button type="button" onclick={zoomIn} disabled={zoom >= ZOOM_MAX} aria-label="확대">+</button>
   </div>
-  <div class="scroll-area">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="scroll-area"
+    ondblclick={() => { if (rendered) modalOpen = true; }}
+    title={rendered ? '더블클릭으로 확대' : ''}
+  >
     {#if rendered}
-      <div
-        class="svg-wrap"
-        bind:this={svgWrap}
-        style="width: {rendered.width * zoom}px; height: {rendered.height * zoom}px;"
-      >
+      <div class="svg-wrap" bind:this={svgWrap}>
         {@html rendered.svg}
       </div>
     {:else}
@@ -124,6 +110,15 @@
     {/if}
   </div>
 </div>
+
+{#if modalOpen && rendered}
+  <ZoomModal
+    svg={rendered.svg}
+    svgWidth={rendered.width}
+    svgHeight={rendered.height}
+    onClose={() => { modalOpen = false; }}
+  />
+{/if}
 
 <style>
   .chart-viewer {
@@ -133,6 +128,8 @@
     display: flex;
     flex-direction: column;
     min-height: 300px;
+    flex: 1;           /* 부모 pane 안에서 남은 공간 채움 */
+    min-height: 0;     /* flex shrink 허용 */
   }
   .toolbar {
     display: flex;
@@ -142,64 +139,62 @@
     justify-content: flex-end;
     align-items: center;
   }
-  .toolbar button {
-    min-width: 32px;
+  .tool-btn {
     height: 26px;
-    padding: 0 8px;
+    padding: 0 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
     background: white;
     font-size: 13px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
     cursor: pointer;
     color: #333;
   }
-  .toolbar button:hover:not(:disabled) {
+  .tool-btn:hover:not(:disabled) {
     background: #f0f0f0;
     border-color: #888;
   }
-  .toolbar button:disabled {
+  .tool-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
   .download-btn {
-    font-family: system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif;
   }
   .spacer {
     flex: 1;
   }
-  .divider {
-    width: 1px;
-    height: 18px;
-    background: #ddd;
-    margin: 0 4px;
-  }
   .toggle-btn {
-    font-family: system-ui, sans-serif !important;
-    min-width: auto !important;
-    padding: 0 10px !important;
+    font-family: system-ui, sans-serif;
   }
   .toggle-btn.active {
-    background: #e8f0ff !important;
-    border-color: #6a98d9 !important;
-    color: #2563eb !important;
+    background: #e8f0ff;
+    border-color: #6a98d9;
+    color: #2563eb;
   }
   .scroll-area {
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    overflow: hidden;
     padding: 16px;
+    position: relative;
+    cursor: zoom-in;
+  }
+  .svg-wrap {
+    position: absolute;
+    inset: 16px;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
   }
   .svg-wrap :global(svg) {
-    width: 100%;
-    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
     display: block;
   }
   .empty {
     color: #999;
     font-size: 14px;
     margin: auto;
+    cursor: default;
   }
 </style>
