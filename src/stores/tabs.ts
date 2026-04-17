@@ -25,6 +25,19 @@ export type ShapeKind = 'circular' | 'flat';
 /** 'forward' = 기본 방향 (원형 CCW, 평면 LTR) / 'reverse' = 반대 */
 export type RoundDirection = 'forward' | 'reverse';
 
+/** 코멘트 대상 */
+export type CommentTarget =
+  | { kind: 'pattern' }
+  | { kind: 'round'; roundId: string };
+
+export interface Comment {
+  id: string;
+  text: string;         // markdown 원본
+  color: string;        // CSS color (hex 또는 named)
+  open?: boolean;       // 기본 펼침 상태
+  target: CommentTarget;
+}
+
 export interface PatternRoundState {
   id: string;
   source: string;
@@ -39,6 +52,7 @@ export interface Tab {
   name: string;
   shape: ShapeKind;
   rounds: PatternRoundState[];
+  comments: Comment[];
 }
 
 export interface WorkspaceState {
@@ -71,12 +85,18 @@ function reparseAll(rounds: PatternRoundState[]): PatternRoundState[] {
   });
 }
 
+function makeCommentId(): string {
+  idCounter++;
+  return `cm${idCounter}_${Date.now().toString(36)}`;
+}
+
 function defaultTab(name = '도안 1'): Tab {
   return {
     id: makeTabId(),
     name,
     shape: 'circular',
     rounds: reparseAll([{ id: makeRoundId(), source: '' }]),
+    comments: [],
   };
 }
 
@@ -91,6 +111,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     name: saved.name,
     shape: saved.shape,
     rounds: reparseAll(rounds),
+    comments: (saved.comments ?? []).map((c) => ({ ...c })),
   };
 }
 
@@ -128,7 +149,12 @@ workspace.subscribe((ws) => {
       id: t.id,
       name: t.name,
       shape: t.shape,
-      rounds: t.rounds.map((r) => ({ source: r.source })),
+      rounds: t.rounds.map((r) => {
+        const out: { source: string; direction?: RoundDirection } = { source: r.source };
+        if (r.direction) out.direction = r.direction;
+        return out;
+      }),
+      comments: t.comments,
     })),
     activeTabId: ws.activeTabId,
   });
@@ -165,6 +191,7 @@ export function createTab(): string {
       name: nextTabName(ws.tabs),
       shape: 'circular',
       rounds: reparseAll([{ id: makeRoundId(), source: '' }]),
+      comments: [],
     };
     newId = tab.id;
     return { tabs: [...ws.tabs, tab], activeTabId: tab.id };
@@ -256,6 +283,36 @@ export function setShape(shape: ShapeKind): void {
   updateActiveTab((t) => ({ ...t, shape }));
 }
 
+// ============================================================
+// 코멘트 CRUD
+// ============================================================
+
+const DEFAULT_COMMENT_COLOR = '#FFE066'; // 노랑
+
+export function addComment(target: CommentTarget, text = '', color = DEFAULT_COMMENT_COLOR): string {
+  let newId = '';
+  updateActiveTab((t) => {
+    newId = makeCommentId();
+    const newComment: Comment = { id: newId, target, text, color, open: true };
+    return { ...t, comments: [...t.comments, newComment] };
+  });
+  return newId;
+}
+
+export function updateComment(id: string, patch: Partial<Pick<Comment, 'text' | 'color' | 'open'>>): void {
+  updateActiveTab((t) => ({
+    ...t,
+    comments: t.comments.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+  }));
+}
+
+export function deleteComment(id: string): void {
+  updateActiveTab((t) => ({
+    ...t,
+    comments: t.comments.filter((c) => c.id !== id),
+  }));
+}
+
 export function setRoundDirection(id: string, direction: RoundDirection): void {
   updateActiveTab((t) => ({
     ...t,
@@ -277,7 +334,11 @@ export function exportToFile(): void {
   const active = ws.tabs.find((t) => t.id === ws.activeTabId);
   if (!active) return;
   downloadAsFile(
-    { shape: active.shape, rounds: active.rounds.map((r) => ({ source: r.source, direction: r.direction })) },
+    {
+      shape: active.shape,
+      rounds: active.rounds.map((r) => ({ source: r.source, direction: r.direction })),
+      comments: active.comments,
+    },
     active.name || 'pattern',
   );
 }
@@ -297,6 +358,7 @@ export async function importFromFile(file: File): Promise<void> {
         source: r.source,
         direction: r.direction,
       }))),
+      comments: (saved.comments ?? []).map((c) => ({ ...c, id: makeCommentId() })),
     };
     return { tabs: [...ws.tabs, newTab], activeTabId: tabId };
   });

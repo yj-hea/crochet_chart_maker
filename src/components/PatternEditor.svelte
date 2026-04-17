@@ -6,7 +6,8 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
-  import { setRoundDirection } from '$stores/tabs';
+  import { setRoundDirection, addComment, workspace } from '$stores/tabs';
+  import CommentPin from './CommentPin.svelte';
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
@@ -87,6 +88,28 @@
     setRoundDirection(roundId, current === 'forward' ? 'reverse' : 'forward');
   }
 
+  // 활성 탭의 코멘트 맵: round.id → Comment | undefined
+  const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
+  const roundCommentByRound = $derived.by(() => {
+    const map = new Map<string, import('$stores/tabs').Comment>();
+    if (!activeTab) return map;
+    for (const c of activeTab.comments) {
+      if (c.target.kind === 'round') map.set(c.target.roundId, c);
+    }
+    return map;
+  });
+  const patternComment = $derived(
+    activeTab?.comments.find((c) => c.target.kind === 'pattern'),
+  );
+
+  function handleAddRoundComment(roundId: string) {
+    addComment({ kind: 'round', roundId }, '');
+  }
+
+  function handleAddPatternComment() {
+    addComment({ kind: 'pattern' }, '');
+  }
+
   // 도형별 방향 아이콘/라벨
   const dirIcon = $derived($pattern.shape === 'circular'
     ? { forward: 'fa-solid fa-rotate-left', reverse: 'fa-solid fa-rotate-right' }
@@ -99,6 +122,14 @@
 <div class="pattern-editor">
   <div class="editor-header">
     <ShapeSelector />
+    <div class="header-spacer"></div>
+    {#if patternComment}
+      <CommentPin comment={patternComment} />
+    {:else}
+      <button type="button" class="pattern-comment-btn" onclick={handleAddPatternComment} title="도안 메모 추가">
+        <i class="fa-regular fa-comment"></i> 메모
+      </button>
+    {/if}
   </div>
   <div class="rounds-area">
   {#each $pattern.rounds as round, i (round.id)}
@@ -109,6 +140,7 @@
       validationErrors={validationByRound.get(round.id) ?? []}
       stitchCount={round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}
+      roundComment={roundCommentByRound.get(round.id)}
       direction={round.direction ?? 'forward'}
       directionIcon={dirIcon}
       directionLabel={dirLabel}
@@ -118,6 +150,7 @@
       onShiftEnter={() => handleShiftEnter(round.id)}
       onDelete={() => handleDelete(round.id)}
       onToggleDirection={() => handleToggleDirection(round.id)}
+      onAddComment={() => handleAddRoundComment(round.id)}
       onArrowUp={(col) => handleArrowUp(round.id, col)}
       onArrowDown={(col) => handleArrowDown(round.id, col)}
       onArrowLeftBoundary={() => handleArrowLeftBoundary(round.id)}
@@ -143,9 +176,28 @@
     overflow: hidden;
   }
   .editor-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 12px 14px;
     border-bottom: 1px solid var(--border, #e2e2e2);
     background: var(--bg, #f5f5f5);
+  }
+  .header-spacer { flex: 1; }
+  .pattern-comment-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pattern-comment-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border);
   }
   .rounds-area {
     flex: 1;
