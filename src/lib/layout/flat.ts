@@ -52,6 +52,17 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
   // 4) samehole 사슬 arc
   repositionChainArcs(stitches);
 
+  // 5) roundMarker 위치 재계산 — stitch 이동이 완료된 뒤 참조 stitch 의 최종 x 로 맞춤
+  for (const m of roundMarkers) {
+    const mExt = m as RoundMarker & { _stitchIdx?: number };
+    if (mExt._stitchIdx !== undefined) {
+      const s = stitches[mExt._stitchIdx]!;
+      const off = m.direction === 'right' ? -MARKER_SIDE_OFFSET : MARKER_SIDE_OFFSET;
+      m.position = { x: s.position.x + off, y: s.position.y };
+      delete mExt._stitchIdx;
+    }
+  }
+
   // 5) bounds (stitch extent 포함)
   const extentPoints: Point[] = [];
   for (const s of stitches) {
@@ -192,13 +203,13 @@ function placeRow(
     const startStitchIdx = direction === 1
       ? visibleIndices[0]!
       : visibleIndices[visibleIndices.length - 1]!;
-    const s = stitches[startStitchIdx]!;
-    const xOffsetMarker = direction === 1 ? -MARKER_SIDE_OFFSET : MARKER_SIDE_OFFSET;
+    // 실제 좌표는 후처리에서 재계산 — 여기선 참조만 저장
     roundMarkers.push({
       roundIndex: roundIdx,
-      position: { x: s.position.x + xOffsetMarker, y: s.position.y },
+      position: { x: 0, y: 0 },
       direction: direction === 1 ? 'right' : 'left',
-    });
+      _stitchIdx: startStitchIdx,
+    } as RoundMarker & { _stitchIdx: number });
   }
 }
 
