@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import PatternEditor from './components/PatternEditor.svelte';
   import ChartViewer from './components/ChartViewer.svelte';
   import ModeToggle from './components/ModeToggle.svelte';
   import RoundNavigator from './components/RoundNavigator.svelte';
   import TabBar from './components/TabBar.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import DropboxMenu from './components/DropboxMenu.svelte';
+  import { initializeDropbox } from './stores/dropbox';
   import { mode } from './stores/mode';
   import { pattern, exportToFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
@@ -15,6 +18,9 @@
   let savedFlash = $state(false);
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
   let helpOpen = $state(false);
+
+  // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화
+  onMount(() => { void initializeDropbox(); });
 
   // ---- 패널 리사이즈 ----
   const SPLIT_STORAGE_KEY = 'crochet-chart:split-ratio';
@@ -110,6 +116,7 @@
       <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기"><i class="fa-solid fa-folder-open"></i></button>
       <button type="button" class="icon-btn" onclick={handleReset} title="새 도안"><i class="fa-solid fa-file-circle-plus"></i></button>
       <button type="button" class="icon-btn" onclick={() => (helpOpen = true)} title="도안 작성 가이드"><i class="fa-solid fa-circle-question"></i></button>
+      <DropboxMenu />
     </div>
 
     <div class="header-divider"></div>
