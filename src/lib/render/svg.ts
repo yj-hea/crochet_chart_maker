@@ -87,7 +87,30 @@ function renderGrid(guide: GridGuide | undefined, bounds: LayoutBounds): string 
   if (guide.type === 'concentric') {
     return renderConcentricGrid(guide.ringRadii, guide.sectorCount);
   }
+  if (guide.verticalLines && guide.verticalLines.length > 0) {
+    return renderVariableRectGrid(bounds, guide.verticalLines, guide.cellHeight, guide.yOffset);
+  }
   return renderRectGrid(bounds, guide.cellWidth, guide.cellHeight, guide.xOffset, guide.yOffset);
+}
+
+function renderVariableRectGrid(
+  bounds: LayoutBounds,
+  verticalLines: number[],
+  cellHeight: number,
+  yOffset: number,
+): string {
+  const startY = alignToOffset(bounds.minY, cellHeight, yOffset, true);
+  const endY = alignToOffset(bounds.maxY, cellHeight, yOffset, false);
+  const minX = Math.min(bounds.minX, verticalLines[0]!);
+  const maxX = Math.max(bounds.maxX, verticalLines[verticalLines.length - 1]!);
+  const lines: string[] = [];
+  for (const x of verticalLines) {
+    lines.push(`<line x1="${fmt(x)}" y1="${fmt(startY)}" x2="${fmt(x)}" y2="${fmt(endY)}" stroke="${GRID_COLOR}" stroke-width="0.5"/>`);
+  }
+  for (let y = startY; y <= endY; y += cellHeight) {
+    lines.push(`<line x1="${fmt(minX)}" y1="${fmt(y)}" x2="${fmt(maxX)}" y2="${fmt(y)}" stroke="${GRID_COLOR}" stroke-width="0.5"/>`);
+  }
+  return `<g class="grid">${lines.join('')}</g>`;
 }
 
 function renderConcentricGrid(ringRadii: number[], sectorCount: number): string {

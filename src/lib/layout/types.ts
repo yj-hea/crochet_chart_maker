@@ -56,6 +56,11 @@ export type GridGuide =
       xOffset: number;
       /** 수직 셀 경계의 y 오프셋 (라인 = yOffset + k*cellHeight) */
       yOffset: number;
+      /**
+       * 가변 너비 셀 전용 — 세로 grid 라인의 x 좌표 배열 (left→right).
+       * 존재하면 uniform cellWidth 대신 이 값으로 세로선 렌더.
+       */
+      verticalLines?: number[];
     };
 
 /**

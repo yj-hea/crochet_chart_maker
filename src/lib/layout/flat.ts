@@ -43,20 +43,98 @@ function effectiveSymH(op: Op): number {
   return STITCH_META[op.kind].symbolHalfHeight;
 }
 
+/**
+ * samehole 그룹이 포함할 non-chain op 수 카운트 (lookahead).
+ * startIdx 는 그룹의 첫 op 위치.
+ */
+function countNonChainInSameholeGroup(ops: Op[], startIdx: number): number {
+  const first = ops[startIdx];
+  if (!first || !first.inSameHoleGroup || first.sameHoleContinuation) return 0;
+  let n = first.kind !== 'CHAIN' && !first.turningChain ? 1 : 0;
+  for (let j = startIdx + 1; j < ops.length; j++) {
+    const t = ops[j]!;
+    if (!t.inSameHoleGroup || !t.sameHoleContinuation) break;
+    if (t.kind !== 'CHAIN' && !t.turningChain) n++;
+  }
+  return n;
+}
+
+/** samehole 셀 너비 — non-chain 수에 비례, 최소 FLAT_CELL_WIDTH */
+function samHoleCellWidth(nonChainCount: number): number {
+  if (nonChainCount <= 1) return FLAT_CELL_WIDTH;
+  return Math.max(FLAT_CELL_WIDTH, nonChainCount * 12);
+}
+
+/**
+ * 한 round 의 slot 별 필요 너비 배열 반환.
+ * slot index 는 visualProduceFor 기준 누적.
+ */
+function computeRoundSlotWidths(round: ExpandedRound): number[] {
+  const widths: number[] = [];
+  let slot = 0;
+  let i = 0;
+  while (i < round.ops.length) {
+    const op = round.ops[i]!;
+    const vSlots = visualProduceFor(op);
+    if (vSlots === 0) { i++; continue; }
+
+    let w = FLAT_CELL_WIDTH;
+    if (op.inSameHoleGroup && !op.sameHoleContinuation) {
+      const nonChain = countNonChainInSameholeGroup(round.ops, i);
+      w = samHoleCellWidth(nonChain);
+    }
+    for (let k = 0; k < vSlots; k++) {
+      widths[slot + k] = Math.max(widths[slot + k] ?? FLAT_CELL_WIDTH, w);
+    }
+    slot += vSlots;
+    i++;
+  }
+  return widths;
+}
+
 export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
   const slotMapByRound = new Map<number, number[]>();
 
+  // Pass 1: round 별 slot 너비
+  const roundWidths: number[][] = rounds.map(computeRoundSlotWidths);
+
+  // Pass 2: 전역 column 너비 — 같은 slot index 는 모든 round 에서 동일 column 으로 간주,
+  // round 들 사이에 max 너비 채택 (samehole 로 넓어진 부모 cell 도 자동 정렬).
+  const maxSlots = Math.max(...roundWidths.map((w) => w.length), 0);
+  const columnWidths: number[] = [];
+  for (let i = 0; i < maxSlots; i++) {
+    let w = FLAT_CELL_WIDTH;
+    for (const rw of roundWidths) {
+      if (rw[i] !== undefined) w = Math.max(w, rw[i]!);
+    }
+    columnWidths.push(w);
+  }
+
+  // 각 column center + edges 계산. 행은 column 들의 합만큼 전체 너비.
+  const totalWidth = columnWidths.reduce((a, b) => a + b, 0);
+  const columnCenters: number[] = [];
+  const columnEdges: number[] = [];
+  {
+    let cx = -totalWidth / 2;
+    columnEdges.push(cx);
+    for (const w of columnWidths) {
+      columnCenters.push(cx + w / 2);
+      cx += w;
+      columnEdges.push(cx);
+    }
+  }
+
   for (const round of rounds) {
-    placeRow(round, stitches, slotMapByRound, roundMarkers);
+    placeRow(round, stitches, slotMapByRound, roundMarkers, columnCenters);
   }
 
   // tc(...) 기둥코 세로 스택 후처리
   repositionTurningChainColumns(stitches);
 
-  // samehole 그룹 내 non-chain 들을 1셀 폭 안에 수평 fan 으로 분포
-  repositionSameHoleFan(stitches);
+  // samehole 그룹 내 non-chain 들을 column 폭 안에 수평 fan 으로 분포
+  repositionSameHoleFan(stitches, columnWidths, columnCenters);
 
   // samehole 사슬 arc 후처리 (fan 으로 이동된 non-chain 위치 기준)
   repositionChainArcs(stitches);
@@ -78,12 +156,6 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
     ...roundMarkers.map(markerFarPoint),
   ]);
 
-  // row 1의 코 수 패리티에 맞춰 수평 셀 경계 오프셋 결정.
-  const round1 = rounds[0];
-  const round1Slots = round1
-    ? round1.ops.reduce((sum, op) => sum + visualProduceFor(op), 0)
-    : 0;
-  const xOffset = round1Slots % 2 === 0 ? 0 : FLAT_CELL_WIDTH / 2;
   const yOffset = FLAT_CELL_HEIGHT / 2;
 
   return {
@@ -93,8 +165,9 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
       type: 'rect',
       cellWidth: FLAT_CELL_WIDTH,
       cellHeight: FLAT_CELL_HEIGHT,
-      xOffset,
+      xOffset: 0,
       yOffset,
+      verticalLines: columnEdges,
     },
     roundMarkers,
   };
@@ -105,12 +178,11 @@ function placeRow(
   stitches: PositionedStitch[],
   slotMapByRound: Map<number, number[]>,
   roundMarkers: RoundMarker[],
+  columnCenters: number[],
 ): void {
   const { index: roundIdx } = round;
-  const rowSlots = round.ops.reduce((sum, op) => sum + visualProduceFor(op), 0);
 
   const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
-  const startX = -((rowSlots - 1) * FLAT_CELL_WIDTH) / 2;
   const direction: 1 | -1 = round.direction === 'reverse' ? -1 : 1;
   const angle = 0;
 
@@ -173,9 +245,10 @@ function placeRow(
       continue;
     }
 
-    const startSlotX = startX + slotCursor * FLAT_CELL_WIDTH;
-    const endSlotX = startX + (slotCursor + vSlots - 1) * FLAT_CELL_WIDTH;
-    const midX = (startSlotX + endSlotX) / 2;
+    // 가변 너비 지원: columnCenters[slotCursor..slotCursor+vSlots-1] 의 중앙
+    const startColX = columnCenters[slotCursor] ?? 0;
+    const endColX = columnCenters[slotCursor + vSlots - 1] ?? startColX;
+    const midX = (startColX + endColX) / 2;
 
     const idx = stitches.length;
     stitches.push({
@@ -263,17 +336,31 @@ function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
 // samehole non-chain fan (flat) — 1셀 안에 여러 non-chain 을 수평 분포
 // ============================================================
 
-function fanOffsets(count: number): number[] {
+/**
+ * N 개 non-chain 을 주어진 cell 너비 안에 수평 fan 분포.
+ * 가장자리에서 PADDING (2px) 여유 두고 (N-1) 균등 분할.
+ */
+function fanOffsetsForCell(count: number, cellWidth: number): number[] {
   if (count <= 1) return [0];
-  const MAX_SPREAD = 20;   // 1셀(24) 안에 여유 두고 최대 20 폭
-  const STEP_PREF = 11;    // 기호 10px + 약간의 간격
-  const spread = Math.min(MAX_SPREAD, (count - 1) * STEP_PREF);
-  const step = spread / (count - 1);
+  const PADDING = 4; // 좌우 여유
+  const usable = Math.max(0, cellWidth - 2 * PADDING);
+  const step = usable / (count - 1);
   const mid = (count - 1) / 2;
   return Array.from({ length: count }, (_, i) => (i - mid) * step);
 }
 
-function repositionSameHoleFan(stitches: PositionedStitch[]): void {
+function repositionSameHoleFan(
+  stitches: PositionedStitch[],
+  columnWidths: number[],
+  columnCenters: number[],
+): void {
+  // 각 samehole 그룹의 slot index 를 찾아 해당 column 의 너비 기반으로 fan.
+  // stitch 의 position.x 로 columnCenter 를 역조회.
+  const centerToCol = new Map<number, number>();
+  for (let i = 0; i < columnCenters.length; i++) {
+    centerToCol.set(Math.round(columnCenters[i]! * 1000), i);
+  }
+
   let i = 0;
   while (i < stitches.length) {
     const s = stitches[i]!;
@@ -288,7 +375,6 @@ function repositionSameHoleFan(stitches: PositionedStitch[]): void {
       groupIndices.push(j);
     }
 
-    // non-chain op 만 fan 분포 대상 (chain 은 arc 로 별도 처리)
     const nonChain = groupIndices.filter((idx) => {
       const op = stitches[idx]!.op;
       return op.kind !== 'CHAIN' && !op.turningChain;
@@ -296,7 +382,12 @@ function repositionSameHoleFan(stitches: PositionedStitch[]): void {
 
     if (nonChain.length >= 2) {
       const baseX = stitches[nonChain[0]!]!.position.x;
-      const offsets = fanOffsets(nonChain.length);
+      // column lookup: 첫 op 의 x 위치로 column idx 를 찾아 그 cell 너비 사용
+      const colIdx = centerToCol.get(Math.round(baseX * 1000));
+      const cellW = (colIdx !== undefined && columnWidths[colIdx] !== undefined)
+        ? columnWidths[colIdx]!
+        : 24;
+      const offsets = fanOffsetsForCell(nonChain.length, cellW);
       for (let k = 0; k < nonChain.length; k++) {
         const cs = stitches[nonChain[k]!]!;
         cs.position = { x: baseX + offsets[k]!, y: cs.position.y };
