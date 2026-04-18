@@ -96,7 +96,8 @@
         <h3>주석</h3>
         <table class="syntax-table">
           <tbody>
-            <tr><td><code>:#rrggbb</code></td><td>색상 (배색 도안). 예: <code>x:#ff6a6a</code></td></tr>
+            <tr><td><code>:색</code></td><td>색상 (배색 도안). <code>#</code> 있/없음 hex 또는 키워드. 예: <code>x:#ff6a6a</code>, <code>x:ff6a6a</code>, <code>x:efd</code>, <code>x:red</code></td></tr>
+            <tr><td>키워드</td><td><code>red, orange, yellow, green, teal, cyan, blue, indigo, purple, pink, brown, black, white, gray, silver, navy</code></td></tr>
             <tr><td><code>"..."</code></td><td>인라인 코멘트 (서술 도안에 각주로 표시). 예: <code>x"조심"</code></td></tr>
             <tr><td><code>blo</code></td><td>뒤이랑뜨기 수식자. 예: <code>blo 6x</code></td></tr>
           </tbody>

@@ -20,6 +20,7 @@ import type { ParseError, ParseErrorKind, SourceRange } from '$lib/model/errors'
 import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode, ElementNode, ParsedRound } from './ast';
 import type { StitchKind, ModifierKind } from '$lib/model/stitch';
 import { STITCH_META } from '$lib/model/stitch';
+import { resolveColorValue } from '$lib/model/colors';
 
 export interface ParseResult {
   body: SequenceNode;
@@ -365,16 +366,25 @@ class Parser {
       }
       if (tok?.type === 'COLON') {
         this.advance();
-        const hex = this.peek();
-        if (!hex || hex.type !== 'HEX_COLOR') {
+        const val = this.peek();
+        if (!val || (val.type !== 'HEX_COLOR' && val.type !== 'COLOR_VALUE')) {
           this.error(
             'unexpected_token',
-            hex?.range ?? this.eofRange(),
-            '`:` 뒤에 색상(#RRGGBB)이 필요합니다',
+            val?.range ?? this.eofRange(),
+            '`:` 뒤에 색상이 필요합니다 (#RRGGBB / RRGGBB / red, gray 등)',
           );
           return undefined;
         }
-        color = hex.text;
+        const resolved = resolveColorValue(val.text);
+        if (!resolved) {
+          this.error(
+            'unexpected_token',
+            val.range,
+            `알 수 없는 색상: "${val.text}"`,
+          );
+          return undefined;
+        }
+        color = resolved;
         this.advance();
         continue;
       }

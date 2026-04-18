@@ -21,7 +21,8 @@ export type TokenType =
   | 'CARET'     // ^
   | 'COLON'     // : (색상 주석 시작)
   | 'STRING'    // "..." (코 코멘트)
-  | 'HEX_COLOR' // #rgb | #rrggbb 등
+  | 'HEX_COLOR' // #rgb | #rrggbb
+  | 'COLOR_VALUE' // : 바로 뒤의 키워드/헥스값 (#없음)
   | 'UNKNOWN';  // 별칭에 없는 문자
 
 export interface Token {
@@ -43,6 +44,8 @@ const WHITESPACE = /[ \t\r\n]/;
 export function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
+  // 직전 토큰이 COLON 이면 다음 읽기를 color 값으로 간주 (키워드 / hex / #hex)
+  let afterColon = false;
 
   while (i < input.length) {
     const ch = input[i]!;
@@ -53,11 +56,36 @@ export function tokenize(input: string): Token[] {
       continue;
     }
 
+    // COLON 직후: color 값 토큰화 (# 유무·키워드·hex 모두 허용)
+    if (afterColon) {
+      afterColon = false;
+      if (ch === '#') {
+        // 기존 HEX_COLOR 로직과 동일
+        const start = i;
+        i++;
+        while (i < input.length && /[0-9a-fA-F]/.test(input[i]!)) i++;
+        if (i - start > 1) {
+          tokens.push({ type: 'HEX_COLOR', range: { start, end: i }, text: input.slice(start, i) });
+        } else {
+          tokens.push({ type: 'UNKNOWN', range: { start, end: i }, text: '#' });
+        }
+        continue;
+      }
+      if (/[a-zA-Z0-9]/.test(ch)) {
+        const start = i;
+        while (i < input.length && /[a-zA-Z0-9]/.test(input[i]!)) i++;
+        tokens.push({ type: 'COLOR_VALUE', range: { start, end: i }, text: input.slice(start, i) });
+        continue;
+      }
+      // 알파숫자/# 가 아니면 에러 토큰, 그 후 normal mode 로
+    }
+
     // 2) 구조 문자
     const structural = tryStructural(ch);
     if (structural) {
       tokens.push({ type: structural, range: { start: i, end: i + 1 }, text: ch });
       i++;
+      if (structural === 'COLON') afterColon = true;
       continue;
     }
 
