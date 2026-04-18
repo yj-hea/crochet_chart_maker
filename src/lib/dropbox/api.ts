@@ -40,10 +40,22 @@ export async function getFileRev(path: string): Promise<string | null> {
     body: JSON.stringify({ path: normalizePath(path) }),
   });
   if (res.status === 409) {
-    // conflict — path_lookup/not_found 는 정상 (없음)
-    const err = (await res.json().catch(() => null)) as { error?: { '.tag'?: string; path_lookup?: { '.tag'?: string } } } | null;
-    const tag = err?.error?.path_lookup?.['.tag'];
-    if (tag === 'not_found') return null;
+    // 파일 없음은 정상 응답 (null). 엔드포인트별로 에러 구조가 달라 여러 필드 체크.
+    //   - /get_metadata: { error: { ".tag": "path", path: { ".tag": "not_found" } } }
+    //   - /files/download 등: { error: { path_lookup: { ".tag": "not_found" } } }
+    const err = (await res.json().catch(() => null)) as {
+      error_summary?: string;
+      error?: {
+        '.tag'?: string;
+        path?: { '.tag'?: string };
+        path_lookup?: { '.tag'?: string };
+      };
+    } | null;
+    const notFound =
+      err?.error?.path?.['.tag'] === 'not_found' ||
+      err?.error?.path_lookup?.['.tag'] === 'not_found' ||
+      (err?.error_summary ?? '').startsWith('path/not_found');
+    if (notFound) return null;
     throw new DropboxApiError(res.status, JSON.stringify(err));
   }
   if (!res.ok) {
