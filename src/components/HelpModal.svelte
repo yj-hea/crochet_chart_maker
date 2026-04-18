@@ -110,6 +110,7 @@
           <tbody>
             <tr><td><kbd>Enter</kbd></td><td>다음 단으로 이동</td></tr>
             <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>새 단 추가</td></tr>
+            <tr><td><kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>현재 단 안에서 줄바꿈</td></tr>
             <tr><td><kbd>Shift</kbd>+<kbd>Backspace</kbd></td><td>현재 단 삭제</td></tr>
             <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>위/아래 단으로 포커스 이동</td></tr>
           </tbody>

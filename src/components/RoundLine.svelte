@@ -95,11 +95,8 @@
     provide: (f) => EditorView.decorations.from(f),
   });
 
-  // single-line: 줄바꿈 트랜잭션 차단
-  const singleLineFilter = EditorState.transactionFilter.of((tr) => {
-    if (tr.newDoc.lines > 1) return [];
-    return tr;
-  });
+  // 붙여넣기·드래그 등으로 들어오는 개행은 허용하되 Enter 키 기본 동작은 별도 제어.
+  // (Alt-Enter 로 명시 삽입. 붙여넣은 \n 은 그대로 유지하여 파싱 시 공백으로 취급)
 
   function applyFocus(v: EditorView, req: FocusRequest) {
     v.focus();
@@ -137,7 +134,6 @@
         doc: source,
         extensions: [
           history(),
-          singleLineFilter,
           errorField,
           EditorView.lineWrapping,
           keymap.of([
@@ -149,6 +145,14 @@
             {
               key: 'Shift-Enter',
               run: () => { onShiftEnter(); return true; },
+            },
+            {
+              // 단 내부 개행 삽입. 파서는 \n 을 공백으로 취급.
+              key: 'Alt-Enter',
+              run: (v) => {
+                v.dispatch(v.state.replaceSelection('\n'));
+                return true;
+              },
             },
             {
               key: 'Shift-Backspace',
