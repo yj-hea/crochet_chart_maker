@@ -100,12 +100,24 @@
   }
 
   function insertDonutHighlight(g: SVGGElement) {
-    // <use> 요소들의 원점 거리로 링 반지름 계산
-    const uses = g.querySelectorAll('use');
+    // 기호 요소들의 원점 거리로 링 반지름 계산.
+    // 일반 stitch 는 <use x="" y="">, V/A fan stitch 는 <g transform="translate(x y) ...">
+    // 로 렌더되므로 양쪽 모두 처리.
+    const elements = g.querySelectorAll('use, g[transform]');
     const distances: number[] = [];
-    uses.forEach((u) => {
-      const x = parseFloat(u.getAttribute('x') || '0');
-      const y = parseFloat(u.getAttribute('y') || '0');
+    elements.forEach((el) => {
+      const tag = el.tagName.toLowerCase();
+      let x = 0, y = 0;
+      if (tag === 'use') {
+        x = parseFloat(el.getAttribute('x') || '0');
+        y = parseFloat(el.getAttribute('y') || '0');
+      } else {
+        const tr = el.getAttribute('transform') || '';
+        const m = tr.match(/translate\(\s*([-\d.]+)[\s,]+([-\d.]+)\s*\)/);
+        if (!m) return;
+        x = parseFloat(m[1]!);
+        y = parseFloat(m[2]!);
+      }
       const d = Math.sqrt(x * x + y * y);
       if (d > 0) distances.push(d);
     });
