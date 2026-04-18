@@ -22,10 +22,17 @@ import { STITCH_META } from '$lib/model/stitch';
 
 const MARKER_SIDE_OFFSET = 16;  // 시작코 가장자리에서 마커 삼각형 중심까지의 거리
 
-/** op 가 행에서 차지하는 시각적 셀 수. samehole chain 은 slot 미차지. */
+/**
+ * op 가 행에서 차지하는 시각적 셀 수.
+ *
+ * samehole 그룹 전체는 첫 op 가 1셀을 차지하고, 나머지(chain 포함)는 셀 미차지 —
+ * 내부 non-chain 은 그 1셀 안에서 수평 fan 으로 분포, chain 은 arc 로 표시.
+ * tc 기둥코도 그룹 단위로 1셀 (첫 op).
+ */
 function visualProduceFor(op: Op): number {
   if (op.kind === 'MAGIC' || op.kind === 'SKIP') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
+  if (op.inSameHoleGroup) return op.sameHoleContinuation ? 0 : 1;
   return op.produce;
 }
 
@@ -48,7 +55,10 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
   // tc(...) 기둥코 세로 스택 후처리
   repositionTurningChainColumns(stitches);
 
-  // samehole 사슬 arc 후처리
+  // samehole 그룹 내 non-chain 들을 1셀 폭 안에 수평 fan 으로 분포
+  repositionSameHoleFan(stitches);
+
+  // samehole 사슬 arc 후처리 (fan 으로 이동된 non-chain 위치 기준)
   repositionChainArcs(stitches);
 
   // 기호 extent 까지 포함한 bounds (잘림 방지)
@@ -110,12 +120,16 @@ function placeRow(
   let slotCursor = 0;
   let lastGroupParents: number[] = [];
 
+  // 현재 samehole 그룹의 첫 op 의 x (continuation 의 기본 위치로 사용)
+  let currentGroupFirstX: number | null = null;
+
   for (const op of round.ops) {
     if (op.kind === 'MAGIC') {
+      // MAGIC 을 row 1 아래 1셀에 독립 배치 (위 기호와 구분)
       const idx = stitches.length;
       stitches.push({
         op, roundIndex: roundIdx,
-        position: { x: 0, y: y + FLAT_CELL_HEIGHT / 2 },
+        position: { x: 0, y: y + FLAT_CELL_HEIGHT },
         angle: 0, parentIndices: [], exposedSlots: 0,
       });
       thisStitchIndices.push(idx);
@@ -137,15 +151,22 @@ function placeRow(
 
     const vSlots = visualProduceFor(op);
 
-    // vSlots=0: samehole chain, SKIP, tc continuation 등 — 셀 미차지.
-    // 임시로 parent 위치에 두고 사슬 호 후처리에서 이동.
+    // vSlots=0: samehole continuation / tc continuation / SKIP 등.
+    // samehole 그룹 내부 op 은 그룹의 첫 op x 에 둠 (fan / arc 후처리).
     if (vSlots === 0) {
-      const refStitch = parents.length > 0 ? stitches[parents[0]!] : undefined;
-      const pos = refStitch ? { ...refStitch.position } : { x: 0, y };
+      let px: number;
+      let py = y;
+      if (op.inSameHoleGroup && op.sameHoleContinuation && currentGroupFirstX !== null) {
+        px = currentGroupFirstX;
+      } else {
+        const refStitch = parents.length > 0 ? stitches[parents[0]!] : undefined;
+        if (refStitch) { px = refStitch.position.x; py = refStitch.position.y; }
+        else { px = 0; }
+      }
       const idx = stitches.length;
       stitches.push({
         op, roundIndex: roundIdx,
-        position: pos, angle,
+        position: { x: px, y: py }, angle,
         parentIndices: parents, exposedSlots: op.produce,
       });
       thisStitchIndices.push(idx);
@@ -164,6 +185,13 @@ function placeRow(
     });
     thisStitchIndices.push(idx);
     slotCursor += vSlots;
+
+    // samehole 첫 op 의 x 를 기억 (continuation 들의 기본 위치)
+    if (op.inSameHoleGroup && !op.sameHoleContinuation) {
+      currentGroupFirstX = midX;
+    } else if (!op.inSameHoleGroup) {
+      currentGroupFirstX = null;
+    }
   }
 
   const slotMap: number[] = [];
@@ -228,6 +256,54 @@ function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
       cs.angle = 0;
     }
     i = groupIndices[groupIndices.length - 1]!;
+  }
+}
+
+// ============================================================
+// samehole non-chain fan (flat) — 1셀 안에 여러 non-chain 을 수평 분포
+// ============================================================
+
+function fanOffsets(count: number): number[] {
+  if (count <= 1) return [0];
+  const MAX_SPREAD = 20;   // 1셀(24) 안에 여유 두고 최대 20 폭
+  const STEP_PREF = 11;    // 기호 10px + 약간의 간격
+  const spread = Math.min(MAX_SPREAD, (count - 1) * STEP_PREF);
+  const step = spread / (count - 1);
+  const mid = (count - 1) / 2;
+  return Array.from({ length: count }, (_, i) => (i - mid) * step);
+}
+
+function repositionSameHoleFan(stitches: PositionedStitch[]): void {
+  let i = 0;
+  while (i < stitches.length) {
+    const s = stitches[i]!;
+    if (!s.op.inSameHoleGroup || s.op.sameHoleContinuation) { i++; continue; }
+
+    const groupIndices: number[] = [i];
+    for (let j = i + 1; j < stitches.length; j++) {
+      const t = stitches[j]!;
+      if (t.roundIndex !== s.roundIndex) break;
+      if (!t.op.inSameHoleGroup) break;
+      if (!t.op.sameHoleContinuation) break;
+      groupIndices.push(j);
+    }
+
+    // non-chain op 만 fan 분포 대상 (chain 은 arc 로 별도 처리)
+    const nonChain = groupIndices.filter((idx) => {
+      const op = stitches[idx]!.op;
+      return op.kind !== 'CHAIN' && !op.turningChain;
+    });
+
+    if (nonChain.length >= 2) {
+      const baseX = stitches[nonChain[0]!]!.position.x;
+      const offsets = fanOffsets(nonChain.length);
+      for (let k = 0; k < nonChain.length; k++) {
+        const cs = stitches[nonChain[k]!]!;
+        cs.position = { x: baseX + offsets[k]!, y: cs.position.y };
+      }
+    }
+
+    i = groupIndices[groupIndices.length - 1]! + 1;
   }
 }
 
