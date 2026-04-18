@@ -12,10 +12,12 @@
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
+  import EvenIncModal from './EvenIncModal.svelte';
 
   let focusRequests = $state<Record<string, FocusRequest>>({});
   // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
   let focusedRoundId = $state<string | null>(null);
+  let evenIncOpen = $state(false);
 
   // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
   const validationByRound = $derived.by(() => {
@@ -56,6 +58,25 @@
       const newId = addRoundAtEnd();
       bumpFocus(newId);
     }
+  }
+
+  /** 균등 증감 모달 기본 from — 포커스 단의 totalProduce, 없으면 마지막 단의 totalProduce */
+  const defaultFromCount = $derived.by(() => {
+    const rounds = $pattern.rounds;
+    const target = focusedRoundId ? rounds.find((r) => r.id === focusedRoundId) : rounds[rounds.length - 1];
+    return target?.expanded?.totalProduce ?? 6;
+  });
+
+  /** 계산된 패턴을 현재 포커스(또는 마지막) 단 아래에 새 단으로 삽입 */
+  function handleInsertCalculated(patternSrc: string) {
+    const rounds = $pattern.rounds;
+    const afterId = focusedRoundId && rounds.some((r) => r.id === focusedRoundId)
+      ? focusedRoundId
+      : rounds[rounds.length - 1]?.id;
+    const newId = afterId ? addRoundAfter(afterId) : addRoundAtEnd();
+    updateRoundSource(newId, patternSrc);
+    bumpFocus(newId, 'end');
+    evenIncOpen = false;
   }
 
   function handleArrowUp(roundId: string, col: number) {
@@ -159,10 +180,28 @@
     />
   {/each}
   </div>
-  <button type="button" class="append-btn" onclick={handleAppend}>
-    + 단 추가
-  </button>
+  <div class="footer-actions">
+    <button type="button" class="append-btn" onclick={handleAppend}>
+      + 단 추가
+    </button>
+    <button
+      type="button"
+      class="calc-btn"
+      onclick={() => (evenIncOpen = true)}
+      title="균등 증감 계산"
+    >
+      <i class="fa-solid fa-calculator"></i> 균등 증감
+    </button>
+  </div>
 </div>
+
+{#if evenIncOpen}
+  <EvenIncModal
+    defaultFrom={defaultFromCount}
+    onClose={() => (evenIncOpen = false)}
+    onInsert={handleInsertCalculated}
+  />
+{/if}
 
 <style>
   .pattern-editor {
@@ -205,13 +244,33 @@
     overflow-y: auto;
     padding: 8px 12px;
   }
+  .footer-actions {
+    display: flex;
+    border-top: 1px solid var(--border, #e2e2e2);
+    background: var(--bg, #f5f5f5);
+  }
+  .calc-btn {
+    flex: 0 0 auto;
+    padding: 10px 14px;
+    border: none;
+    border-left: 1px solid var(--border-light);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s;
+  }
+  .calc-btn:hover {
+    background: var(--bg-hover, #f0f0f0);
+    color: var(--text, #1a1a1a);
+  }
   .append-btn {
-    align-self: stretch;
+    flex: 1;
     margin: 0;
     padding: 10px 14px;
     border: none;
-    border-top: 1px solid var(--border, #e2e2e2);
-    background: var(--bg, #f5f5f5);
+    background: transparent;
     color: var(--text-secondary, #666);
     font-size: 13px;
     cursor: pointer;
