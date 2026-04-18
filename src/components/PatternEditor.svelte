@@ -36,14 +36,7 @@
     focusRequests[id] = { token: prev + 1, cursor };
   }
 
-  /** 일반 Enter: 다음 단으로 이동 (새 단 추가 안 함) */
-  function handleEnter(roundId: string) {
-    const idx = $pattern.rounds.findIndex((r) => r.id === roundId);
-    if (idx < 0 || idx >= $pattern.rounds.length - 1) return;
-    bumpFocus($pattern.rounds[idx + 1]!.id, 'start');
-  }
-
-  /** Shift+Enter: 새 단 추가 */
+  /** Shift+Enter: 새 단 추가 (Enter 단독은 에디터 안에서 개행) */
   function handleShiftEnter(roundId: string) {
     const newId = addRoundAfter(roundId);
     bumpFocus(newId);
@@ -154,7 +147,6 @@
       directionLabel={dirLabel}
       focusRequest={focusRequests[round.id]}
       onChange={(s) => updateRoundSource(round.id, s)}
-      onEnter={() => handleEnter(round.id)}
       onShiftEnter={() => handleShiftEnter(round.id)}
       onDelete={() => handleDelete(round.id)}
       onToggleDirection={() => handleToggleDirection(round.id)}

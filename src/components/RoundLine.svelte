@@ -30,9 +30,7 @@
     /** 외부 포커스 요청. token 증가 시 포커스 이동, cursor로 커서 위치 지정 */
     focusRequest?: FocusRequest;
     onChange: (source: string) => void;
-    /** 일반 Enter: 다음 단으로 커서 이동 (새 단 추가 안 함) */
-    onEnter: () => void;
-    /** Shift+Enter: 새 단 추가 */
+    /** Shift+Enter: 새 단 추가 (Enter 단독은 현재 단 안에서 줄바꿈) */
     onShiftEnter: () => void;
     onDelete: () => void;
     onToggleDirection?: () => void;
@@ -58,7 +56,6 @@
     directionLabel,
     focusRequest,
     onChange,
-    onEnter,
     onShiftEnter,
     onDelete,
     onToggleDirection,
@@ -139,20 +136,17 @@
           keymap.of([
             ...historyKeymap,
             {
+              // Enter: 현재 단 안에서 개행 삽입 (파서는 \n 을 공백으로 취급)
               key: 'Enter',
-              run: () => { onEnter(); return true; },
-            },
-            {
-              key: 'Shift-Enter',
-              run: () => { onShiftEnter(); return true; },
-            },
-            {
-              // 단 내부 개행 삽입. 파서는 \n 을 공백으로 취급.
-              key: 'Alt-Enter',
               run: (v) => {
                 v.dispatch(v.state.replaceSelection('\n'));
                 return true;
               },
+            },
+            {
+              // Shift+Enter: 새 단 추가 (기존 동작 유지)
+              key: 'Shift-Enter',
+              run: () => { onShiftEnter(); return true; },
             },
             {
               key: 'Shift-Backspace',
