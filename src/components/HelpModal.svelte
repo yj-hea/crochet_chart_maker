@@ -89,6 +89,7 @@
             <tr><td><code>VT</code>, <code>VF</code>, <code>VE</code></td><td>긴뜨기 / 한길긴뜨기 / 두길긴뜨기 기반 늘림</td></tr>
             <tr><td><code>V^3</code></td><td>3개로 확장 (한 부모에서 3개 생성)</td></tr>
             <tr><td><code>A</code>, <code>AT</code>, <code>AF</code>, <code>A^3</code></td><td>동일 규칙의 줄임</td></tr>
+            <tr><td><code>tr(N)</code></td><td>N 길 긴뜨기 (N≥2). 예: <code>tr(4)</code> = 네길긴뜨기, <code>vtr(5)</code> = 다섯길긴뜨기 늘림</td></tr>
           </tbody>
         </table>
       </section>

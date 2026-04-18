@@ -27,6 +27,8 @@ export interface StitchNode {
   modifier?: ModifierKind;
   /** V/A 의 base stitch (T=HDC, F=DC, E=TR). 미지정 시 기본 SC. */
   baseKind?: StitchKind;
+  /** `tr(N)` / `vtr(N)` 의 N — TR/DTR 계열에서 4 이상일 때 동적 렌더 */
+  yarnOverCount?: number;
   /** 인라인 코멘트 "..." — 각 코에 대한 주의사항 */
   comment?: string;
   /** 인라인 색상 :#rrggbb — 기호/폰트 색상 (배색 도안용) */

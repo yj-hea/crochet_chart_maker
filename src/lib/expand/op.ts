@@ -29,6 +29,13 @@ export interface Op {
   turningChain?: boolean;
   /** V/A의 base stitch — 렌더 시 심볼 선택용 */
   baseKind?: StitchKind;
+  /**
+   * TR/DTR 계열의 yarn-over 수(= 빗금 수).
+   *   - TR: 기본 2
+   *   - DTR: 기본 3
+   *   - `tr(N)` 구문으로 N≥4 지정 가능 (네길·다섯길… 긴뜨기)
+   */
+  yarnOverCount?: number;
   /** 인라인 코멘트 — 각 코별 주의사항 */
   comment?: string;
   /** 인라인 색상 — 배색 도안용 (기호 색상) */

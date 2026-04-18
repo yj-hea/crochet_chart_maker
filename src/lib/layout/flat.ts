@@ -27,10 +27,12 @@ function visualProduceFor(op: Op): number {
 }
 
 function effectiveSymH(op: Op): number {
-  if ((op.kind === 'INC' || op.kind === 'DEC') && op.baseKind) {
-    return STITCH_META[op.baseKind].symbolHalfHeight;
+  const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
+  const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
+  if ((baseKind === 'TR' || baseKind === 'DTR') && op.yarnOverCount && op.yarnOverCount >= 2) {
+    return 9 + 2 * (op.yarnOverCount - 1);
   }
-  return STITCH_META[op.kind].symbolHalfHeight;
+  return STITCH_META[baseKind].symbolHalfHeight;
 }
 
 export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {

@@ -232,8 +232,45 @@ function renderStitchUse(s: PositionedStitch): string {
     return renderFanStitch(s, x, y, angleDeg, colorStyle);
   }
 
+  // TR/DTR 에서 yarnOverCount 가 4 이상이면 동적 렌더 (`tr(N)` 구문)
+  if ((s.op.kind === 'TR' || s.op.kind === 'DTR') && s.op.yarnOverCount && s.op.yarnOverCount >= 4) {
+    return renderTallStitchInline(s.op.yarnOverCount, x, y, angleDeg, colorStyle);
+  }
+
   const sym = stitchSymbolId(s.op.kind);
   return `<use href="#${sym}" x="${x}" y="${y}" transform="rotate(${angleDeg} ${x} ${y})"${colorStyle}/>`;
+}
+
+/** N 개 yarn-over 기둥긴뜨기 를 동적으로 렌더 (N≥4). TR(n=2)/DTR(n=3) 와 같은 스타일. */
+function renderTallStitchInline(n: number, x: string, y: string, angleDeg: string, colorStyle: string): string {
+  const symH = 9 + 2 * (n - 1); // DC=9, TR=11, DTR=13, TR4=15, TR5=17, ...
+  const hatchSpacing = 6;
+  const parts: string[] = [];
+  parts.push(`<line x1="0" y1="${-symH}" x2="0" y2="${symH}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`);
+  parts.push(`<line x1="-5" y1="${-symH}" x2="5" y2="${-symH}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`);
+  for (let i = 0; i < n; i++) {
+    const cy = (i - (n - 1) / 2) * hatchSpacing;
+    parts.push(`<line x1="-4" y1="${fmt(cy + 1)}" x2="4" y2="${fmt(cy - 1)}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`);
+  }
+  return `<g transform="translate(${x} ${y}) rotate(${angleDeg})"${colorStyle}>${parts.join('')}</g>`;
+}
+
+/** N 개 yarn-over 기둥 긴뜨기의 leg 를 동적으로 렌더 (fan 용, N≥4). anchor=(0,+symH) 바닥. */
+function renderTallLegInline(n: number, fanAngleDeg: number, isInc: boolean): string {
+  const symH = 9 + 2 * (n - 1);
+  const hatchSpacing = 6;
+  const parts: string[] = [];
+  // leg 의 main vertical: anchor 기준 위로 뻗음. 일반 leg 와 동일 좌표계.
+  parts.push(`<line x1="0" y1="${symH}" x2="0" y2="${-symH}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`);
+  parts.push(`<line x1="-4" y1="${-symH}" x2="4" y2="${-symH}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`);
+  for (let i = 0; i < n; i++) {
+    const cy = (i - (n - 1) / 2) * hatchSpacing;
+    parts.push(`<line x1="-3" y1="${fmt(cy + 1)}" x2="3" y2="${fmt(cy - 1)}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`);
+  }
+  if (isInc) {
+    return `<g transform="rotate(${fmt(fanAngleDeg)} 0 ${symH})">${parts.join('')}</g>`;
+  }
+  return `<g transform="rotate(${fmt(fanAngleDeg)} 0 ${-symH}) scale(1 -1)">${parts.join('')}</g>`;
 }
 
 // V^2 의 각 leg 가 sym-INC 정적 기호와 비슷한 너비를 갖도록.
@@ -252,19 +289,22 @@ function renderFanStitch(
 ): string {
   const base = s.op.baseKind ?? 'SC';
   const count = Math.max(2, s.op.expansion);
-  const symH = STITCH_META[base].symbolHalfHeight;
   const isInc = s.op.kind === 'INC';
-  const legSym = `leg-${base}`;
   const step = fanStep(count);
+  const yoc = s.op.yarnOverCount;
+  // TR/DTR 에서 yarn-over 수가 4 이상이면 leg 도 동적 렌더
+  const useInlineLeg = (base === 'TR' || base === 'DTR') && yoc !== undefined && yoc >= 4;
+  const symH = useInlineLeg ? 9 + 2 * (yoc - 1) : STITCH_META[base].symbolHalfHeight;
+  const legSym = `leg-${base}`;
 
   const legs: string[] = [];
   for (let i = 0; i < count; i++) {
     const fanAngle = (i - (count - 1) / 2) * step;
-    if (isInc) {
-      // anchor at (0, +symH) — 아래 점 공유, 위로 부채처럼
+    if (useInlineLeg) {
+      legs.push(renderTallLegInline(yoc, fanAngle, isInc));
+    } else if (isInc) {
       legs.push(`<use href="#${legSym}" transform="rotate(${fmt(fanAngle)} 0 ${symH})"/>`);
     } else {
-      // anchor at (0, -symH) — 위 점 공유, 아래로 수렴. scale(1,-1)로 다리 뒤집고 회전
       legs.push(`<use href="#${legSym}" transform="rotate(${fmt(fanAngle)} 0 ${-symH}) scale(1 -1)"/>`);
     }
   }

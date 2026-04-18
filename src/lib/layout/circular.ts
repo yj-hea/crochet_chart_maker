@@ -132,12 +132,14 @@ export function layoutCircular(
   };
 }
 
-/** op 의 실제 심볼 반높이. V/A 에 baseKind 있으면 그 stitch 의 높이 사용. */
+/** op 의 실제 심볼 반높이. V/A 에 baseKind 있으면 그 stitch 의 높이 사용. TR/DTR 의 yarnOverCount 도 반영. */
 function effectiveSymH(op: Op): number {
-  if ((op.kind === 'INC' || op.kind === 'DEC') && op.baseKind) {
-    return STITCH_META[op.baseKind].symbolHalfHeight;
+  const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
+  const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
+  if ((baseKind === 'TR' || baseKind === 'DTR') && op.yarnOverCount && op.yarnOverCount >= 2) {
+    return 9 + 2 * (op.yarnOverCount - 1);
   }
-  return STITCH_META[op.kind].symbolHalfHeight;
+  return STITCH_META[baseKind].symbolHalfHeight;
 }
 
 /**

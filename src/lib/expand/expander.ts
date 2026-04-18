@@ -98,6 +98,7 @@ function expandStitch(node: StitchNode, out: Op[]): void {
       consume,
       produce,
       baseKind: node.baseKind,
+      yarnOverCount: node.yarnOverCount,
       comment: node.comment,
       color: node.color,
       sourceRange: node.range,

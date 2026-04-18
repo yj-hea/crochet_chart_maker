@@ -321,6 +321,34 @@ class Parser {
       }
     }
 
+    // TR/DTR (혹은 V/A baseKind=TR/DTR) 뒤의 선택적 yarn-over 지정: `tr(N)` / `vtr(N)` 등.
+    // N≥2 허용, N≥4 는 동적 렌더. N=2→TR, N=3→DTR 와 동일 외관.
+    let yarnOverCount: number | undefined;
+    const effectiveTallKind = (kind === 'TR' || kind === 'DTR') ? kind
+      : (kind === 'INC' || kind === 'DEC') && (baseKind === 'TR' || baseKind === 'DTR') ? baseKind
+      : undefined;
+    if (effectiveTallKind && this.peek()?.type === 'LPAREN') {
+      this.advance();
+      const num = this.peek();
+      if (!num || num.type !== 'NUMBER') {
+        this.error('invalid_number', num?.range ?? this.eofRange(), '`tr( 뒤에는 yarn-over 수(≥2)가 필요합니다');
+        return undefined;
+      }
+      const n = num.value as number;
+      if (n < 2) {
+        this.error('invalid_number', num.range, 'yarn-over 수는 2 이상이어야 합니다');
+        return undefined;
+      }
+      this.advance();
+      const rp = this.peek();
+      if (!rp || rp.type !== 'RPAREN') {
+        this.error('unclosed_paren', rp?.range ?? this.eofRange(), 'tr( 에 대응하는 `)` 가 필요합니다');
+        return undefined;
+      }
+      this.advance();
+      yarnOverCount = n;
+    }
+
     // 선택적 expansion: ^NUMBER
     const caret = this.peek();
     if (caret?.type === 'CARET') {
@@ -398,6 +426,7 @@ class Parser {
       expansion,
       modifier,
       baseKind,
+      yarnOverCount,
       comment,
       color,
       range: { start: startPos, end: (this.peek(-1)?.range.end) ?? startPos },

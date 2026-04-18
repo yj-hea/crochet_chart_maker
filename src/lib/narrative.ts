@@ -46,7 +46,9 @@ function renderStitch(s: StitchNode, comments: string[]): string {
   if (s.modifier) text += s.modifier.toLowerCase() + ' ';
   if (s.count > 1) text += String(s.count);
   text += meta.canonical;
+  if (s.baseKind) text += STITCH_META[s.baseKind].canonical;
   if (s.expansion !== undefined) text += '^' + s.expansion;
+  if (s.yarnOverCount !== undefined) text += `(${s.yarnOverCount})`;
 
   let marker = '';
   if (s.comment) {
