@@ -45,16 +45,16 @@ describe('layoutFlat', () => {
   });
 
   it('V는 1개의 stitch지만 2슬롯 차지', () => {
-    const result = layoutFromSources(['6O', '6V']); // 단 2에 6V (slots 12, stitches 6)
+    const result = layoutFromSources(['6O', '6V']);
     const r1 = result.stitches.filter((s) => s.roundIndex === 1);
     const r2 = result.stitches.filter((s) => s.roundIndex === 2);
     expect(r1).toHaveLength(6);
     expect(r2).toHaveLength(6);
     for (const s of r2) expect(s.exposedSlots).toBe(2);
-    // 행 폭은 슬롯 수에 비례 — 12 슬롯 ≈ 11×CELL_WIDTH > 5×CELL_WIDTH
+    // 부모 행은 자식 V 들의 첫 자식 x 로 이동해 같은 너비에 정렬됨
     const w1 = Math.abs(r1[0]!.position.x - r1[5]!.position.x);
     const w2 = Math.abs(r2[0]!.position.x - r2[5]!.position.x);
-    expect(w2).toBeGreaterThan(w1);
+    expect(w1).toBeCloseTo(w2, 1);
   });
 
   it('다음 단이 V를 부모로 참조 시 V가 2번 등장', () => {

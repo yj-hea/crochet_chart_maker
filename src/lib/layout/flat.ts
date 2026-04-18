@@ -1,17 +1,13 @@
 /**
  * 평면 도안 레이아웃.
  *
- * 핵심 원칙은 circular와 동일:
- *   - 각 Op은 1개의 PositionedStitch를 생성한다.
- *   - V(INC^N)는 1개의 stitch가 N개 슬롯을 차지하며, 다음 단에 N개 부모 슬롯 노출.
- *   - A(DEC^N)는 1슬롯, 1 노출.
- *
- * y = -(N-1) * FLAT_CELL_HEIGHT (위로 쌓임)
- * 행 내 슬롯은 수평 균등 간격으로 분포, 좌우 중앙 정렬.
- * 작업 방향: 홀수 단 L→R, 짝수 단 R→L. 방향은 시작 마커(▶/◀)로만 표현하고
- * 기호 자체는 항상 위쪽이 위를 향하도록 angle=0 유지 (코바늘 차트 관행).
- *
- * MAGIC은 단의 가운데 약간 아래에 배치 (참고용).
+ * - 각 Op 은 1개의 PositionedStitch 를 만든다.
+ * - 각 round 는 독립적으로 uniform cell (FLAT_CELL_WIDTH) 에 배치한 뒤,
+ *   자식 round 의 첫 child x 로 부모를 맞춰 정렬(`alignParentRows`) 한다.
+ *   → 자식이 samehole 로 여러 셀로 확장되면 부모는 첫 셀 위치로 이동하고,
+ *     나머지 자식 셀들은 부모 행에 빈칸으로 남는다.
+ * - MAGIC 은 row 1 아래 1셀 독립 위치.
+ * - tc(...) 는 세로 스택, samehole chain 은 위로 볼록한 arc.
  */
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
@@ -20,19 +16,13 @@ import { FLAT_CELL_WIDTH, FLAT_CELL_HEIGHT } from './constants';
 import { computeBounds, markerFarPoint } from './bounds';
 import { STITCH_META } from '$lib/model/stitch';
 
-const MARKER_SIDE_OFFSET = 16;  // 시작코 가장자리에서 마커 삼각형 중심까지의 거리
+const MARKER_SIDE_OFFSET = 16;
 
-/**
- * op 가 행에서 차지하는 시각적 셀 수.
- *
- * samehole 그룹 전체는 첫 op 가 1셀을 차지하고, 나머지(chain 포함)는 셀 미차지 —
- * 내부 non-chain 은 그 1셀 안에서 수평 fan 으로 분포, chain 은 arc 로 표시.
- * tc 기둥코도 그룹 단위로 1셀 (첫 op).
- */
+/** op 가 행에서 차지하는 시각적 셀 수. samehole chain 은 arc 로 처리되므로 셀 미차지. */
 function visualProduceFor(op: Op): number {
   if (op.kind === 'MAGIC' || op.kind === 'SKIP') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
-  if (op.inSameHoleGroup) return op.sameHoleContinuation ? 0 : 1;
+  if (op.inSameHoleGroup && op.kind === 'CHAIN') return 0;
   return op.produce;
 }
 
@@ -43,103 +33,26 @@ function effectiveSymH(op: Op): number {
   return STITCH_META[op.kind].symbolHalfHeight;
 }
 
-/**
- * samehole 그룹이 포함할 non-chain op 수 카운트 (lookahead).
- * startIdx 는 그룹의 첫 op 위치.
- */
-function countNonChainInSameholeGroup(ops: Op[], startIdx: number): number {
-  const first = ops[startIdx];
-  if (!first || !first.inSameHoleGroup || first.sameHoleContinuation) return 0;
-  let n = first.kind !== 'CHAIN' && !first.turningChain ? 1 : 0;
-  for (let j = startIdx + 1; j < ops.length; j++) {
-    const t = ops[j]!;
-    if (!t.inSameHoleGroup || !t.sameHoleContinuation) break;
-    if (t.kind !== 'CHAIN' && !t.turningChain) n++;
-  }
-  return n;
-}
-
-/** samehole 셀 너비 — non-chain 수에 비례, 최소 FLAT_CELL_WIDTH */
-function samHoleCellWidth(nonChainCount: number): number {
-  if (nonChainCount <= 1) return FLAT_CELL_WIDTH;
-  return Math.max(FLAT_CELL_WIDTH, nonChainCount * 12);
-}
-
-/**
- * 한 round 의 slot 별 필요 너비 배열 반환.
- * slot index 는 visualProduceFor 기준 누적.
- */
-function computeRoundSlotWidths(round: ExpandedRound): number[] {
-  const widths: number[] = [];
-  let slot = 0;
-  let i = 0;
-  while (i < round.ops.length) {
-    const op = round.ops[i]!;
-    const vSlots = visualProduceFor(op);
-    if (vSlots === 0) { i++; continue; }
-
-    let w = FLAT_CELL_WIDTH;
-    if (op.inSameHoleGroup && !op.sameHoleContinuation) {
-      const nonChain = countNonChainInSameholeGroup(round.ops, i);
-      w = samHoleCellWidth(nonChain);
-    }
-    for (let k = 0; k < vSlots; k++) {
-      widths[slot + k] = Math.max(widths[slot + k] ?? FLAT_CELL_WIDTH, w);
-    }
-    slot += vSlots;
-    i++;
-  }
-  return widths;
-}
-
 export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
   const slotMapByRound = new Map<number, number[]>();
 
-  // Pass 1: round 별 slot 너비
-  const roundWidths: number[][] = rounds.map(computeRoundSlotWidths);
-
-  // Pass 2: 전역 column 너비 — 같은 slot index 는 모든 round 에서 동일 column 으로 간주,
-  // round 들 사이에 max 너비 채택 (samehole 로 넓어진 부모 cell 도 자동 정렬).
-  const maxSlots = Math.max(...roundWidths.map((w) => w.length), 0);
-  const columnWidths: number[] = [];
-  for (let i = 0; i < maxSlots; i++) {
-    let w = FLAT_CELL_WIDTH;
-    for (const rw of roundWidths) {
-      if (rw[i] !== undefined) w = Math.max(w, rw[i]!);
-    }
-    columnWidths.push(w);
-  }
-
-  // 각 column center + edges 계산. 행은 column 들의 합만큼 전체 너비.
-  const totalWidth = columnWidths.reduce((a, b) => a + b, 0);
-  const columnCenters: number[] = [];
-  const columnEdges: number[] = [];
-  {
-    let cx = -totalWidth / 2;
-    columnEdges.push(cx);
-    for (const w of columnWidths) {
-      columnCenters.push(cx + w / 2);
-      cx += w;
-      columnEdges.push(cx);
-    }
-  }
-
+  // 1) 각 round 를 자체 slot 수 기준 uniform 셀 폭으로 배치.
   for (const round of rounds) {
-    placeRow(round, stitches, slotMapByRound, roundMarkers, columnCenters);
+    placeRow(round, stitches, slotMapByRound, roundMarkers);
   }
 
-  // tc(...) 기둥코 세로 스택 후처리
+  // 2) tc 세로 스택 (자식 정렬 전에)
   repositionTurningChainColumns(stitches);
 
-  // samehole 그룹 내 non-chain 들을 column 폭 안에 수평 fan 으로 분포
-  repositionSameHoleFan(stitches, columnWidths, columnCenters);
+  // 3) 부모 행을 첫 자식 x 에 정렬 — 위에서부터 아래로 처리.
+  alignParentRows(stitches);
 
-  // samehole 사슬 arc 후처리 (fan 으로 이동된 non-chain 위치 기준)
+  // 4) samehole 사슬 arc
   repositionChainArcs(stitches);
 
-  // 기호 extent 까지 포함한 bounds (잘림 방지)
+  // 5) bounds (stitch extent 포함)
   const extentPoints: Point[] = [];
   for (const s of stitches) {
     const symH = effectiveSymH(s.op);
@@ -156,6 +69,9 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
     ...roundMarkers.map(markerFarPoint),
   ]);
 
+  // 6) 그리드 가이드 — 최대 slot 수 행 기준 uniform 셀
+  const maxSlots = Math.max(0, ...rounds.map((r) => r.ops.reduce((s, o) => s + visualProduceFor(o), 0)));
+  const xOffset = maxSlots % 2 === 0 ? 0 : FLAT_CELL_WIDTH / 2;
   const yOffset = FLAT_CELL_HEIGHT / 2;
 
   return {
@@ -165,9 +81,8 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
       type: 'rect',
       cellWidth: FLAT_CELL_WIDTH,
       cellHeight: FLAT_CELL_HEIGHT,
-      xOffset: 0,
+      xOffset,
       yOffset,
-      verticalLines: columnEdges,
     },
     roundMarkers,
   };
@@ -178,11 +93,12 @@ function placeRow(
   stitches: PositionedStitch[],
   slotMapByRound: Map<number, number[]>,
   roundMarkers: RoundMarker[],
-  columnCenters: number[],
 ): void {
   const { index: roundIdx } = round;
+  const rowSlots = round.ops.reduce((sum, op) => sum + visualProduceFor(op), 0);
 
   const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
+  const startX = -((rowSlots - 1) * FLAT_CELL_WIDTH) / 2;
   const direction: 1 | -1 = round.direction === 'reverse' ? -1 : 1;
   const angle = 0;
 
@@ -191,13 +107,10 @@ function placeRow(
   let parentCursor = 0;
   let slotCursor = 0;
   let lastGroupParents: number[] = [];
-
-  // 현재 samehole 그룹의 첫 op 의 x (continuation 의 기본 위치로 사용)
   let currentGroupFirstX: number | null = null;
 
   for (const op of round.ops) {
     if (op.kind === 'MAGIC') {
-      // MAGIC 을 row 1 아래 1셀에 독립 배치 (위 기호와 구분)
       const idx = stitches.length;
       stitches.push({
         op, roundIndex: roundIdx,
@@ -223,16 +136,15 @@ function placeRow(
 
     const vSlots = visualProduceFor(op);
 
-    // vSlots=0: samehole continuation / tc continuation / SKIP 등.
-    // samehole 그룹 내부 op 은 그룹의 첫 op x 에 둠 (fan / arc 후처리).
     if (vSlots === 0) {
+      // samehole chain / tc continuation / SKIP — 부모 위치에 임시 배치, arc/column 후처리에서 조정
       let px: number;
       let py = y;
       if (op.inSameHoleGroup && op.sameHoleContinuation && currentGroupFirstX !== null) {
         px = currentGroupFirstX;
       } else {
-        const refStitch = parents.length > 0 ? stitches[parents[0]!] : undefined;
-        if (refStitch) { px = refStitch.position.x; py = refStitch.position.y; }
+        const ref = parents.length > 0 ? stitches[parents[0]!] : undefined;
+        if (ref) { px = ref.position.x; py = ref.position.y; }
         else { px = 0; }
       }
       const idx = stitches.length;
@@ -245,10 +157,9 @@ function placeRow(
       continue;
     }
 
-    // 가변 너비 지원: columnCenters[slotCursor..slotCursor+vSlots-1] 의 중앙
-    const startColX = columnCenters[slotCursor] ?? 0;
-    const endColX = columnCenters[slotCursor + vSlots - 1] ?? startColX;
-    const midX = (startColX + endColX) / 2;
+    const startSlotX = startX + slotCursor * FLAT_CELL_WIDTH;
+    const endSlotX = startX + (slotCursor + vSlots - 1) * FLAT_CELL_WIDTH;
+    const midX = (startSlotX + endSlotX) / 2;
 
     const idx = stitches.length;
     stitches.push({
@@ -259,7 +170,6 @@ function placeRow(
     thisStitchIndices.push(idx);
     slotCursor += vSlots;
 
-    // samehole 첫 op 의 x 를 기억 (continuation 들의 기본 위치)
     if (op.inSameHoleGroup && !op.sameHoleContinuation) {
       currentGroupFirstX = midX;
     } else if (!op.inSameHoleGroup) {
@@ -274,7 +184,6 @@ function placeRow(
   }
   slotMapByRound.set(roundIdx, slotMap);
 
-  // 시작 마커: MAGIC / SKIP 제외한 첫 visible
   const visibleIndices = thisStitchIndices.filter((i) => {
     const k = stitches[i]!.op.kind;
     return k !== 'MAGIC' && k !== 'SKIP';
@@ -294,7 +203,46 @@ function placeRow(
 }
 
 // ============================================================
-// tc(...) 기둥코 세로 스택 (flat) — 첫 op 위로 기호 높이만큼 쌓음
+// 부모 행 정렬 — 위 round 의 첫 자식 x 로 아래 round 의 부모 stitch 이동
+// (decrease A 처럼 자식이 여러 부모를 소비하는 경우는 건드리지 않음)
+// ============================================================
+
+function alignParentRows(stitches: PositionedStitch[]): void {
+  // childrenOf[parentIdx] = [childStitchIdx, ...] (연결 순서대로)
+  const childrenOf = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    for (const pIdx of stitches[i]!.parentIndices) {
+      const arr = childrenOf.get(pIdx) ?? [];
+      arr.push(i);
+      childrenOf.set(pIdx, arr);
+    }
+  }
+
+  // 큰 round 인덱스부터 작은 순으로 내려가며 부모 이동. 연쇄 이동을 위해 한 번에 처리.
+  const byRound = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    const r = stitches[i]!.roundIndex;
+    if (!byRound.has(r)) byRound.set(r, []);
+    byRound.get(r)!.push(i);
+  }
+  const rounds = [...byRound.keys()].sort((a, b) => b - a);
+  for (const r of rounds) {
+    const parents = byRound.get(r) ?? [];
+    for (const pIdx of parents) {
+      const parent = stitches[pIdx]!;
+      if (parent.op.kind === 'MAGIC') continue; // MAGIC 은 고정 위치 유지
+      const kids = childrenOf.get(pIdx);
+      if (!kids || kids.length === 0) continue;
+      const firstKid = stitches[kids[0]!]!;
+      // A(dec): 자식이 여러 부모를 공유. 이 경우 부모 이동은 금지
+      if (firstKid.parentIndices.length > 1) continue;
+      parent.position = { x: firstKid.position.x, y: parent.position.y };
+    }
+  }
+}
+
+// ============================================================
+// tc(...) 기둥코 세로 스택 (flat)
 // ============================================================
 
 function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
@@ -312,8 +260,7 @@ function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
     }
 
     const baseX = s.position.x;
-    const baseY = s.position.y; // 첫 op 의 row y
-    // 각 op 가 자체 symH 높이만큼 차지하며 위로(y 감소) 쌓임
+    const baseY = s.position.y;
     let yCursor = baseY;
     for (let k = 0; k < groupIndices.length; k++) {
       const cs = stitches[groupIndices[k]!]!;
@@ -329,72 +276,6 @@ function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
       cs.angle = 0;
     }
     i = groupIndices[groupIndices.length - 1]!;
-  }
-}
-
-// ============================================================
-// samehole non-chain fan (flat) — 1셀 안에 여러 non-chain 을 수평 분포
-// ============================================================
-
-/**
- * N 개 non-chain 을 주어진 cell 너비 안에 수평 fan 분포.
- * 가장자리에서 PADDING (2px) 여유 두고 (N-1) 균등 분할.
- */
-function fanOffsetsForCell(count: number, cellWidth: number): number[] {
-  if (count <= 1) return [0];
-  const PADDING = 4; // 좌우 여유
-  const usable = Math.max(0, cellWidth - 2 * PADDING);
-  const step = usable / (count - 1);
-  const mid = (count - 1) / 2;
-  return Array.from({ length: count }, (_, i) => (i - mid) * step);
-}
-
-function repositionSameHoleFan(
-  stitches: PositionedStitch[],
-  columnWidths: number[],
-  columnCenters: number[],
-): void {
-  // 각 samehole 그룹의 slot index 를 찾아 해당 column 의 너비 기반으로 fan.
-  // stitch 의 position.x 로 columnCenter 를 역조회.
-  const centerToCol = new Map<number, number>();
-  for (let i = 0; i < columnCenters.length; i++) {
-    centerToCol.set(Math.round(columnCenters[i]! * 1000), i);
-  }
-
-  let i = 0;
-  while (i < stitches.length) {
-    const s = stitches[i]!;
-    if (!s.op.inSameHoleGroup || s.op.sameHoleContinuation) { i++; continue; }
-
-    const groupIndices: number[] = [i];
-    for (let j = i + 1; j < stitches.length; j++) {
-      const t = stitches[j]!;
-      if (t.roundIndex !== s.roundIndex) break;
-      if (!t.op.inSameHoleGroup) break;
-      if (!t.op.sameHoleContinuation) break;
-      groupIndices.push(j);
-    }
-
-    const nonChain = groupIndices.filter((idx) => {
-      const op = stitches[idx]!.op;
-      return op.kind !== 'CHAIN' && !op.turningChain;
-    });
-
-    if (nonChain.length >= 2) {
-      const baseX = stitches[nonChain[0]!]!.position.x;
-      // column lookup: 첫 op 의 x 위치로 column idx 를 찾아 그 cell 너비 사용
-      const colIdx = centerToCol.get(Math.round(baseX * 1000));
-      const cellW = (colIdx !== undefined && columnWidths[colIdx] !== undefined)
-        ? columnWidths[colIdx]!
-        : 24;
-      const offsets = fanOffsetsForCell(nonChain.length, cellW);
-      for (let k = 0; k < nonChain.length; k++) {
-        const cs = stitches[nonChain[k]!]!;
-        cs.position = { x: baseX + offsets[k]!, y: cs.position.y };
-      }
-    }
-
-    i = groupIndices[groupIndices.length - 1]! + 1;
   }
 }
 
@@ -451,7 +332,6 @@ function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[
     const next = findAdjacentNonChain(stitches, indices, runEnd, 1);
     if (!prev && !next) continue;
 
-    // 평면에서는 stitch 의 top 은 y 가 작은 쪽(위쪽)
     const topOffset = (s: PositionedStitch) => ({ x: s.position.x, y: s.position.y - effectiveSymH(s.op) });
     const leftTop = prev ? topOffset(prev) : { x: (next!.position.x - FLAT_CELL_WIDTH), y: next!.position.y - effectiveSymH(next!.op) };
     const rightTop = next ? topOffset(next) : { x: (prev!.position.x + FLAT_CELL_WIDTH), y: prev!.position.y - effectiveSymH(prev!.op) };
@@ -469,13 +349,11 @@ function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[
     const h_bez = chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1))));
     const cOffset = 2 * h_bez;
 
-    // perpendicular upward (y 가 작아지는 방향)
     let perpX: number, perpY: number;
     if (chord < 0.001) { perpX = 0; perpY = -1; }
     else {
       const cdx = dx / chord, cdy = dy / chord;
       const p1x = -cdy, p1y = cdx;
-      // up 방향 (y 감소) 선택
       if (p1y <= 0) { perpX = p1x; perpY = p1y; }
       else { perpX = cdy; perpY = -cdx; }
     }
