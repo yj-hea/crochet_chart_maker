@@ -44,6 +44,14 @@ export const SYMBOL_DEFS = `
   <line x1="-4" y1="-2" x2="4" y2="-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
   <line x1="-4" y1="3" x2="4" y2="1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
 </g>
+<g id="sym-DTR">
+  <!-- 세길긴뜨기: 수직선 + 상단 cap + 대각 빗금 3 (yarn-over 3개) -->
+  <line x1="0" y1="-13" x2="0" y2="13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-5" y1="-13" x2="5" y2="-13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-4" y1="-5" x2="4" y2="-7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="-4" y1="1" x2="4" y2="-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="-4" y1="7" x2="4" y2="5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+</g>
 <g id="sym-INC">
   <line x1="-5" y1="-5" x2="0" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   <line x1="5" y1="-5" x2="0" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
@@ -70,6 +78,13 @@ export const SYMBOL_DEFS = `
   <line x1="-4" y1="-11" x2="4" y2="-11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   <line x1="-3" y1="-2" x2="3" y2="-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
   <line x1="-3" y1="3" x2="3" y2="1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+</g>
+<g id="leg-DTR">
+  <line x1="0" y1="13" x2="0" y2="-13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-4" y1="-13" x2="4" y2="-13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="-3" y1="-5" x2="3" y2="-7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="-3" y1="1" x2="3" y2="-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="-3" y1="7" x2="3" y2="5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
 </g>
 <g id="sym-POPCORN">
   <!-- 팝콘뜨기: 잎/꽃잎 외곽선 + 위에서 방사되는 4선 -->

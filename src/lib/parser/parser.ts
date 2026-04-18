@@ -308,13 +308,13 @@ class Parser {
     const kind = stitchTok.value as StitchKind;
     this.advance();
 
-    // V/A 뒤에 선택적 base stitch (T/F/E/X): VT^2, AF^3 등
+    // V/A 뒤에 선택적 base stitch (T/F/E/X/DTR): VT^2, AF^3, VDTR 등
     let baseKind: StitchKind | undefined;
     if (kind === 'INC' || kind === 'DEC') {
       const maybeBase = this.peek();
       if (maybeBase?.type === 'STITCH') {
         const bk = maybeBase.value as StitchKind;
-        if (bk === 'SC' || bk === 'HDC' || bk === 'DC' || bk === 'TR') {
+        if (bk === 'SC' || bk === 'HDC' || bk === 'DC' || bk === 'TR' || bk === 'DTR') {
           baseKind = bk;
           this.advance();
         }

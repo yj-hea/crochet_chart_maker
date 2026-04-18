@@ -14,6 +14,7 @@
     { id: 'sym-HDC',     aliases: 'T, t, hdc',          korean: '긴뜨기',       english: 'half double' },
     { id: 'sym-DC',      aliases: 'F, f, dc',           korean: '한길긴뜨기',   english: 'double' },
     { id: 'sym-TR',      aliases: 'E, e, tr',           korean: '두길긴뜨기',   english: 'treble' },
+    { id: 'sym-DTR',     aliases: 'dtr',                korean: '세길긴뜨기',   english: 'double treble' },
     { id: 'sym-INC',     aliases: 'V, v, inc',          korean: '늘림',         english: 'increase' },
     { id: 'sym-DEC',     aliases: 'A, a, dec',          korean: '줄임',         english: 'decrease' },
     { id: 'sym-POPCORN', aliases: 'P, p, pc, pop',      korean: '팝콘뜨기',     english: 'popcorn' },

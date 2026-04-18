@@ -12,6 +12,7 @@ export type StitchKind =
   | 'HDC'      // T 긴뜨기 (half double crochet)
   | 'DC'       // F 한길긴뜨기 (double crochet)
   | 'TR'       // E 두길긴뜨기 (treble crochet)
+  | 'DTR'      // dtr 세길긴뜨기 (double treble crochet)
   | 'INC'      // V 늘림
   | 'DEC'      // A 줄임
   | 'POPCORN'  // P 팝콘뜨기
@@ -45,6 +46,7 @@ export const STITCH_META: Record<StitchKind, StitchMeta> = {
   HDC:   { kind: 'HDC',   canonical: 'T', korean: '긴뜨기',     english: 'half double (hdc)',   baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 7   },
   DC:    { kind: 'DC',    canonical: 'F', korean: '한길긴뜨기', english: 'double (dc)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
   TR:    { kind: 'TR',    canonical: 'E', korean: '두길긴뜨기', english: 'treble (tr)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 11  },
+  DTR:   { kind: 'DTR',   canonical: 'dtr', korean: '세길긴뜨기', english: 'double treble (dtr)', baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 13  },
   INC:   { kind: 'INC',   canonical: 'V', korean: '늘림',       english: 'increase',            baseConsume: 1, baseProduce: 2, expandable: true,  symbolHalfHeight: 5   },
   DEC:   { kind: 'DEC',   canonical: 'A', korean: '줄임',       english: 'decrease',            baseConsume: 2, baseProduce: 1, expandable: true,  symbolHalfHeight: 5   },
   POPCORN:{ kind: 'POPCORN', canonical: 'P', korean: '팝콘뜨기', english: 'popcorn (pop)',      baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
@@ -131,6 +133,11 @@ export const ALIAS_MAP: Readonly<Record<string, StitchKind | ModifierKind>> = Ob
   'tr':  'TR',
   'TR':  'TR',
   'Tr':  'TR',
+
+  // DTR (세길긴뜨기) — 단일 문자 충돌 없어 alias 만 제공
+  'dtr': 'DTR',
+  'DTR': 'DTR',
+  'Dtr': 'DTR',
 
   // INC
   'V':   'INC',

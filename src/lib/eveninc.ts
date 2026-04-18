@@ -16,7 +16,7 @@
  *     → `(gap x, 1 a)*N` + 남은 코.
  */
 
-export type BaseStitch = 'x' | 't' | 'f' | 'e';
+export type BaseStitch = 'x' | 't' | 'f' | 'e' | 'dtr';
 
 export interface EvenIncResult {
   kind: 'increase' | 'decrease' | 'same' | 'invalid';
@@ -27,8 +27,8 @@ export interface EvenIncResult {
   summary: string;
 }
 
-const V_FOR: Record<BaseStitch, string> = { x: 'v', t: 'vt', f: 'vf', e: 've' };
-const A_FOR: Record<BaseStitch, string> = { x: 'a', t: 'at', f: 'af', e: 'ae' };
+const V_FOR: Record<BaseStitch, string> = { x: 'v', t: 'vt', f: 'vf', e: 've', dtr: 'vdtr' };
+const A_FOR: Record<BaseStitch, string> = { x: 'a', t: 'at', f: 'af', e: 'ae', dtr: 'adtr' };
 
 export function evenIncDec(from: number, to: number, base: BaseStitch = 'x'): EvenIncResult {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from <= 0 || to <= 0) {
