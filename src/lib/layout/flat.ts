@@ -45,6 +45,9 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
     placeRow(round, stitches, slotMapByRound, roundMarkers);
   }
 
+  // tc(...) 기둥코 세로 스택 후처리
+  repositionTurningChainColumns(stitches);
+
   // samehole 사슬 arc 후처리
   repositionChainArcs(stitches);
 
@@ -186,6 +189,45 @@ function placeRow(
       position: { x: s.position.x + xOffsetMarker, y: s.position.y },
       direction: direction === 1 ? 'right' : 'left',
     });
+  }
+}
+
+// ============================================================
+// tc(...) 기둥코 세로 스택 (flat) — 첫 op 위로 기호 높이만큼 쌓음
+// ============================================================
+
+function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
+  for (let i = 0; i < stitches.length; i++) {
+    const s = stitches[i]!;
+    if (!s.op.turningChain || s.op.sameHoleContinuation) continue;
+
+    const groupIndices: number[] = [i];
+    for (let j = i + 1; j < stitches.length; j++) {
+      const t = stitches[j]!;
+      if (t.roundIndex !== s.roundIndex) break;
+      if (!t.op.turningChain) break;
+      if (!t.op.sameHoleContinuation) break;
+      groupIndices.push(j);
+    }
+
+    const baseX = s.position.x;
+    const baseY = s.position.y; // 첫 op 의 row y
+    // 각 op 가 자체 symH 높이만큼 차지하며 위로(y 감소) 쌓임
+    let yCursor = baseY;
+    for (let k = 0; k < groupIndices.length; k++) {
+      const cs = stitches[groupIndices[k]!]!;
+      const symH = effectiveSymH(cs.op);
+      if (k === 0) {
+        yCursor = baseY;
+      } else {
+        const prev = stitches[groupIndices[k - 1]!]!;
+        const prevSymH = effectiveSymH(prev.op);
+        yCursor = yCursor - prevSymH - symH;
+      }
+      cs.position = { x: baseX, y: yCursor };
+      cs.angle = 0;
+    }
+    i = groupIndices[groupIndices.length - 1]!;
   }
 }
 
