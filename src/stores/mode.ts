@@ -11,6 +11,12 @@ export const mode = writable<AppMode>('edit');
 /** Read 모드에서 현재 작업 중인 단 (1-based). */
 export const currentRound = writable<number>(1);
 
+/**
+ * Read 모드에서 현재 작업 중인 코 (0-based, 현재 단 내 stitch 순서).
+ * null = 단 전체 보기 (특정 코 하이라이트 없음).
+ */
+export const currentStitch = writable<number | null>(null);
+
 /** 미리보기 그리드 표시 여부. 사용자가 토글 버튼으로 제어. */
 export const showGrid = writable<boolean>(true);
 

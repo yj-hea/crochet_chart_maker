@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentRound, saveProgress, hashSources, loadProgress } from '$stores/mode';
+  import { currentRound, currentStitch, saveProgress, hashSources, loadProgress } from '$stores/mode';
   import { workspace, type Comment } from '$stores/tabs';
   import { renderNarrative } from '$lib/narrative';
   import CommentPin from './CommentPin.svelte';
@@ -13,6 +13,14 @@
   // 활성 탭과 현재 단의 parsed + 코멘트 조회
   const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
   const currentRoundData = $derived(activeTab?.rounds[$currentRound - 1]);
+  // 현재 단의 stitch 개수 (op 기준, MAGIC 도 포함) — 코 네비게이션 총수
+  const stitchCountByRound = $derived.by(() => {
+    const counts: number[] = [];
+    if (!activeTab) return counts;
+    for (const r of activeTab.rounds) counts.push(r.expanded?.ops.length ?? 0);
+    return counts;
+  });
+  const currentStitchTotal = $derived(stitchCountByRound[$currentRound - 1] ?? 0);
   const narrative = $derived.by(() => {
     if (!currentRoundData) return { html: '', comments: [] as string[] };
     return renderNarrative(currentRoundData.parsed, currentRoundData.source);
@@ -38,9 +46,41 @@
     saveProgress(hash, r);
   });
 
-  function prev() { currentRound.update((r) => Math.max(1, r - 1)); }
-  function next() { currentRound.update((r) => Math.min(totalRounds, r + 1)); }
-  function goTo(n: number) { currentRound.set(Math.min(totalRounds, Math.max(1, n))); }
+  function prev() { currentStitch.set(null); currentRound.update((r) => Math.max(1, r - 1)); }
+  function next() { currentStitch.set(null); currentRound.update((r) => Math.min(totalRounds, r + 1)); }
+  function goTo(n: number) { currentStitch.set(null); currentRound.set(Math.min(totalRounds, Math.max(1, n))); }
+
+  /** 코 네비게이션: 현재 단 안에서 이동, 경계에서 인접 단으로 자동 롤오버 */
+  function prevStitch() {
+    const cs = $currentStitch;
+    if (cs === null || cs <= 0) {
+      // 현재 단 처음 / whole-round 상태 → 이전 단의 마지막 코로
+      if ($currentRound > 1) {
+        const prevTotal = stitchCountByRound[$currentRound - 2] ?? 0;
+        currentRound.set($currentRound - 1);
+        currentStitch.set(prevTotal > 0 ? prevTotal - 1 : null);
+      }
+      return;
+    }
+    currentStitch.set(cs - 1);
+  }
+  function nextStitch() {
+    const cs = $currentStitch;
+    const total = currentStitchTotal;
+    if (cs === null) {
+      currentStitch.set(0);
+      return;
+    }
+    if (cs >= total - 1) {
+      if ($currentRound < totalRounds) {
+        currentRound.set($currentRound + 1);
+        currentStitch.set(0);
+      }
+      return;
+    }
+    currentStitch.set(cs + 1);
+  }
+  function clearStitch() { currentStitch.set(null); }
 
   let editing = $state(false);
   let inputValue = $state('');
@@ -65,16 +105,27 @@
 <svelte:window onkeydown={(e) => {
   if (editing) return;
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  // Shift + Arrow → 단 이동, 일반 Arrow → 코 이동 (경계에서 인접 단으로)
+  if (e.shiftKey) {
+    switch (e.key) {
+      case 'ArrowUp': case 'ArrowRight': e.preventDefault(); next(); return;
+      case 'ArrowDown': case 'ArrowLeft': e.preventDefault(); prev(); return;
+    }
+  } else {
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': e.preventDefault(); nextStitch(); return;
+      case 'ArrowLeft': case 'ArrowUp': e.preventDefault(); prevStitch(); return;
+      case 'Escape': e.preventDefault(); clearStitch(); return;
+    }
+  }
   switch (e.key) {
-    case 'ArrowUp': case 'ArrowRight': e.preventDefault(); next(); break;
-    case 'ArrowDown': case 'ArrowLeft': e.preventDefault(); prev(); break;
     case 'Home': e.preventDefault(); goTo(1); break;
     case 'End': e.preventDefault(); goTo(totalRounds); break;
   }
 }} />
 
 <div class="round-nav">
-  <button type="button" class="nav-btn" onclick={prev} disabled={$currentRound <= 1} aria-label="이전 단">◀</button>
+  <button type="button" class="nav-btn" onclick={prev} disabled={$currentRound <= 1} aria-label="이전 단 (Shift+←)">◀</button>
 
   {#if editing}
     <input
@@ -89,12 +140,44 @@
     />
   {:else}
     <button type="button" class="round-display" onclick={startEdit} title="클릭하여 단 번호 직접 입력">
-      {$currentRound} / {totalRounds}
+      {$currentRound} / {totalRounds} 단
     </button>
   {/if}
 
-  <button type="button" class="nav-btn" onclick={next} disabled={$currentRound >= totalRounds} aria-label="다음 단">▶</button>
+  <button type="button" class="nav-btn" onclick={next} disabled={$currentRound >= totalRounds} aria-label="다음 단 (Shift+→)">▶</button>
 </div>
+
+{#if currentStitchTotal > 0}
+  <div class="stitch-nav">
+    <button
+      type="button"
+      class="stitch-btn"
+      onclick={prevStitch}
+      disabled={$currentStitch === null && $currentRound <= 1}
+      aria-label="이전 코 (←)"
+    >◀</button>
+    <button
+      type="button"
+      class="stitch-display"
+      class:active={$currentStitch !== null}
+      onclick={clearStitch}
+      title={$currentStitch !== null ? '코 강조 해제 (Esc)' : '←/→ 로 코 이동'}
+    >
+      {#if $currentStitch === null}
+        — / {currentStitchTotal} 코
+      {:else}
+        {$currentStitch + 1} / {currentStitchTotal} 코
+      {/if}
+    </button>
+    <button
+      type="button"
+      class="stitch-btn"
+      onclick={nextStitch}
+      disabled={$currentStitch !== null && $currentStitch >= currentStitchTotal - 1 && $currentRound >= totalRounds}
+      aria-label="다음 코 (→)"
+    >▶</button>
+  </div>
+{/if}
 
 {#if currentRoundComment}
   <div class="round-comment-row">
@@ -171,6 +254,50 @@
     text-align: center;
     outline: none;
     color: var(--text, #3a3632);
+  }
+  .stitch-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .stitch-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .stitch-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .stitch-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .stitch-display {
+    min-width: 80px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .stitch-display.active {
+    color: #e53935;
+    border-color: #e53935;
+    font-weight: 600;
+  }
+  .stitch-display:hover {
+    background: var(--bg-hover);
   }
   .round-comment-row {
     margin-top: 6px;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
-  import { mode, currentRound, showGrid, showConnections, flatFlipVertical } from '$stores/mode';
+  import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical } from '$stores/mode';
   import { layoutCircular } from '$lib/layout/circular';
   import { layoutFlat } from '$lib/layout/flat';
   import { renderSvg } from '$lib/render/svg';
@@ -40,9 +40,12 @@
   let svgWrap: HTMLDivElement | undefined = $state();
   const HIGHLIGHT_COLOR = '#3a3632';  // --text warm dark
 
+  const STITCH_HIGHLIGHT_COLOR = '#e53935'; // 빨간색 — 현재 작업 코 강조
+
   $effect(() => {
     void $mode;
     void $currentRound;
+    void $currentStitch;
     void rendered?.svg;
     if (!svgWrap) return;
     const groups = svgWrap.querySelectorAll<SVGGElement>('g.round[data-round]');
@@ -51,6 +54,7 @@
         g.style.opacity = '';
         g.style.strokeWidth = '';
         g.style.color = '';
+        clearStitchHighlight(g);
       });
       return;
     }
@@ -60,6 +64,7 @@
     const cr = $currentRound;
     groups.forEach((g) => {
       const round = parseInt(g.dataset.round ?? '0', 10);
+      clearStitchHighlight(g);
       if (round === cr) {
         g.style.opacity = '1';
         g.style.strokeWidth = '2.6';
@@ -70,6 +75,10 @@
           insertDonutHighlight(g);
         } else {
           insertRectHighlight(g);
+        }
+        // 현재 코 하이라이트 (currentStitch 설정된 경우)
+        if ($currentStitch !== null) {
+          applyStitchHighlight(g, $currentStitch);
         }
       } else if (round < cr) {
         g.style.opacity = '0.45';
@@ -82,6 +91,27 @@
       }
     });
   });
+
+  /** 라운드 그룹의 N-번째 stitch 에 강조 스타일 적용. */
+  function applyStitchHighlight(g: SVGGElement, stitchIdx: number) {
+    const children = Array.from(g.children).filter(
+      (el) => el.tagName === 'use' || el.tagName === 'g',
+    );
+    const target = children[stitchIdx];
+    if (!(target instanceof SVGElement)) return;
+    target.classList.add('current-stitch');
+    target.style.color = STITCH_HIGHLIGHT_COLOR;
+    target.style.strokeWidth = '3';
+  }
+
+  /** 이전에 적용된 현재 코 강조 제거. */
+  function clearStitchHighlight(g: SVGGElement) {
+    g.querySelectorAll<SVGElement>('.current-stitch').forEach((el) => {
+      el.classList.remove('current-stitch');
+      el.style.color = '';
+      el.style.strokeWidth = '';
+    });
+  }
 
   function insertRectHighlight(g: SVGGElement) {
     const bbox = g.getBBox();
