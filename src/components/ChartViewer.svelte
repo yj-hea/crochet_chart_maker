@@ -284,19 +284,19 @@
     flex: 1;
     min-height: 0;
     min-width: 0;
-    overflow: hidden;
+    overflow: auto;
     padding: 20px;
     cursor: zoom-in;
   }
   .svg-wrap {
     width: 100%;
-    height: 100%;
     min-width: 0;
-    min-height: 0;
   }
+  /* SVG 는 항상 가장 넓은 너비(컨테이너 폭) 기준으로 맞추고, 높이는 viewBox 비율로
+     자동 계산. 내용이 세로로 길면 .scroll-area 가 스크롤. */
   .svg-wrap :global(svg) {
     width: 100%;
-    height: 100%;
+    height: auto;
     display: block;
   }
   .empty {
