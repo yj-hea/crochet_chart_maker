@@ -26,7 +26,11 @@ export interface SavedComment {
   open?: boolean;
   target:
     | { kind: 'pattern' }
-    | { kind: 'round'; roundId: string };
+    /**
+     * roundId 는 앱 런타임의 고유 ID. 다시 import 할 때 새 ID 가 발급되므로,
+     * 추가로 `roundIndex` (0-based) 를 함께 기록해서 매핑을 끊기지 않게 한다.
+     */
+    | { kind: 'round'; roundId?: string; roundIndex?: number };
 }
 
 export interface SavedPattern {
@@ -39,12 +43,23 @@ export interface SavedPattern {
 
 export interface SerializeInput {
   shape: ShapeKind;
-  rounds: ReadonlyArray<{ source: string; direction?: 'forward' | 'reverse' }>;
+  /** id 는 옵션 — 코멘트의 round 참조를 직렬화 시 index 로 정규화하는 데 사용 */
+  rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
   comments?: ReadonlyArray<SavedComment>;
 }
 
 /** 현재 상태를 저장용 객체로 직렬화. id/parsed/expanded 등 파생값은 제외 */
 export function serialize(state: SerializeInput): SavedPattern {
+  const idToIndex = new Map<string, number>();
+  state.rounds.forEach((r, i) => { if (r.id) idToIndex.set(r.id, i); });
+  const normalizedComments = state.comments?.map((c) => {
+    if (c.target.kind !== 'round') return c;
+    const idx = c.target.roundId ? idToIndex.get(c.target.roundId) : c.target.roundIndex;
+    return {
+      ...c,
+      target: { kind: 'round' as const, roundId: c.target.roundId, roundIndex: idx },
+    };
+  });
   return {
     version: FILE_VERSION,
     savedAt: new Date().toISOString(),
@@ -54,7 +69,7 @@ export function serialize(state: SerializeInput): SavedPattern {
       if (r.direction) out.direction = r.direction;
       return out;
     }),
-    ...(state.comments && state.comments.length > 0 ? { comments: [...state.comments] } : {}),
+    ...(normalizedComments && normalizedComments.length > 0 ? { comments: normalizedComments } : {}),
   };
 }
 

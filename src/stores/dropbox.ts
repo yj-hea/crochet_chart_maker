@@ -93,7 +93,7 @@ export function serializeActiveTab(): { name: string; content: string } | null {
   if (!active) return null;
   const data = serialize({
     shape: active.shape,
-    rounds: active.rounds.map((r) => ({ source: r.source, direction: r.direction })),
+    rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
     comments: active.comments,
   });
   return { name: active.name, content: JSON.stringify(data, null, 2) };

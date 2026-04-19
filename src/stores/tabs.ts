@@ -18,6 +18,7 @@ import {
   downloadAsFile,
   readFromFile,
   type SavedWorkspaceTab,
+  type SavedComment,
 } from '$lib/persistence';
 
 export type ShapeKind = 'circular' | 'flat';
@@ -101,8 +102,9 @@ function defaultTab(name = '도안 1'): Tab {
 }
 
 function tabFromSaved(saved: SavedWorkspaceTab): Tab {
-  const rounds: PatternRoundState[] = saved.rounds.map((r) => ({
-    id: makeRoundId(),
+  const newRoundIds: string[] = saved.rounds.map(() => makeRoundId());
+  const rounds: PatternRoundState[] = saved.rounds.map((r, i) => ({
+    id: newRoundIds[i]!,
     source: r.source,
     direction: r.direction,
   }));
@@ -111,8 +113,50 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     name: saved.name,
     shape: saved.shape,
     rounds: reparseAll(rounds),
-    comments: (saved.comments ?? []).map((c) => ({ ...c })),
+    comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
   };
+}
+
+/**
+ * 저장된 코멘트의 target 을 새 round ID 에 매핑.
+ * dropKnownOrphans: true 면 매핑 실패 시 제외(파일 import), false 면 id 유지(workspace 로드).
+ */
+function remapSavedComments(
+  saved: ReadonlyArray<SavedComment>,
+  newRoundIds: readonly string[],
+  dropKnownOrphans: boolean,
+): Comment[] {
+  const out: Comment[] = [];
+  for (const c of saved) {
+    if (c.target.kind === 'pattern') {
+      out.push({
+        id: makeCommentId(), text: c.text, color: c.color, open: c.open,
+        target: { kind: 'pattern' },
+      });
+      continue;
+    }
+    // round 대상: roundIndex 우선, 없으면 roundId (고아 가능)
+    const idx = c.target.roundIndex;
+    const mappedId = idx !== undefined && idx >= 0 && idx < newRoundIds.length
+      ? newRoundIds[idx]
+      : (c.target.roundId && newRoundIds.includes(c.target.roundId) ? c.target.roundId : undefined);
+    if (!mappedId) {
+      if (dropKnownOrphans) continue;
+      // workspace 로드는 id 유지 (추후 저장 때 index 로 재정규화됨)
+      if (c.target.roundId) {
+        out.push({
+          id: makeCommentId(), text: c.text, color: c.color, open: c.open,
+          target: { kind: 'round', roundId: c.target.roundId },
+        });
+      }
+      continue;
+    }
+    out.push({
+      id: makeCommentId(), text: c.text, color: c.color, open: c.open,
+      target: { kind: 'round', roundId: mappedId },
+    });
+  }
+  return out;
 }
 
 function nextTabName(existing: Tab[]): string {
@@ -336,7 +380,7 @@ export function exportToFile(): void {
   downloadAsFile(
     {
       shape: active.shape,
-      rounds: active.rounds.map((r) => ({ source: r.source, direction: r.direction })),
+      rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
       comments: active.comments,
     },
     active.name || 'pattern',
@@ -349,16 +393,19 @@ export async function importFromFile(file: File): Promise<void> {
   workspace.update((ws) => {
     const tabId = makeTabId();
     const name = (file.name.replace(/\.crochet\.json$/i, '').replace(/\.json$/i, '') || nextTabName(ws.tabs)).slice(0, 30);
+    const newRoundIds: string[] = saved.rounds.map(() => makeRoundId());
+    const newRounds = reparseAll(saved.rounds.map((r, i) => ({
+      id: newRoundIds[i]!,
+      source: r.source,
+      direction: r.direction,
+    })));
+    const newComments = remapSavedComments(saved.comments ?? [], newRoundIds, true);
     const newTab: Tab = {
       id: tabId,
       name,
       shape: saved.shape,
-      rounds: reparseAll(saved.rounds.map((r) => ({
-        id: makeRoundId(),
-        source: r.source,
-        direction: r.direction,
-      }))),
-      comments: (saved.comments ?? []).map((c) => ({ ...c, id: makeCommentId() })),
+      rounds: newRounds,
+      comments: newComments,
     };
     return { tabs: [...ws.tabs, newTab], activeTabId: tabId };
   });
