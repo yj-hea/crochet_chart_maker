@@ -92,25 +92,38 @@
     });
   });
 
-  /** 라운드 그룹의 N-번째 stitch 에 강조 스타일 적용. */
+  /** 라운드 그룹의 N-번째 stitch 위치에 빨간 원 마커를 오버레이. */
   function applyStitchHighlight(g: SVGGElement, stitchIdx: number) {
     const children = Array.from(g.children).filter(
       (el) => el.tagName === 'use' || el.tagName === 'g',
     );
     const target = children[stitchIdx];
     if (!(target instanceof SVGElement)) return;
-    target.classList.add('current-stitch');
-    target.style.color = STITCH_HIGHLIGHT_COLOR;
-    target.style.strokeWidth = '3';
+
+    // stitch 위치 추출. <use x="" y=""> 또는 <g transform="translate(x y) ...">
+    let x = 0, y = 0;
+    if (target.tagName === 'use') {
+      x = parseFloat(target.getAttribute('x') || '0');
+      y = parseFloat(target.getAttribute('y') || '0');
+    } else {
+      const m = (target.getAttribute('transform') || '').match(/translate\(\s*([-\d.]+)[\s,]+([-\d.]+)\s*\)/);
+      if (m) { x = parseFloat(m[1]!); y = parseFloat(m[2]!); }
+    }
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', String(x));
+    circle.setAttribute('cy', String(y));
+    circle.setAttribute('r', '14');
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke', STITCH_HIGHLIGHT_COLOR);
+    circle.setAttribute('stroke-width', '2');
+    circle.classList.add('current-stitch-marker');
+    g.appendChild(circle); // stitch 위에 덧그리기
   }
 
-  /** 이전에 적용된 현재 코 강조 제거. */
+  /** 이전에 적용된 현재 코 원 마커 제거. */
   function clearStitchHighlight(g: SVGGElement) {
-    g.querySelectorAll<SVGElement>('.current-stitch').forEach((el) => {
-      el.classList.remove('current-stitch');
-      el.style.color = '';
-      el.style.strokeWidth = '';
-    });
+    g.querySelectorAll('.current-stitch-marker').forEach((el) => el.remove());
   }
 
   function insertRectHighlight(g: SVGGElement) {
