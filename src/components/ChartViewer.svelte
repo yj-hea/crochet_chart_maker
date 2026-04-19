@@ -81,11 +81,13 @@
           applyStitchHighlight(g, $currentStitch);
         }
       } else if (round < cr) {
-        g.style.opacity = '0.45';
+        // 과거 단은 가장 연하게 (이미 완료된 단)
+        g.style.opacity = '0.18';
         g.style.strokeWidth = '';
         g.style.color = '';
       } else {
-        g.style.opacity = '0.18';
+        // 미래 단은 두 번째로 연하게 (앞으로 뜰 단)
+        g.style.opacity = '0.45';
         g.style.strokeWidth = '';
         g.style.color = '';
       }
