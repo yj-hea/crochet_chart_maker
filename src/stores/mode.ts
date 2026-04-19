@@ -17,6 +17,12 @@ export const showGrid = writable<boolean>(true);
 /** 부모-자식 연결선 표시 여부. */
 export const showConnections = writable<boolean>(true);
 
+/**
+ * 평면 도안을 상하 반전해서 표시. 기본값 false (1단이 아래).
+ * true 면 1단이 위, 이후 단이 아래로.
+ */
+export const flatFlipVertical = writable<boolean>(false);
+
 const STORAGE_KEY = 'crochet-chart:read-progress';
 
 interface ReadProgress {

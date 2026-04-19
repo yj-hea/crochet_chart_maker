@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
-  import { mode, currentRound, showGrid, showConnections } from '$stores/mode';
+  import { mode, currentRound, showGrid, showConnections, flatFlipVertical } from '$stores/mode';
   import { layoutCircular } from '$lib/layout/circular';
   import { layoutFlat } from '$lib/layout/flat';
   import { renderSvg } from '$lib/render/svg';
@@ -27,7 +27,7 @@
     if (validRounds.length === 0) return null;
     const layout = $pattern.shape === 'circular'
       ? layoutCircular(validRounds)
-      : layoutFlat(validRounds);
+      : layoutFlat(validRounds, { flipVertical: $flatFlipVertical });
     return {
       svg: renderSvg({ layout, showGrid: $showGrid, showConnections: $showConnections }),
       width: layout.bounds.width,
@@ -186,6 +186,18 @@
       aria-pressed={$showConnections}
       title={$showConnections ? '연결선 숨기기' : '연결선 표시'}
     ><span class="grid-dot" class:on={$showConnections}></span> Lines {$showConnections ? 'On' : 'Off'}</button>
+    {#if $pattern.shape === 'flat'}
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        class:active={$flatFlipVertical}
+        onclick={() => flatFlipVertical.update((v) => !v)}
+        aria-pressed={$flatFlipVertical}
+        title={$flatFlipVertical ? '1단이 위 (반전됨)' : '1단이 아래 (기본). 클릭하여 반전'}
+      >
+        <i class="fa-solid fa-arrows-up-down"></i> {$flatFlipVertical ? '1단 ↑' : '1단 ↓'}
+      </button>
+    {/if}
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div

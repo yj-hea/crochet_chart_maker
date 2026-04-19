@@ -35,7 +35,12 @@ function effectiveSymH(op: Op): number {
   return STITCH_META[baseKind].symbolHalfHeight;
 }
 
-export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
+export interface FlatOptions {
+  /** 상하 반전: true 면 1단이 위쪽에 오고 이후 단이 아래로 쌓임. */
+  flipVertical?: boolean;
+}
+
+export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): LayoutResult {
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
   const slotMapByRound = new Map<number, number[]>();
@@ -45,11 +50,11 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
     placeRow(round, stitches, slotMapByRound, roundMarkers);
   }
 
-  // 2) tc 세로 스택 (자식 정렬 전에)
-  repositionTurningChainColumns(stitches);
-
-  // 3) 부모 행을 첫 자식 x 에 정렬 — 위에서부터 아래로 처리.
+  // 2) 부모 행을 첫 자식 x 에 정렬 — tc 등 stitch 위치 이동이 필요한 후처리 전에 먼저 수행
   alignParentRows(stitches);
+
+  // 3) tc 세로 스택 — alignParentRows 이후 첫 op 의 갱신된 x 기준으로 스택
+  repositionTurningChainColumns(stitches);
 
   // 4) samehole 사슬 arc
   repositionChainArcs(stitches);
@@ -63,6 +68,12 @@ export function layoutFlat(rounds: ExpandedRound[]): LayoutResult {
       m.position = { x: s.position.x + off, y: s.position.y };
       delete mExt._stitchIdx;
     }
+  }
+
+  // 6) 상하 반전 옵션 — y 좌표만 뒤집음 (기호 자체 회전은 변경 없음, 기호는 항상 위쪽이 위)
+  if (opts.flipVertical) {
+    for (const s of stitches) s.position = { x: s.position.x, y: -s.position.y };
+    for (const m of roundMarkers) m.position = { x: m.position.x, y: -m.position.y };
   }
 
   // 5) bounds (stitch extent 포함)
