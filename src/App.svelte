@@ -18,9 +18,31 @@
   let savedFlash = $state(false);
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
   let helpOpen = $state(false);
+  let exportMenuOpen = $state(false);
+  let exportMenuRoot: HTMLDivElement | undefined = $state();
 
   // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화
   onMount(() => { void initializeDropbox(); });
+
+  // 내보내기 드롭다운 바깥 클릭 시 닫기
+  onMount(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!exportMenuOpen) return;
+      if (exportMenuRoot && exportMenuRoot.contains(e.target as Node)) return;
+      exportMenuOpen = false;
+    };
+    window.addEventListener('click', onDocClick);
+    return () => window.removeEventListener('click', onDocClick);
+  });
+
+  function chooseExportJson() {
+    exportMenuOpen = false;
+    exportToFile();
+  }
+  function chooseExportText() {
+    exportMenuOpen = false;
+    exportAsTextFile();
+  }
 
   // ---- 패널 리사이즈 ----
   const SPLIT_H_KEY = 'crochet-chart:split-ratio';
@@ -155,12 +177,32 @@
     {/if}
 
     <div class="btn-group">
-      <button type="button" class="icon-btn" onclick={exportToFile} title="파일로 저장 (.crochet.json)"><i class="fa-solid fa-download"></i></button>
-      <button type="button" class="icon-btn" onclick={exportAsTextFile} title="텍스트로 저장 (.txt)"><i class="fa-solid fa-file-lines"></i></button>
-      <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기 (.crochet.json / .txt)"><i class="fa-solid fa-folder-open"></i></button>
-      <button type="button" class="icon-btn" onclick={handleReset} title="새 도안"><i class="fa-solid fa-file-circle-plus"></i></button>
-      <button type="button" class="icon-btn" onclick={() => (helpOpen = true)} title="도안 작성 가이드"><i class="fa-solid fa-circle-question"></i></button>
       <DropboxMenu />
+      <button type="button" class="icon-btn" onclick={handleReset} title="새 도안"><i class="fa-solid fa-file-circle-plus"></i></button>
+      <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기 (.crochet.json / .txt)"><i class="fa-solid fa-folder-open"></i></button>
+      <div class="export-menu" bind:this={exportMenuRoot}>
+        <button
+          type="button"
+          class="icon-btn"
+          onclick={() => (exportMenuOpen = !exportMenuOpen)}
+          aria-haspopup="true"
+          aria-expanded={exportMenuOpen}
+          title="내보내기"
+        >
+          <i class="fa-solid fa-download"></i>
+        </button>
+        {#if exportMenuOpen}
+          <div class="dropdown" role="menu">
+            <button type="button" class="item" onclick={chooseExportJson} role="menuitem">
+              <i class="fa-solid fa-file-code"></i> 크로셰 JSON (.crochet.json)
+            </button>
+            <button type="button" class="item" onclick={chooseExportText} role="menuitem">
+              <i class="fa-solid fa-file-lines"></i> 텍스트 (.txt)
+            </button>
+          </div>
+        {/if}
+      </div>
+      <button type="button" class="icon-btn" onclick={() => (helpOpen = true)} title="도안 작성 가이드"><i class="fa-solid fa-circle-question"></i></button>
     </div>
 
     <div class="header-divider"></div>
@@ -311,12 +353,17 @@
     }
   }
   .save-badge {
+    position: absolute;
+    top: 6px;
+    right: 12px;
+    padding: 2px 8px;
     font-size: 11px;
-    color: var(--success);
-    margin-right: 6px;
     font-weight: 500;
+    color: var(--success);
+    background: rgba(67, 160, 71, 0.14);
+    border-radius: 10px;
     animation: fade-in 0.2s ease-out;
-    align-self: center;
+    pointer-events: none;
   }
   .flex-break { display: none; }
   /* 좁은 화면: ModeToggle 앞에 flex-break 가 활성화되어 자동으로 줄바꿈 */
@@ -325,16 +372,6 @@
       display: block;
       flex-basis: 100%;
       height: 0;
-    }
-    .save-badge {
-      position: absolute;
-      top: 6px;
-      right: 12px;
-      margin-right: 0;
-      padding: 2px 8px;
-      background: rgba(67, 160, 71, 0.14);
-      border-radius: 10px;
-      pointer-events: none;
     }
   }
   @keyframes fade-in {
@@ -363,6 +400,35 @@
     background: var(--bg-hover);
     border-color: var(--border);
   }
+  .export-menu { position: relative; }
+  .export-menu .dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 220px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    padding: 4px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+  }
+  .export-menu .item {
+    text-align: left;
+    padding: 7px 10px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .export-menu .item:hover { background: var(--bg-hover); }
   .header-divider {
     width: 1px;
     height: 22px;
