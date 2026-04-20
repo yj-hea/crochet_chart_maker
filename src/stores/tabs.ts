@@ -136,7 +136,8 @@ function remapSavedComments(
   for (const c of saved) {
     if (c.target.kind === 'pattern') {
       out.push({
-        id: makeCommentId(), text: c.text, color: c.color, open: c.open,
+        // 저장된 open 플래그는 무시 — 로드 시 항상 닫힌 상태로 시작
+        id: makeCommentId(), text: c.text, color: c.color,
         target: { kind: 'pattern' },
       });
       continue;
@@ -151,7 +152,8 @@ function remapSavedComments(
       // workspace 로드는 id 유지 (추후 저장 때 index 로 재정규화됨)
       if (c.target.roundId) {
         out.push({
-          id: makeCommentId(), text: c.text, color: c.color, open: c.open,
+          // 저장된 open 플래그는 무시 — 로드 시 항상 닫힌 상태로 시작
+        id: makeCommentId(), text: c.text, color: c.color,
           target: { kind: 'round', roundId: c.target.roundId },
         });
       }
