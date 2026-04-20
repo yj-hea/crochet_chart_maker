@@ -86,10 +86,37 @@ describe('parseTextFormat', () => {
     expect(r.saved.rounds[0]?.source).toBe('6x');
   });
 
-  it('잘못된 `N단::` 줄은 무시', () => {
+  it('`N단::` / `>` 가 아닌 줄은 이전 단 source 의 연속으로 붙음', () => {
     const text = '# 도안\n1단:: mr, 6x\n이것은 단이 아님\n2단:: 6v\n';
     const r = parseTextFormat(text);
-    expect(r.saved.rounds.map((rr) => rr.source)).toEqual(['mr, 6x', '6v']);
+    expect(r.saved.rounds.map((rr) => rr.source)).toEqual([
+      'mr, 6x\n이것은 단이 아님',
+      '6v',
+    ]);
+  });
+
+  it('단 source 안의 개행을 보존 (continuation lines)', () => {
+    const text =
+      '# 도안\n' +
+      '1단:: mr,\n' +
+      '6x,\n' +
+      '(1x, 1v)*3\n' +
+      '2단:: 6v\n';
+    const r = parseTextFormat(text);
+    expect(r.saved.rounds).toHaveLength(2);
+    expect(r.saved.rounds[0]?.source).toBe('mr,\n6x,\n(1x, 1v)*3');
+    expect(r.saved.rounds[1]?.source).toBe('6v');
+  });
+
+  it('개행 포함 source 의 round trip', () => {
+    const input = {
+      name: 'n',
+      shape: 'circular' as const,
+      rounds: [{ source: 'mr, 6x,\n(1x, 1v)*3,\n2x' }, { source: 'v,\na' }],
+    };
+    const text = serializeAsText(input);
+    const r = parseTextFormat(text);
+    expect(r.saved.rounds.map((rr) => rr.source)).toEqual(input.rounds.map((rr) => rr.source));
   });
 
   it('round trip — serializeAsText → parseTextFormat', () => {

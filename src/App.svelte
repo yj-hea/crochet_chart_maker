@@ -156,7 +156,7 @@
   }
 
   function handleReset() {
-    if (window.confirm('현재 도안을 모두 지우고 새로 시작할까요?\n저장되지 않은 작업은 사라집니다.'))
+    if (window.confirm('현재 도안을 비울까요?\n저장되지 않은 작업은 사라집니다.'))
       resetPattern();
   }
 
@@ -194,7 +194,7 @@
 
     <div class="btn-group">
       <DropboxMenu />
-      <button type="button" class="icon-btn" onclick={handleReset} title="새 도안"><i class="fa-solid fa-file-circle-plus"></i></button>
+      <button type="button" class="icon-btn" onclick={handleReset} title="도안 비우기"><i class="fa-solid fa-eraser"></i></button>
       <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기 (.crochet.json / .txt)"><i class="fa-solid fa-folder-open"></i></button>
       <div class="export-menu" bind:this={exportMenuRoot}>
         <button
@@ -422,6 +422,7 @@
     top: calc(100% + 4px);
     right: 0;
     min-width: 220px;
+    max-width: calc(100vw - 24px);
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);

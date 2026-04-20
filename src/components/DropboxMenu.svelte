@@ -151,6 +151,7 @@
     top: calc(100% + 4px);
     left: 0;
     min-width: 200px;
+    max-width: calc(100vw - 24px);
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);

@@ -104,23 +104,35 @@ export function parseTextFormat(text: string): TextImportResult {
         if (joined) patternMemo = joined;
         break;
       case '도안': {
+        // `N단::` 로 시작하는 줄 = 새 단 시작, 이후 `N단::`/`>` 가 아닌 줄은
+        // 현재 단 source 의 이어지는 줄로 간주해서 개행 포함 소스를 보존.
+        // `>` 줄은 해당 단 메모. 메모 시작 후엔 일반 줄 무시.
         let active: { source: string; memo?: string } | null = null;
+        let memoStarted = false;
+        const flushTrailingBlank = () => {
+          if (active) active.source = active.source.replace(/\n\s*$/, '');
+        };
         for (const raw of sec.body) {
-          const rm = raw.match(/^\s*(\d+)\s*단\s*::\s*(.*)$/);
-          if (rm) {
-            active = { source: rm[2]!.trim() };
+          const hdr = raw.match(/^\s*(\d+)\s*단\s*::\s*(.*)$/);
+          if (hdr) {
+            flushTrailingBlank();
+            active = { source: hdr[2]! };
             rounds.push(active);
+            memoStarted = false;
             continue;
           }
-          const mm = raw.match(/^\s*>\s?(.*)$/);
-          if (mm && active) {
+          const memo = raw.match(/^\s*>\s?(.*)$/);
+          if (memo && active) {
             active.memo = active.memo === undefined
-              ? mm[1]!
-              : `${active.memo}\n${mm[1]!}`;
+              ? memo[1]!
+              : `${active.memo}\n${memo[1]!}`;
+            memoStarted = true;
             continue;
           }
-          // 그 밖의 줄(빈 줄 등)은 무시
+          if (!active || memoStarted) continue;
+          active.source = active.source + '\n' + raw;
         }
+        flushTrailingBlank();
         break;
       }
     }
