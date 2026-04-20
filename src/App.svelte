@@ -236,7 +236,7 @@
               {#if narr.comments.length > 0}
                 <ol class="footnotes">
                   {#each narr.comments as c, i (i)}
-                    <li><sup>{'*'.repeat(i + 1)}</sup> {c}</li>
+                    <li><sup>*{i + 1}</sup> {c}</li>
                   {/each}
                 </ol>
               {/if}

@@ -100,20 +100,46 @@
           <tbody>
             <tr><td><code>:색</code></td><td>색상 (배색 도안). <code>#</code> 있/없음 hex 또는 키워드. 예: <code>x:#ff6a6a</code>, <code>x:ff6a6a</code>, <code>x:efd</code>, <code>x:red</code></td></tr>
             <tr><td>키워드</td><td><code>red, orange, yellow, green, teal, cyan, blue, indigo, purple, pink, brown, black, white, gray, silver, navy</code></td></tr>
-            <tr><td><code>"..."</code></td><td>인라인 코멘트 (서술 도안에 각주로 표시). 예: <code>x"조심"</code></td></tr>
+            <tr><td><code>"..."</code></td><td>인라인 코멘트 — 서술 도안에 각주 <code>*1, *2…</code> 로 표시. 같은 텍스트는 같은 번호를 공유. <code>:색</code> 과 순서 무관. 예: <code>x"조심":red</code> = <code>x:red"조심"</code></td></tr>
             <tr><td><code>blo</code></td><td>뒤이랑뜨기 수식자. 예: <code>blo 6x</code></td></tr>
           </tbody>
         </table>
       </section>
 
       <section>
-        <h3>단축키</h3>
+        <h3>편의 기능</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td>더블클릭 확대</td><td>미리보기 영역을 더블클릭하면 확대 모달이 열림</td></tr>
+            <tr><td>균등 증감 계산기</td><td>편집기 하단 <i class="fa-solid fa-calculator"></i> 버튼 — 현재 단 코 수 → 목표 코 수 패턴 자동 생성</td></tr>
+            <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>
+            <tr><td>도안 메모</td><td>편집기 상단 "메모" 버튼 — 도안 전체에 대한 메모. 마크다운·이미지 지원</td></tr>
+            <tr><td>평면 1단 방향</td><td>평면 도안 미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>
+            <tr><td>패널 크기 조정</td><td>편집기·미리보기 사이 핸들을 드래그 (좁은 화면에서는 상하 핸들). localStorage 에 저장</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>단축키 — 편집 모드</h3>
         <table class="syntax-table">
           <tbody>
             <tr><td><kbd>Enter</kbd></td><td>현재 단 안에서 줄바꿈</td></tr>
             <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>새 단 추가</td></tr>
             <tr><td><kbd>Shift</kbd>+<kbd>Backspace</kbd></td><td>현재 단 삭제</td></tr>
             <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>위/아래 단으로 포커스 이동</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>단축키 — 미리보기 모드</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>현재 단 안에서 이전/다음 코로 이동 (경계에서 인접 단으로 롤오버)</td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>이전/다음 단</td></tr>
+            <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>첫 단 / 마지막 단</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>현재 코 강조 해제</td></tr>
           </tbody>
         </table>
       </section>

@@ -2,7 +2,7 @@
  * 서술 도안 포매터 — AST 를 HTML 로 렌더.
  *
  * - 색상 주석(`:#rrggbb`) → 해당 기호를 colored span 으로 감쌈
- * - 코멘트(`"..."`) → 각주 마커 `<sup>*, **, ...</sup>` 삽입 후 하단 목록으로 수집
+ * - 코멘트(`"..."`) → 각주 마커 `<sup>*1, *2, ...</sup>` 삽입 후 하단 목록으로 수집
  */
 
 import type { SequenceNode, StitchNode, ParsedRound, ElementNode } from './parser/ast';
@@ -52,8 +52,13 @@ function renderStitch(s: StitchNode, comments: string[]): string {
 
   let marker = '';
   if (s.comment) {
-    comments.push(s.comment);
-    marker = `<sup class="footnote-marker">${'*'.repeat(comments.length)}</sup>`;
+    // 같은 텍스트 코멘트는 번호를 공유 — *1, *2 가 중복되지 않도록 dedupe
+    let idx = comments.indexOf(s.comment);
+    if (idx === -1) {
+      comments.push(s.comment);
+      idx = comments.length - 1;
+    }
+    marker = `<sup class="footnote-marker">*${idx + 1}</sup>`;
   }
 
   const classAttr = 'stitch-token';

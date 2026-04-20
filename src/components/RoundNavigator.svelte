@@ -191,7 +191,7 @@
     {#if narrative.comments.length > 0}
       <ol class="footnotes">
         {#each narrative.comments as c, i (i)}
-          <li><sup>{'*'.repeat(i + 1)}</sup> {c}</li>
+          <li><sup>*{i + 1}</sup> {c}</li>
         {/each}
       </ol>
     {/if}
