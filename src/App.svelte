@@ -9,7 +9,7 @@
   import DropboxMenu from './components/DropboxMenu.svelte';
   import { initializeDropbox } from './stores/dropbox';
   import { mode } from './stores/mode';
-  import { pattern, exportToFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
+  import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
   import { renderNarrative } from './lib/narrative';
   import { marked } from 'marked';
@@ -156,7 +156,8 @@
 
     <div class="btn-group">
       <button type="button" class="icon-btn" onclick={exportToFile} title="파일로 저장 (.crochet.json)"><i class="fa-solid fa-download"></i></button>
-      <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기"><i class="fa-solid fa-folder-open"></i></button>
+      <button type="button" class="icon-btn" onclick={exportAsTextFile} title="텍스트로 저장 (.txt)"><i class="fa-solid fa-file-lines"></i></button>
+      <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기 (.crochet.json / .txt)"><i class="fa-solid fa-folder-open"></i></button>
       <button type="button" class="icon-btn" onclick={handleReset} title="새 도안"><i class="fa-solid fa-file-circle-plus"></i></button>
       <button type="button" class="icon-btn" onclick={() => (helpOpen = true)} title="도안 작성 가이드"><i class="fa-solid fa-circle-question"></i></button>
       <DropboxMenu />
@@ -167,8 +168,8 @@
     <ModeToggle />
 
     <!-- 모바일 파일 탐색기는 accept 의 커스텀 확장자(.crochet.json)를 무시하거나 걸러내므로
-         .json 과 application/json 만 두어 파일 선택이 확실히 되도록 함 -->
-    <input type="file" accept=".json,application/json" bind:this={fileInput} onchange={handleImport} style="display:none" />
+         표준 확장자 기반으로 둠. .txt 는 텍스트 포맷 import 용. -->
+    <input type="file" accept=".json,.txt,application/json,text/plain" bind:this={fileInput} onchange={handleImport} style="display:none" />
   </div>
 </header>
 

@@ -13,6 +13,7 @@ export {
   deleteRound,
   setShape,
   exportToFile,
+  exportAsTextFile,
   importFromFile,
   resetPattern,
 } from './tabs';

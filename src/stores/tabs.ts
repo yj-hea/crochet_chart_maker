@@ -19,7 +19,9 @@ import {
   readFromFile,
   type SavedWorkspaceTab,
   type SavedComment,
+  type SavedPattern,
 } from '$lib/persistence';
+import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 
 export type ShapeKind = 'circular' | 'flat';
 
@@ -387,12 +389,59 @@ export function exportToFile(): void {
   );
 }
 
-/** 파일에서 새 탭으로 불러오기 (현재 탭 덮어쓰지 않음) */
+/** 활성 탭을 텍스트 포맷(.txt)으로 내보내기 */
+export function exportAsTextFile(): void {
+  const ws = get(workspace);
+  const active = ws.tabs.find((t) => t.id === ws.activeTabId);
+  if (!active) return;
+  const patternMemo = active.comments.find((c) => c.target.kind === 'pattern')?.text;
+  const roundMemos = new Map<number, string>();
+  for (const c of active.comments) {
+    if (c.target.kind !== 'round') continue;
+    const rid = c.target.roundId;
+    const idx = active.rounds.findIndex((r) => r.id === rid);
+    if (idx >= 0) roundMemos.set(idx, c.text);
+  }
+  const text = serializeAsText({
+    name: active.name,
+    shape: active.shape,
+    rounds: active.rounds.map((r) => ({ source: r.source })),
+    patternMemo,
+    roundMemos,
+  });
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `${active.name || 'pattern'}-${date}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** 파일에서 새 탭으로 불러오기 (현재 탭 덮어쓰지 않음) — .txt / .crochet.json 둘 다 처리 */
 export async function importFromFile(file: File): Promise<void> {
-  const saved = await readFromFile(file);
+  const isText = file.name.toLowerCase().endsWith('.txt');
+  let saved: SavedPattern;
+  let explicitName: string | undefined;
+  if (isText) {
+    const text = await file.text();
+    const parsed = parseTextFormat(text);
+    saved = parsed.saved;
+    explicitName = parsed.name;
+  } else {
+    saved = await readFromFile(file);
+  }
   workspace.update((ws) => {
     const tabId = makeTabId();
-    const name = (file.name.replace(/\.crochet\.json$/i, '').replace(/\.json$/i, '') || nextTabName(ws.tabs)).slice(0, 30);
+    const fallback = file.name
+      .replace(/\.crochet\.json$/i, '')
+      .replace(/\.json$/i, '')
+      .replace(/\.txt$/i, '')
+      .replace(/-\d{4}-\d{2}-\d{2}$/, ''); // 내보낼 때 붙인 날짜 suffix 제거
+    const name = (explicitName || fallback || nextTabName(ws.tabs)).slice(0, 30);
     const newRoundIds: string[] = saved.rounds.map(() => makeRoundId());
     const newRounds = reparseAll(saved.rounds.map((r, i) => ({
       id: newRoundIds[i]!,
