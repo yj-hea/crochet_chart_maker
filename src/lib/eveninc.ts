@@ -46,6 +46,50 @@ export function evenIncDec(from: number, to: number, base: BaseStitch = 'x'): Ev
   return buildDecrease(from, to, base);
 }
 
+function gcd(a: number, b: number): number {
+  while (b !== 0) { [a, b] = [b, a % b]; }
+  return a;
+}
+
+/**
+ * `plain` 일반 코를 `groups` 그룹으로 균등 분산. 완전 교차(interleave) 방식.
+ *
+ * 큰 그룹(gap+1 SC + V) R 개와 작은 그룹(gap SC + V) S 개를 g=gcd(R, S) 개의
+ * 반복 블록으로 나누고, 블록 안에서 min 만큼 (big, small) 쌍을 먼저 배치한 뒤
+ * 남는 |R-S| 개의 큰/작은 그룹을 뒤에 붙임.
+ * 예) R=8, S=6 → g=2 → 블록 (4B+3S) → `(big, small)*3, big` → ×2
+ *     = `((2x, 1v, 1x, 1v)*3, 2x, 1v)*2`
+ */
+function buildGroups(plain: number, groups: number, base: string, incdec: string): string {
+  const gap = Math.floor(plain / groups);
+  const R = plain - gap * groups;        // 큰 그룹 수 (gap+1 SC)
+  const S = groups - R;                  // 작은 그룹 수 (gap SC)
+
+  const bigStr = gap + 1 > 0 ? `${gap + 1}${base}, 1${incdec}` : `1${incdec}`;
+  const smallStr = gap > 0 ? `${gap}${base}, 1${incdec}` : `1${incdec}`;
+  const repeat = (inner: string, n: number): string => n === 1 ? inner : `(${inner})*${n}`;
+
+  // 단일 타입
+  if (R === 0) return repeat(smallStr, S);
+  if (S === 0) return repeat(bigStr, R);
+
+  // 블록 분할: g 개의 동일 블록으로 반복
+  const g = gcd(R, S);
+  const blockR = R / g;
+  const blockS = S / g;
+  const blockMin = Math.min(blockR, blockS);
+  const blockDiff = Math.abs(blockR - blockS);
+  const extraStr = blockR > blockS ? bigStr : smallStr;
+  const pairStr = `${bigStr}, ${smallStr}`; // 큰→작은 쌍
+
+  const blockParts: string[] = [];
+  if (blockMin > 0) blockParts.push(repeat(pairStr, blockMin));
+  if (blockDiff > 0) blockParts.push(repeat(extraStr, blockDiff));
+  const blockText = blockParts.join(', ');
+
+  return g === 1 ? blockText : `(${blockText})*${g}`;
+}
+
 function buildIncrease(from: number, to: number, base: BaseStitch): EvenIncResult {
   const incCount = to - from;
   if (incCount > from) {
@@ -56,17 +100,8 @@ function buildIncrease(from: number, to: number, base: BaseStitch): EvenIncResul
       summary: `${from}코에서 ${incCount}코 증가는 불가 (늘림 수가 기존 코 수보다 많음)`,
     };
   }
-  // 일반 코 수 = from - incCount. 이를 incCount 그룹으로 나눔.
   const plain = from - incCount;
-  const gap = Math.floor(plain / incCount);
-  const remainder = plain - gap * incCount;
-  const vSym = V_FOR[base];
-  const parts: string[] = [];
-  // 메인 블록: `(gap base, 1 V)*incCount`
-  if (gap > 0) parts.push(`(${gap}${base}, 1${vSym})*${incCount}`);
-  else parts.push(`${incCount}${vSym}`);
-  if (remainder > 0) parts.push(`${remainder}${base}`);
-  const pattern = parts.join(', ');
+  const pattern = buildGroups(plain, incCount, base, V_FOR[base]);
   return {
     kind: 'increase',
     pattern,
@@ -77,7 +112,6 @@ function buildIncrease(from: number, to: number, base: BaseStitch): EvenIncResul
 
 function buildDecrease(from: number, to: number, base: BaseStitch): EvenIncResult {
   const decCount = from - to;
-  // A 는 2코 소비 → 줄임 1번에 2코 사용. 일반 코 수 = from - 2*decCount.
   const plain = from - 2 * decCount;
   if (plain < 0) {
     return {
@@ -87,14 +121,7 @@ function buildDecrease(from: number, to: number, base: BaseStitch): EvenIncResul
       summary: `${from}코에서 ${decCount}코 감소는 불가 (줄임이 너무 많음)`,
     };
   }
-  const gap = Math.floor(plain / decCount);
-  const remainder = plain - gap * decCount;
-  const aSym = A_FOR[base];
-  const parts: string[] = [];
-  if (gap > 0) parts.push(`(${gap}${base}, 1${aSym})*${decCount}`);
-  else parts.push(`${decCount}${aSym}`);
-  if (remainder > 0) parts.push(`${remainder}${base}`);
-  const pattern = parts.join(', ');
+  const pattern = buildGroups(plain, decCount, base, A_FOR[base]);
   return {
     kind: 'decrease',
     pattern,
