@@ -7,7 +7,7 @@
   import TabBar from './components/TabBar.svelte';
   import HelpModal from './components/HelpModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
-  import { initializeDropbox } from './stores/dropbox';
+  import { initializeDropbox, lastDropboxAction } from './stores/dropbox';
   import { mode } from './stores/mode';
   import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
@@ -16,7 +16,15 @@
 
   let fileInput: HTMLInputElement;
   let savedFlash = $state(false);
+  let flashMessage = $state('✓ 저장됨');
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showFlash(msg: string, duration = 1400) {
+    flashMessage = msg;
+    savedFlash = true;
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { savedFlash = false; }, duration);
+  }
   let helpOpen = $state(false);
   let exportMenuOpen = $state(false);
   let exportMenuRoot: HTMLDivElement | undefined = $state();
@@ -125,9 +133,17 @@
   $effect(() => {
     void $lastSavedAt;
     if (!$lastSavedAt) return;
-    savedFlash = true;
-    if (flashTimer) clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => { savedFlash = false; }, 1200);
+    showFlash('✓ 저장됨', 1200);
+  });
+
+  // Dropbox 저장/불러오기 결과 — save 알림과 같은 자리에 잠깐 표시
+  let lastSeenDropboxAt: number | undefined;
+  $effect(() => {
+    const action = $lastDropboxAction;
+    if (!action || action.at === lastSeenDropboxAt) return;
+    lastSeenDropboxAt = action.at;
+    const verb = action.kind === 'save' ? '저장' : '불러오기';
+    showFlash(`✓ ${action.name} ${verb}`, 2200);
   });
 
   async function handleImport(e: Event) {
@@ -173,7 +189,7 @@
 
   <div class="header-actions">
     {#if savedFlash}
-      <span class="save-badge">✓ 저장됨</span>
+      <span class="save-badge">{flashMessage}</span>
     {/if}
 
     <div class="btn-group">

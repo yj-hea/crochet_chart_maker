@@ -13,7 +13,6 @@
   import { isDropboxEnabled } from '$lib/dropbox/config';
 
   let open = $state(false);
-  let savedPath = $state<string | null>(null);
   let button: HTMLButtonElement | undefined = $state();
   let menu: HTMLDivElement | undefined = $state();
   let busy = $state(false);
@@ -34,8 +33,7 @@
     if (busy) return;
     busy = true;
     try {
-      const name = await openFromDropbox();
-      if (name) savedPath = name;
+      await openFromDropbox();
     } catch (err) {
       alert(`Dropbox 불러오기 실패: ${err instanceof Error ? err.message : err}`);
     } finally {
@@ -62,9 +60,9 @@
           busy = false;
           return;
         }
-        savedPath = await saveToDropbox(path, true);
+        await saveToDropbox(path, true);
       } else {
-        savedPath = await saveToDropbox(path, false);
+        await saveToDropbox(path, false);
       }
     } catch (err) {
       alert(`Dropbox 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -82,7 +80,6 @@
     open = false;
     if (!confirm('Dropbox 연결을 해제할까요?')) return;
     await disconnect();
-    savedPath = null;
   }
 </script>
 
@@ -123,9 +120,6 @@
   </div>
 {/if}
 
-{#if savedPath}
-  <span class="saved-flash">✓ {savedPath}</span>
-{/if}
 
 <style>
   .dropbox-menu {
@@ -155,7 +149,7 @@
   .dropdown {
     position: absolute;
     top: calc(100% + 4px);
-    right: 0;
+    left: 0;
     min-width: 200px;
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -183,15 +177,5 @@
     height: 1px;
     background: var(--border-light);
     margin: 4px 2px;
-  }
-  .saved-flash {
-    font-size: 11px;
-    color: var(--success);
-    margin-left: 8px;
-    animation: fade-in 0.2s ease-out;
-  }
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
 </style>
