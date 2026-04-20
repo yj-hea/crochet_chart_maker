@@ -5,13 +5,15 @@
     connect,
     disconnect,
     openFromDropbox,
+    saveToDropbox,
+    checkExisting,
+    normalizeSavePath,
+    defaultSaveName,
   } from '$stores/dropbox';
   import { isDropboxEnabled } from '$lib/dropbox/config';
-  import DropboxSaveModal from './DropboxSaveModal.svelte';
 
   let open = $state(false);
   let savedPath = $state<string | null>(null);
-  let showSaveModal = $state(false);
   let button: HTMLButtonElement | undefined = $state();
   let menu: HTMLDivElement | undefined = $state();
   let busy = $state(false);
@@ -50,7 +52,25 @@
       }
       return;
     }
-    showSaveModal = true;
+    if (busy) return;
+    busy = true;
+    try {
+      const path = normalizeSavePath(defaultSaveName());
+      const rev = await checkExisting(path);
+      if (rev) {
+        if (!confirm(`'${path}' 파일이 이미 있습니다. 덮어쓸까요?`)) {
+          busy = false;
+          return;
+        }
+        savedPath = await saveToDropbox(path, true);
+      } else {
+        savedPath = await saveToDropbox(path, false);
+      }
+    } catch (err) {
+      alert(`Dropbox 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      busy = false;
+    }
   }
 
   async function handleConnect() {
@@ -101,13 +121,6 @@
       </div>
     {/if}
   </div>
-{/if}
-
-{#if showSaveModal}
-  <DropboxSaveModal
-    onClose={() => (showSaveModal = false)}
-    onSaved={(p) => { savedPath = p; showSaveModal = false; }}
-  />
 {/if}
 
 {#if savedPath}

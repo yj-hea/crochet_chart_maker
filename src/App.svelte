@@ -163,6 +163,7 @@
     </div>
 
     <div class="header-divider"></div>
+    <div class="flex-break"></div>
     <ModeToggle />
 
     <!-- 모바일 파일 탐색기는 accept 의 커스텀 확장자(.crochet.json)를 무시하거나 걸러내므로
@@ -314,6 +315,26 @@
     margin-right: 6px;
     font-weight: 500;
     animation: fade-in 0.2s ease-out;
+    align-self: center;
+  }
+  .flex-break { display: none; }
+  /* 좁은 화면: ModeToggle 앞에 flex-break 가 활성화되어 자동으로 줄바꿈 */
+  @media (max-width: 640px) {
+    .flex-break {
+      display: block;
+      flex-basis: 100%;
+      height: 0;
+    }
+    .save-badge {
+      position: absolute;
+      top: 6px;
+      right: 12px;
+      margin-right: 0;
+      padding: 2px 8px;
+      background: rgba(67, 160, 71, 0.14);
+      border-radius: 10px;
+      pointer-events: none;
+    }
   }
   @keyframes fade-in {
     from { opacity: 0; }
