@@ -8,7 +8,8 @@
   import HelpModal from './components/HelpModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
   import { initializeDropbox, lastDropboxAction } from './stores/dropbox';
-  import { mode } from './stores/mode';
+  import { mode, currentRound, currentStitch } from './stores/mode';
+  import { setTabProgress } from './stores/tabs';
   import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
   import { renderNarrative } from './lib/narrative';
@@ -146,6 +147,33 @@
     showFlash(`✓ ${action.name} ${verb}`, 2200);
   });
 
+  // ---- Read 모드 진행 상태(단·코) 를 활성 탭에 양방향 동기화 ----
+  let lastSyncedTabId: string | undefined;
+  $effect(() => {
+    const id = $workspace.activeTabId;
+    if (id === lastSyncedTabId) return;
+    lastSyncedTabId = id;
+    const tab = $workspace.tabs.find((t) => t.id === id);
+    const p = tab?.progress;
+    currentRound.set(p?.round ?? 1);
+    currentStitch.set(p?.stitch ?? null);
+  });
+
+  $effect(() => {
+    const r = $currentRound;
+    const s = $currentStitch;
+    const id = $workspace.activeTabId;
+    // 활성 탭이 바뀌는 순간(복원) 에 stores 가 set 되는데, 아직 lastSyncedTabId 가 갱신되기 전이면
+    // 새 탭의 progress 가 아닌 이전 값이 쓰일 수 있음 → 같은 tick 에서 첫 effect 가 이미 동기화하므로
+    // progress 를 update 하는 건 안전하게 항상 수행.
+    if (!id) return;
+    const tab = $workspace.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    const prev = tab.progress;
+    if (prev?.round === r && prev?.stitch === s) return;  // no-op
+    setTabProgress(id, { round: r, stitch: s });
+  });
+
   async function handleImport(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -161,7 +189,6 @@
   }
 
   const validRoundCount = $derived($pattern.rounds.filter((r) => r.expanded).length);
-  const roundSources = $derived($pattern.rounds.map((r) => r.source));
 
   // Read 모드 서술 도안 — 활성 탭의 코멘트 조회
   const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
@@ -268,7 +295,7 @@
   <main class="read-layout">
     {#if validRoundCount > 0}
       <div class="read-nav-bar">
-        <RoundNavigator totalRounds={validRoundCount} {roundSources} />
+        <RoundNavigator totalRounds={validRoundCount} />
       </div>
     {/if}
     <section class="read-viewer">

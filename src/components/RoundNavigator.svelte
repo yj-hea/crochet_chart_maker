@@ -1,14 +1,13 @@
 <script lang="ts">
-  import { currentRound, currentStitch, saveProgress, hashSources, loadProgress } from '$stores/mode';
+  import { currentRound, currentStitch } from '$stores/mode';
   import { workspace, type Comment } from '$stores/tabs';
   import { renderNarrative } from '$lib/narrative';
   import CommentPin from './CommentPin.svelte';
 
   interface Props {
     totalRounds: number;
-    roundSources: string[];
   }
-  let { totalRounds, roundSources }: Props = $props();
+  let { totalRounds }: Props = $props();
 
   // 활성 탭과 현재 단의 parsed + 코멘트 조회
   const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
@@ -32,18 +31,12 @@
     );
   });
 
-  // 도안이 바뀌면 진행 상태 복원/clamp
+  // 단 수가 줄어든 경우 currentRound 가 범위 밖이면 clamp
   $effect(() => {
-    const hash = hashSources(roundSources);
-    const restored = loadProgress(hash, totalRounds);
-    currentRound.set(restored);
-  });
-
-  // currentRound 변경 시 localStorage에 저장
-  $effect(() => {
-    const r = $currentRound;
-    const hash = hashSources(roundSources);
-    saveProgress(hash, r);
+    const tr = totalRounds;
+    if (tr <= 0) return;
+    if ($currentRound > tr) currentRound.set(tr);
+    else if ($currentRound < 1) currentRound.set(1);
   });
 
   function prev() { currentStitch.set(null); currentRound.update((r) => Math.max(1, r - 1)); }
@@ -99,7 +92,7 @@
   }
 
   // 현재 단의 원본 소스 (narrative 미적용 시 fallback)
-  const currentText = $derived(roundSources[$currentRound - 1] ?? '');
+  const currentText = $derived(currentRoundData?.source ?? '');
 </script>
 
 <svelte:window onkeydown={(e) => {

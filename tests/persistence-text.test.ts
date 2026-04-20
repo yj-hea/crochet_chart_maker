@@ -119,6 +119,29 @@ describe('parseTextFormat', () => {
     expect(r.saved.rounds.map((rr) => rr.source)).toEqual(input.rounds.map((rr) => rr.source));
   });
 
+  it('# 진행 — stitch 있음 / 없음 둘 다 파싱', () => {
+    const a = parseTextFormat('# 진행\n3단 5코\n# 도안\n1단:: x\n');
+    expect(a.saved.progress).toEqual({ round: 3, stitch: 4 }); // 0-based
+    const b = parseTextFormat('# 진행\n2단\n# 도안\n1단:: x\n');
+    expect(b.saved.progress).toEqual({ round: 2, stitch: null });
+  });
+
+  it('# 진행 serialize — stitch null / stitch 있음', () => {
+    const a = serializeAsText({
+      name: 'n', shape: 'circular',
+      rounds: [{ source: 'x' }],
+      progress: { round: 3, stitch: 4 },
+    });
+    expect(a).toContain('# 진행\n3단 5코');
+    const b = serializeAsText({
+      name: 'n', shape: 'circular',
+      rounds: [{ source: 'x' }],
+      progress: { round: 2, stitch: null },
+    });
+    expect(b).toContain('# 진행\n2단');
+    expect(b).not.toContain('코');
+  });
+
   it('round trip — serializeAsText → parseTextFormat', () => {
     const input = {
       name: '예시',

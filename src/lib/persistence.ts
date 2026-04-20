@@ -19,6 +19,14 @@ export interface SavedRound {
   direction?: 'forward' | 'reverse';
 }
 
+/** Read 모드 진행 상태 — 파일에 포함되어 다른 기기에서 이어볼 수 있게 함 */
+export interface SavedProgress {
+  /** 1-based 현재 단 */
+  round: number;
+  /** 0-based 현재 코. null = 단 전체 보기 */
+  stitch: number | null;
+}
+
 export interface SavedComment {
   id: string;
   text: string;
@@ -39,6 +47,7 @@ export interface SavedPattern {
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
+  progress?: SavedProgress;
 }
 
 export interface SerializeInput {
@@ -46,6 +55,7 @@ export interface SerializeInput {
   /** id 는 옵션 — 코멘트의 round 참조를 직렬화 시 index 로 정규화하는 데 사용 */
   rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
   comments?: ReadonlyArray<SavedComment>;
+  progress?: SavedProgress;
 }
 
 /** 현재 상태를 저장용 객체로 직렬화. id/parsed/expanded 등 파생값은 제외 */
@@ -70,7 +80,18 @@ export function serialize(state: SerializeInput): SavedPattern {
       return out;
     }),
     ...(normalizedComments && normalizedComments.length > 0 ? { comments: normalizedComments } : {}),
+    ...(state.progress ? { progress: state.progress } : {}),
   };
+}
+
+/** 파일·localStorage 에서 읽은 값에 대한 progress 검증. 유효하지 않으면 undefined. */
+function validateProgress(raw: unknown): SavedProgress | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.round !== 'number' || p.round < 1) return undefined;
+  const stitch = p.stitch;
+  if (stitch !== null && (typeof stitch !== 'number' || stitch < 0)) return undefined;
+  return { round: p.round, stitch: stitch as number | null };
 }
 
 /**
@@ -103,12 +124,14 @@ export function validate(data: unknown): SavedPattern {
     return out;
   });
   const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
+  const progress = validateProgress(d.progress);
   return {
     version: 1,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : '',
     shape: d.shape,
     rounds,
     ...(comments ? { comments } : {}),
+    ...(progress ? { progress } : {}),
   };
 }
 
@@ -182,6 +205,7 @@ export interface SavedWorkspaceTab {
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
+  progress?: SavedProgress;
 }
 
 export interface SavedWorkspace {
@@ -207,6 +231,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
         return out;
       }),
       ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
+      ...(t.progress ? { progress: t.progress } : {}),
     })),
     activeTabId: ws.activeTabId,
   };
@@ -240,6 +265,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
         return out;
       }),
       ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
+      ...(validateProgress(tt.progress) ? { progress: validateProgress(tt.progress) as SavedProgress } : {}),
     };
   });
   const activeTabId = typeof d.activeTabId === 'string' ? d.activeTabId : (tabs[0]?.id ?? '');

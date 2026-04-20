@@ -20,6 +20,7 @@ import {
   type SavedWorkspaceTab,
   type SavedComment,
   type SavedPattern,
+  type SavedProgress,
 } from '$lib/persistence';
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 
@@ -56,6 +57,8 @@ export interface Tab {
   shape: ShapeKind;
   rounds: PatternRoundState[];
   comments: Comment[];
+  /** Read 모드 진행 상태 — 파일에 포함해 다른 기기에서 이어보기 가능 */
+  progress?: SavedProgress;
 }
 
 export interface WorkspaceState {
@@ -116,6 +119,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     shape: saved.shape,
     rounds: reparseAll(rounds),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
+    ...(saved.progress ? { progress: saved.progress } : {}),
   };
 }
 
@@ -201,11 +205,26 @@ workspace.subscribe((ws) => {
         return out;
       }),
       comments: t.comments,
+      ...(t.progress ? { progress: t.progress } : {}),
     })),
     activeTabId: ws.activeTabId,
   });
   lastSavedAt.set(new Date());
 });
+
+/** 지정한 탭의 progress 를 설정 (Read 모드 네비게이션 연동용) */
+export function setTabProgress(id: string, progress: SavedProgress | undefined): void {
+  workspace.update((ws) => ({
+    ...ws,
+    tabs: ws.tabs.map((t) => {
+      if (t.id !== id) return t;
+      const next = { ...t };
+      if (progress) next.progress = progress;
+      else delete next.progress;
+      return next;
+    }),
+  }));
+}
 
 /** 활성 탭의 pattern 상태 (기존 pattern store 역할) */
 export const pattern = derived(workspace, ($ws) => {
@@ -384,6 +403,7 @@ export function exportToFile(): void {
       shape: active.shape,
       rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
       comments: active.comments,
+      ...(active.progress ? { progress: active.progress } : {}),
     },
     active.name || 'pattern',
   );
@@ -408,6 +428,7 @@ export function exportAsTextFile(): void {
     rounds: active.rounds.map((r) => ({ source: r.source })),
     patternMemo,
     roundMemos,
+    progress: active.progress,
   });
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -449,15 +470,33 @@ export async function importFromFile(file: File): Promise<void> {
       direction: r.direction,
     })));
     const newComments = remapSavedComments(saved.comments ?? [], newRoundIds, true);
+    const clampedProgress = clampProgress(saved.progress, newRounds);
     const newTab: Tab = {
       id: tabId,
       name,
       shape: saved.shape,
       rounds: newRounds,
       comments: newComments,
+      ...(clampedProgress ? { progress: clampedProgress } : {}),
     };
     return { tabs: [...ws.tabs, newTab], activeTabId: tabId };
   });
+}
+
+/** 저장된 progress 가 현재 단 수/코 수에 맞는지 clamp. 범위 밖이면 1단/stitch null. */
+function clampProgress(
+  progress: SavedProgress | undefined,
+  rounds: PatternRoundState[],
+): SavedProgress | undefined {
+  if (!progress || rounds.length === 0) return undefined;
+  const round = Math.min(Math.max(1, progress.round), rounds.length);
+  const r = rounds[round - 1];
+  const stitchTotal = r?.expanded?.ops.length ?? 0;
+  const stitch =
+    progress.stitch === null ? null
+      : progress.stitch >= 0 && progress.stitch < stitchTotal ? progress.stitch
+      : null;
+  return { round, stitch };
 }
 
 /** 현재 활성 탭을 빈 상태로 초기화 */

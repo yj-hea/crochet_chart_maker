@@ -22,7 +22,7 @@
  *   - 스티치 인라인 코멘트/색은 source 안의 `"..."`/`:색` 으로 표현되어 손실 없이 보존됨.
  */
 
-import type { SavedPattern, SavedComment } from './persistence';
+import type { SavedPattern, SavedComment, SavedProgress } from './persistence';
 import type { ShapeKind } from '$stores/pattern';
 
 const DEFAULT_COMMENT_COLOR = '#FFE066';
@@ -35,6 +35,8 @@ export interface TextSerializeInput {
   patternMemo?: string;
   /** 0-based round index → 마크다운 메모 텍스트. 없는 index 는 메모 없음. */
   roundMemos?: ReadonlyMap<number, string>;
+  /** Read 모드 진행 위치. 없으면 `# 진행` 섹션 생략. */
+  progress?: SavedProgress;
 }
 
 export function serializeAsText(input: TextSerializeInput): string {
@@ -53,6 +55,12 @@ export function serializeAsText(input: TextSerializeInput): string {
     }
   });
   sections.push(`# 도안\n${lines.join('\n')}`);
+
+  if (input.progress) {
+    const { round, stitch } = input.progress;
+    const body = stitch === null ? `${round}단` : `${round}단 ${stitch + 1}코`;
+    sections.push(`# 진행\n${body}`);
+  }
 
   return sections.join('\n\n') + '\n';
 }
@@ -86,6 +94,7 @@ export function parseTextFormat(text: string): TextImportResult {
   let name: string | undefined;
   let shape: ShapeKind = 'circular';
   let patternMemo: string | undefined;
+  let progress: SavedProgress | undefined;
   const rounds: { source: string; memo?: string }[] = [];
 
   for (const sec of sections) {
@@ -103,6 +112,17 @@ export function parseTextFormat(text: string): TextImportResult {
       case '도안 메모':
         if (joined) patternMemo = joined;
         break;
+      case '진행': {
+        // `2단` 또는 `2단 3코` (사용자 1-based 표기) 를 받아 round/stitch(0-based) 로 변환.
+        const line = joined.split('\n')[0] ?? '';
+        const m = line.match(/(\d+)\s*단(?:\s+(\d+)\s*코)?/);
+        if (m) {
+          const round = parseInt(m[1]!, 10);
+          const stitch = m[2] !== undefined ? parseInt(m[2]!, 10) - 1 : null;
+          if (round >= 1) progress = { round, stitch: stitch !== null && stitch >= 0 ? stitch : null };
+        }
+        break;
+      }
       case '도안': {
         // `N단::` 로 시작하는 줄 = 새 단 시작, 이후 `N단::`/`>` 가 아닌 줄은
         // 현재 단 source 의 이어지는 줄로 간주해서 개행 포함 소스를 보존.
@@ -166,6 +186,7 @@ export function parseTextFormat(text: string): TextImportResult {
     shape,
     rounds: rounds.map((r) => ({ source: r.source })),
     ...(comments.length > 0 ? { comments } : {}),
+    ...(progress ? { progress } : {}),
   };
   return { saved, name };
 }

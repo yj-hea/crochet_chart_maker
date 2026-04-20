@@ -1,5 +1,8 @@
 /**
  * Edit / Read 모드 상태 + Read 모드 단 진행 추적.
+ *
+ * 진행(round/stitch)은 활성 탭에 embed 됨 (tabs store). 여기 `currentRound`/`currentStitch` 는
+ * UI 가 직접 다루는 writable 이고, `App.svelte` 에서 활성 탭 progress 와 양방향 동기화된다.
  */
 
 import { writable } from 'svelte/store';
@@ -28,35 +31,3 @@ export const showConnections = writable<boolean>(true);
  * true 면 1단이 위, 이후 단이 아래로.
  */
 export const flatFlipVertical = writable<boolean>(false);
-
-const STORAGE_KEY = 'crochet-chart:read-progress';
-
-interface ReadProgress {
-  /** 도안 내용의 간단한 해시 — 도안이 바뀌면 진행 상태 무효화 */
-  hash: string;
-  round: number;
-}
-
-/** 도안 소스들의 간단한 해시. 내용이 바뀌면 다른 값. */
-export function hashSources(sources: string[]): string {
-  return sources.join('\n');
-}
-
-export function saveProgress(hash: string, round: number): void {
-  try {
-    const data: ReadProgress = { hash, round };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch { /* ignore */ }
-}
-
-export function loadProgress(hash: string, maxRound: number): number {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return 1;
-    const data: ReadProgress = JSON.parse(raw);
-    if (data.hash !== hash) return 1;
-    return Math.min(Math.max(1, data.round), maxRound);
-  } catch {
-    return 1;
-  }
-}
