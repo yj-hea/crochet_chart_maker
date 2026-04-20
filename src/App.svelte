@@ -23,38 +23,81 @@
   onMount(() => { void initializeDropbox(); });
 
   // ---- 패널 리사이즈 ----
-  const SPLIT_STORAGE_KEY = 'crochet-chart:split-ratio';
-  const DEFAULT_RATIO = 0.42;
+  const SPLIT_H_KEY = 'crochet-chart:split-ratio';
+  const SPLIT_V_KEY = 'crochet-chart:split-ratio-v';
+  const DEFAULT_RATIO_H = 0.42;
+  const DEFAULT_RATIO_V = 0.5;
 
-  function loadSplitRatio(): number {
+  function loadRatio(key: string, fallback: number): number {
     try {
-      const v = localStorage.getItem(SPLIT_STORAGE_KEY);
+      const v = localStorage.getItem(key);
       if (v) { const n = parseFloat(v); if (n > 0.15 && n < 0.85) return n; }
     } catch {}
-    return DEFAULT_RATIO;
+    return fallback;
   }
 
-  let splitRatio = $state(loadSplitRatio());
+  let splitRatio = $state(loadRatio(SPLIT_H_KEY, DEFAULT_RATIO_H));
+  let splitRatioV = $state(loadRatio(SPLIT_V_KEY, DEFAULT_RATIO_V));
   let resizing = $state(false);
+  // 좁은 화면(세로 배치) 여부 — matchMedia 로 추적해 분할 방향을 전환
+  let narrow = $state(false);
 
-  function startResize(e: MouseEvent) {
+  onMount(() => {
+    const mq = window.matchMedia('(max-width: 800px)');
+    narrow = mq.matches;
+    const handler = (e: MediaQueryListEvent) => { narrow = e.matches; };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
+
+  function startResize(e: MouseEvent | TouchEvent, orientation: 'h' | 'v') {
     e.preventDefault();
     resizing = true;
-    const onMove = (ev: MouseEvent) => {
+    const isTouch = 'touches' in e;
+    const getXY = (ev: MouseEvent | TouchEvent): { x: number; y: number } | null => {
+      if ('touches' in ev) {
+        const t = ev.touches[0] ?? ev.changedTouches[0];
+        return t ? { x: t.clientX, y: t.clientY } : null;
+      }
+      return { x: ev.clientX, y: ev.clientY };
+    };
+    const onMove = (ev: MouseEvent | TouchEvent) => {
       const container = document.querySelector('.edit-layout') as HTMLElement | null;
       if (!container) return;
+      const xy = getXY(ev);
+      if (!xy) return;
       const rect = container.getBoundingClientRect();
-      const ratio = (ev.clientX - rect.left) / rect.width;
-      splitRatio = Math.min(0.8, Math.max(0.2, ratio));
+      if (orientation === 'h') {
+        const ratio = (xy.x - rect.left) / rect.width;
+        splitRatio = Math.min(0.8, Math.max(0.2, ratio));
+      } else {
+        const ratio = (xy.y - rect.top) / rect.height;
+        splitRatioV = Math.min(0.8, Math.max(0.2, ratio));
+      }
     };
     const onUp = () => {
       resizing = false;
-      try { localStorage.setItem(SPLIT_STORAGE_KEY, String(splitRatio)); } catch {}
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      try {
+        localStorage.setItem(orientation === 'h' ? SPLIT_H_KEY : SPLIT_V_KEY,
+          String(orientation === 'h' ? splitRatio : splitRatioV));
+      } catch {}
+      if (isTouch) {
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onUp);
+        window.removeEventListener('touchcancel', onUp);
+      } else {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      }
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    if (isTouch) {
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+      window.addEventListener('touchcancel', onUp);
+    } else {
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
   }
 
   $effect(() => {
@@ -136,12 +179,23 @@
 
 <!-- ===== Edit Mode ===== -->
 {#if $mode === 'edit'}
-  <main class="edit-layout" style="grid-template-columns: {splitRatio}fr 8px {1 - splitRatio}fr;" class:resizing>
+  <main
+    class="edit-layout"
+    class:resizing
+    class:stacked={narrow}
+    style={narrow
+      ? `grid-template-rows: ${splitRatioV}fr 8px ${1 - splitRatioV}fr;`
+      : `grid-template-columns: ${splitRatio}fr 8px ${1 - splitRatio}fr;`}
+  >
     <section class="panel editor-panel">
       <PatternEditor />
     </section>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="splitter" onmousedown={startResize}>
+    <div
+      class="splitter {narrow ? 'splitter-v' : 'splitter-h'}"
+      onmousedown={(e) => startResize(e, narrow ? 'v' : 'h')}
+      ontouchstart={(e) => startResize(e, narrow ? 'v' : 'h')}
+    >
       <div class="splitter-line"></div>
     </div>
     <section class="panel viewer-panel">
@@ -307,6 +361,9 @@
     user-select: none;
     cursor: col-resize;
   }
+  .edit-layout.resizing.stacked {
+    cursor: row-resize;
+  }
   .panel {
     display: flex;
     flex-direction: column;
@@ -320,20 +377,34 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: col-resize;
     transition: opacity 0.15s;
   }
+  .splitter-h { cursor: col-resize; }
+  .splitter-v { cursor: row-resize; }
   .splitter-line {
-    width: 3px;
-    height: 48px;
     border-radius: 2px;
     background: var(--border);
     transition: all 0.15s;
   }
+  .splitter-h .splitter-line {
+    width: 3px;
+    height: 48px;
+  }
+  .splitter-v .splitter-line {
+    width: 48px;
+    height: 3px;
+  }
   .splitter:hover .splitter-line,
   .edit-layout.resizing .splitter-line {
     background: var(--accent);
+  }
+  .splitter-h:hover .splitter-line,
+  .edit-layout.resizing .splitter-h .splitter-line {
     height: 64px;
+  }
+  .splitter-v:hover .splitter-line,
+  .edit-layout.resizing .splitter-v .splitter-line {
+    width: 64px;
   }
 
   /* ===== Read Layout ===== */
@@ -454,12 +525,8 @@
   }
 
   @media (max-width: 800px) {
-    .edit-layout {
-      display: flex;
-      flex-direction: column;
-      height: auto;
+    .edit-layout.stacked {
+      grid-template-columns: 1fr;
     }
-    .splitter { display: none; }
-    .panel { min-height: 300px; }
   }
 </style>
