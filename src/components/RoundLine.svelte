@@ -35,6 +35,7 @@
     onDelete: () => void;
     onToggleDirection?: () => void;
     onAddComment?: () => void;
+    onCompress?: () => void;
     onArrowUp?: (col: number) => void;
     onArrowDown?: (col: number) => void;
     onArrowLeftBoundary?: () => void;
@@ -60,6 +61,7 @@
     onDelete,
     onToggleDirection,
     onAddComment,
+    onCompress,
     onArrowUp,
     onArrowDown,
     onArrowLeftBoundary,
@@ -290,6 +292,17 @@
       <i class={direction === 'forward' ? directionIcon.forward : directionIcon.reverse}></i>
     </button>
   {/if}
+  {#if onCompress}
+    <button
+      type="button"
+      class="compress-btn"
+      onclick={onCompress}
+      title="패턴 압축하기 (반복되는 코를 N코 / (...)*N 로)"
+      aria-label="패턴 압축하기"
+    >
+      <i class="fa-solid fa-compress"></i>
+    </button>
+  {/if}
   <button
     type="button"
     class="delete-btn"
@@ -391,6 +404,29 @@
     justify-content: center;
   }
   .dir-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .compress-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin-top: 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .compress-btn:hover {
     background: var(--bg-hover);
     border-color: var(--border);
     color: var(--text);

@@ -9,6 +9,7 @@
   import { setRoundDirection, addComment, workspace } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import { validateRound } from '$lib/validate';
+  import { compressRoundSource } from '$lib/compress';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
@@ -128,6 +129,13 @@
     addComment({ kind: 'round', roundId }, '');
   }
 
+  function handleCompress(roundId: string) {
+    const round = $pattern.rounds.find((r) => r.id === roundId);
+    if (!round) return;
+    const compressed = compressRoundSource(round.source);
+    if (compressed !== round.source) updateRoundSource(roundId, compressed);
+  }
+
   function handleAddPatternComment() {
     addComment({ kind: 'pattern' }, '');
   }
@@ -172,6 +180,7 @@
       onDelete={() => handleDelete(round.id)}
       onToggleDirection={() => handleToggleDirection(round.id)}
       onAddComment={() => handleAddRoundComment(round.id)}
+      onCompress={() => handleCompress(round.id)}
       onArrowUp={(col) => handleArrowUp(round.id, col)}
       onArrowDown={(col) => handleArrowDown(round.id, col)}
       onArrowLeftBoundary={() => handleArrowLeftBoundary(round.id)}
