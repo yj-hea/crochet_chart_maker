@@ -10,6 +10,8 @@
   import { initializeDropbox, lastDropboxAction } from './stores/dropbox';
   import { mode, currentRound, currentStitch } from './stores/mode';
   import { setTabProgress } from './stores/tabs';
+  import { renderedChart } from './stores/rendered';
+  import { placeDropdown } from './lib/dropdown-place';
   import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
   import { renderNarrative } from './lib/narrative';
@@ -29,6 +31,8 @@
   let helpOpen = $state(false);
   let exportMenuOpen = $state(false);
   let exportMenuRoot: HTMLDivElement | undefined = $state();
+  let exportMenuTrigger: HTMLButtonElement | undefined = $state();
+  let exportMenuEl: HTMLDivElement | undefined = $state();
 
   // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화
   onMount(() => { void initializeDropbox(); });
@@ -44,6 +48,20 @@
     return () => window.removeEventListener('click', onDocClick);
   });
 
+  // 드롭다운을 뷰포트 안에 clamp (모바일 등 좁은 화면에서 창 밖으로 나가지 않도록)
+  $effect(() => {
+    if (!exportMenuOpen) return;
+    // DOM 장착 직후 한 번, 그리고 viewport resize/scroll 에 반응
+    queueMicrotask(() => placeDropdown(exportMenuTrigger, exportMenuEl, 'right'));
+    const reflow = () => placeDropdown(exportMenuTrigger, exportMenuEl, 'right');
+    window.addEventListener('resize', reflow);
+    window.addEventListener('scroll', reflow, true);
+    return () => {
+      window.removeEventListener('resize', reflow);
+      window.removeEventListener('scroll', reflow, true);
+    };
+  });
+
   function chooseExportJson() {
     exportMenuOpen = false;
     exportToFile();
@@ -51,6 +69,74 @@
   function chooseExportText() {
     exportMenuOpen = false;
     exportAsTextFile();
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function activeBaseName(): string {
+    const ws = $workspace;
+    const active = ws.tabs.find((t) => t.id === ws.activeTabId);
+    return (active?.name || 'pattern').trim() || 'pattern';
+  }
+
+  function chooseExportSvg() {
+    exportMenuOpen = false;
+    const r = $renderedChart;
+    if (!r) return;
+    // viewBox 기반 SVG 에 width/height 를 명시해 다른 뷰어에서 자연 크기로 열리도록 보정
+    const sized = r.svg.replace(
+      /<svg ([^>]*viewBox="[^"]+")/,
+      `<svg $1 width="${r.width}" height="${r.height}"`,
+    );
+    const date = new Date().toISOString().slice(0, 10);
+    downloadBlob(new Blob([sized], { type: 'image/svg+xml;charset=utf-8' }), `${activeBaseName()}-${date}.svg`);
+  }
+
+  async function chooseExportPng() {
+    exportMenuOpen = false;
+    const r = $renderedChart;
+    if (!r) return;
+    const scale = 2;  // 레티나 대응
+    const sized = r.svg.replace(
+      /<svg ([^>]*viewBox="[^"]+")/,
+      `<svg $1 width="${r.width}" height="${r.height}"`,
+    );
+    const svgBlob = new Blob([sized], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    try {
+      const img = new Image();
+      img.src = svgUrl;
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res();
+        img.onerror = () => rej(new Error('SVG 이미지 로드 실패'));
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.ceil(r.width * scale));
+      canvas.height = Math.max(1, Math.ceil(r.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const date = new Date().toISOString().slice(0, 10);
+      await new Promise<void>((res) => canvas.toBlob((b) => {
+        if (b) downloadBlob(b, `${activeBaseName()}-${date}.png`);
+        res();
+      }, 'image/png'));
+    } catch (err) {
+      alert(`PNG 내보내기 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      URL.revokeObjectURL(svgUrl);
+    }
   }
 
   // ---- 패널 리사이즈 ----
@@ -228,6 +314,7 @@
           type="button"
           class="icon-btn"
           onclick={() => (exportMenuOpen = !exportMenuOpen)}
+          bind:this={exportMenuTrigger}
           aria-haspopup="true"
           aria-expanded={exportMenuOpen}
           title="내보내기"
@@ -235,12 +322,18 @@
           <i class="fa-solid fa-download"></i>
         </button>
         {#if exportMenuOpen}
-          <div class="dropdown" role="menu">
+          <div class="dropdown" role="menu" bind:this={exportMenuEl}>
             <button type="button" class="item" onclick={chooseExportJson} role="menuitem">
               <i class="fa-solid fa-file-code"></i> 크로셰 JSON (.crochet.json)
             </button>
             <button type="button" class="item" onclick={chooseExportText} role="menuitem">
               <i class="fa-solid fa-file-lines"></i> 텍스트 (.txt)
+            </button>
+            <button type="button" class="item" onclick={chooseExportSvg} role="menuitem" disabled={!$renderedChart}>
+              <i class="fa-solid fa-file-image"></i> 이미지 SVG (.svg)
+            </button>
+            <button type="button" class="item" onclick={chooseExportPng} role="menuitem" disabled={!$renderedChart}>
+              <i class="fa-solid fa-image"></i> 이미지 PNG (.png)
             </button>
           </div>
         {/if}
@@ -472,7 +565,8 @@
     align-items: center;
     gap: 8px;
   }
-  .export-menu .item:hover { background: var(--bg-hover); }
+  .export-menu .item:hover:not(:disabled) { background: var(--bg-hover); }
+  .export-menu .item:disabled { opacity: 0.4; cursor: not-allowed; }
   .header-divider {
     width: 1px;
     height: 22px;

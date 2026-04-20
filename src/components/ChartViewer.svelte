@@ -1,14 +1,13 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
   import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical } from '$stores/mode';
-  import { layoutCircular } from '$lib/layout/circular';
-  import { layoutFlat } from '$lib/layout/flat';
-  import { renderSvg } from '$lib/render/svg';
-  import type { ExpandedRound } from '$lib/expand/op';
+  import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
 
   let modalOpen = $state(false);
   let modalSvg = $state('');
+
+  const rendered = $derived($renderedChart);
 
   function openModal() {
     if (!rendered) return;
@@ -17,24 +16,6 @@
     modalSvg = svgEl ? svgEl.outerHTML : rendered.svg;
     modalOpen = true;
   }
-
-  const rendered = $derived.by(() => {
-    const validRounds: ExpandedRound[] = [];
-    for (const r of $pattern.rounds) {
-      if (r.expanded) validRounds.push(r.expanded);
-      else break;
-    }
-    if (validRounds.length === 0) return null;
-    const layout = $pattern.shape === 'circular'
-      ? layoutCircular(validRounds)
-      : layoutFlat(validRounds, { flipVertical: $flatFlipVertical });
-    return {
-      svg: renderSvg({ layout, showGrid: $showGrid, showConnections: $showConnections }),
-      width: layout.bounds.width,
-      height: layout.bounds.height,
-      totalRounds: validRounds.length,
-    };
-  });
 
   // SVG 컨테이너 ref — 렌더 후 g.round 요소에 직접 하이라이트 스타일 적용
   let svgWrap: HTMLDivElement | undefined = $state();
@@ -193,27 +174,10 @@
     g.parentNode?.insertBefore(path, g);
   }
 
-  function downloadSvg() {
-    if (!rendered) return;
-    const blob = new Blob([rendered.svg], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `crochet-chart-${new Date().toISOString().slice(0, 10)}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
 </script>
 
 <div class="chart-viewer">
   <div class="toolbar">
-    {#if $mode === 'read'}
-      <button type="button" class="tool-btn download-btn" onclick={downloadSvg} disabled={!rendered}>
-        <i class="fa-solid fa-file-arrow-down"></i> SVG 다운로드
-      </button>
-    {/if}
     <span class="spacer"></span>
     <button
       type="button"

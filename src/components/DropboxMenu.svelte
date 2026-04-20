@@ -11,11 +11,24 @@
     defaultSaveName,
   } from '$stores/dropbox';
   import { isDropboxEnabled } from '$lib/dropbox/config';
+  import { placeDropdown } from '$lib/dropdown-place';
 
   let open = $state(false);
   let button: HTMLButtonElement | undefined = $state();
   let menu: HTMLDivElement | undefined = $state();
   let busy = $state(false);
+
+  $effect(() => {
+    if (!open) return;
+    queueMicrotask(() => placeDropdown(button, menu, 'left'));
+    const reflow = () => placeDropdown(button, menu, 'left');
+    window.addEventListener('resize', reflow);
+    window.addEventListener('scroll', reflow, true);
+    return () => {
+      window.removeEventListener('resize', reflow);
+      window.removeEventListener('scroll', reflow, true);
+    };
+  });
 
   onMount(() => {
     const handleClick = (e: MouseEvent) => {
