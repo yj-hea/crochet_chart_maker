@@ -300,11 +300,13 @@
     <h1>코바늘 도안</h1>
   </div>
 
-  <div class="header-actions">
+  <div class="notification-slot" aria-live="polite">
     {#if savedFlash}
       <span class="save-badge">{flashMessage}</span>
     {/if}
+  </div>
 
+  <div class="header-actions">
     <div class="btn-group">
       <DropboxMenu />
       <button type="button" class="icon-btn" onclick={handleReset} title="도안 비우기"><i class="fa-solid fa-eraser"></i></button>
@@ -434,38 +436,54 @@
 
 <style>
   /* ===== Header ===== */
+  /* 넓은 화면: 2×2 그리드. 로고가 왼쪽에서 2행을 차지하고, 오른쪽 위는 알림 영역,
+     오른쪽 아래는 아이콘 버튼 행. 알림이 떠도 아이콘 위치를 흔들지 않음. */
   .header {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 16px;
+    row-gap: 2px;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    min-height: 50px;
+    padding: 8px 20px;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     position: relative;
     z-index: 10;
-    gap: 8px;
   }
   .header-brand {
+    grid-column: 1;
+    grid-row: 1 / span 2;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex-shrink: 0;
     white-space: nowrap;
   }
   .header-icon {
-    font-size: 18px;
+    font-size: 24px;
     color: var(--text-secondary);
   }
   h1 {
-    font-size: 1rem;
+    font-size: 1.15rem;
     font-weight: 600;
     margin: 0;
     color: var(--text);
     letter-spacing: -0.01em;
     white-space: nowrap;
   }
+  .notification-slot {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    /* 배지가 떠도 행 높이가 변하지 않도록 배지 full height 와 맞춘 min-height 고정 */
+    min-height: 24px;
+  }
   .header-actions {
+    grid-column: 2;
+    grid-row: 2;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -473,28 +491,31 @@
     justify-content: flex-end;
   }
 
-  /* 좁은 화면: 타이틀은 한 줄, 메뉴는 아래 줄로 */
+  /* 좁은 화면: 타이틀 한 줄, 메뉴 한 줄. 알림은 absolute 로 띄워 레이아웃에 끼지 않음. */
   @media (max-width: 640px) {
     .header {
+      display: flex;
       flex-direction: column;
       align-items: stretch;
       padding: 8px 16px;
       gap: 8px;
     }
-    .header-brand {
-      justify-content: flex-start;
-    }
-    .header-actions {
-      justify-content: flex-start;
+    .header-icon { font-size: 18px; }
+    h1 { font-size: 1rem; }
+    .header-brand { justify-content: flex-start; }
+    .header-actions { justify-content: flex-start; }
+    .notification-slot {
+      position: absolute;
+      top: 6px;
+      right: 12px;
+      min-height: 0;
     }
   }
   .save-badge {
-    position: absolute;
-    top: 6px;
-    right: 12px;
     padding: 2px 8px;
     font-size: 11px;
     font-weight: 500;
+    line-height: 16px;
     color: var(--success);
     background: rgba(67, 160, 71, 0.14);
     border-radius: 10px;
