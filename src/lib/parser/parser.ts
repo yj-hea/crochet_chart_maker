@@ -486,6 +486,23 @@ class Parser {
       return undefined;
     }
 
+    // 본문에 skip 이 있으면 bridge 로 분류, 그 외엔 기존 samehole.
+    const hasSkip = body.elements.some((e) => e.type === 'skip');
+    if (hasSkip) {
+      const violation = findBridgeViolation(body);
+      if (violation) {
+        this.error(violation.kind, violation.range, violation.message);
+        return undefined;
+      }
+      return {
+        type: 'samehole',
+        groupKind: 'bridge',
+        body,
+        count,
+        range: { start: startPos, end: rbracket.range.end },
+      };
+    }
+
     // 내부 검증: V/A, 중첩 [] 금지
     const violation = findSameHoleViolation(body);
     if (violation) {
@@ -495,6 +512,7 @@ class Parser {
 
     return {
       type: 'samehole',
+      groupKind: 'samehole',
       body,
       count,
       range: { start: startPos, end: rbracket.range.end },
@@ -602,6 +620,58 @@ function findTcViolation(
       const nested = findTcViolation(el.body);
       if (nested) return nested;
     }
+  }
+  return undefined;
+}
+
+/**
+ * bridge body 검증. 허용: CHAIN stitch + 정확히 1 개의 skip. skip 은 평탄(top-level).
+ * 금지: 그 외 stitch, repeat, samehole, tc, modifier(blo).
+ */
+function findBridgeViolation(
+  seq: SequenceNode,
+): { kind: ParseErrorKind; range: SourceRange; message: string } | undefined {
+  let skipCount = 0;
+  for (const el of seq.elements) {
+    if (el.type === 'skip') {
+      skipCount++;
+      if (skipCount > 1) {
+        return {
+          kind: 'invalid_samehole',
+          range: el.range,
+          message: '`[...]` (브릿지) 안에 skip 은 1 개만 허용됩니다',
+        };
+      }
+    } else if (el.type === 'stitch') {
+      if (el.kind !== 'CHAIN') {
+        return {
+          kind: 'invalid_samehole',
+          range: el.range,
+          message: '`[...]` 안에 skip 이 있을 때는 사슬(O/ch) 만 함께 사용할 수 있습니다',
+        };
+      }
+      if (el.modifier) {
+        return {
+          kind: 'invalid_samehole',
+          range: el.range,
+          message: '브릿지 안의 사슬에는 수식자(blo 등)를 붙일 수 없습니다',
+        };
+      }
+    } else {
+      return {
+        kind: 'invalid_samehole',
+        range: el.range,
+        message: '브릿지 `[...]` 에는 사슬과 skip 만 사용할 수 있습니다',
+      };
+    }
+  }
+  if (skipCount === 0) {
+    // 호출 측에서 hasSkip 확인 후 진입하므로 실제로는 도달 불가.
+    return {
+      kind: 'invalid_samehole',
+      range: seq.range,
+      message: '브릿지로 분류되었으나 skip 이 없습니다',
+    };
   }
   return undefined;
 }

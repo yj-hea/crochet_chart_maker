@@ -161,4 +161,46 @@ describe('expand — samehole [...]', () => {
     expect(e.totalConsume).toBe(1);
     expect(e.totalProduce).toBe(4);
   });
+
+  it('bridge [5O, skip(3)] → 5 CHAIN + 1 BRIDGE_ANCHOR', () => {
+    const e = expandFrom('[5O, skip(3)]');
+    expect(e.ops).toHaveLength(6);
+    expect(e.ops.map((o) => o.kind)).toEqual([
+      'CHAIN', 'CHAIN', 'CHAIN', 'CHAIN', 'CHAIN', 'BRIDGE_ANCHOR',
+    ]);
+    expect(e.ops.every((o) => o.inBridge === true)).toBe(true);
+    for (let i = 0; i < 5; i++) {
+      expect(e.ops[i]!.consume).toBe(0);
+      expect(e.ops[i]!.produce).toBe(0);
+    }
+    expect(e.ops[5]!.consume).toBe(3);
+    expect(e.ops[5]!.produce).toBe(1);
+    expect(e.totalConsume).toBe(3);
+    expect(e.totalProduce).toBe(1);
+  });
+
+  it('bridge [skip(3), 5O] 도 동일 결과 (순서 무관)', () => {
+    const e = expandFrom('[skip(3), 5O]');
+    expect(e.ops.map((o) => o.kind)).toEqual([
+      'CHAIN', 'CHAIN', 'CHAIN', 'CHAIN', 'CHAIN', 'BRIDGE_ANCHOR',
+    ]);
+  });
+
+  it('bridge prefix count: 2[3O, skip(2)] → 패턴 2회 반복', () => {
+    const e = expandFrom('2[3O, skip(2)]');
+    expect(e.ops).toHaveLength(8);
+    expect(e.totalConsume).toBe(4);
+    expect(e.totalProduce).toBe(2);
+  });
+
+  it('bridge 가 sequence 안에서 다른 op 와 섞임', () => {
+    const e = expandFrom('2X, [5O, skip(3)], X');
+    expect(e.ops.map((o) => o.kind)).toEqual([
+      'SC', 'SC',
+      'CHAIN', 'CHAIN', 'CHAIN', 'CHAIN', 'CHAIN', 'BRIDGE_ANCHOR',
+      'SC',
+    ]);
+    expect(e.totalConsume).toBe(6); // 2X + skip(3) + X = 2+3+1
+    expect(e.totalProduce).toBe(4); // 2X + anchor 1 + X = 2+1+1
+  });
 });

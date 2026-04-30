@@ -45,12 +45,19 @@ export interface RepeatNode {
 }
 
 /**
- * `[...]` 한 코 그룹. 그룹 전체가 부모 단 한 코를 공유한다.
- * 예: `[F,T]` = 한 부모 코에 F 한 번 + T 한 번 → consume 1, produce 2.
- * 제약: 안에 V/A 금지, `[...]` 중첩 금지. `(...)` 및 `tc(...)` 는 허용.
+ * `[...]` 한 코 그룹. 두 가지 의미:
+ *  - `groupKind: 'samehole'` (기본): 그룹 전체가 부모 단 한 코를 공유.
+ *    예: `[F,T]` = 한 부모 코에 F+T → consume 1, produce 2.
+ *    제약: 안에 V/A/skip 금지, `[...]` 중첩 금지. `(...)` 및 `tc(...)` 허용.
+ *  - `groupKind: 'bridge'`: 사슬 다발 + skip(M) 으로 구성된 "체인 브릿지".
+ *    예: `[5O, skip(3)]` = 부모 3개를 건너뛰며 그 위에 사슬 5개가 호로 걸림.
+ *    다음 단의 부모로서는 슬롯 1개. 본문에 skip 이 1개라도 있으면 bridge 로 분류.
+ *    제약: CHAIN 과 skip(N) 만 허용, skip 은 정확히 1개.
  */
 export interface SameHoleGroupNode {
   type: 'samehole';
+  /** 그룹 의미. 본문에 skip 이 있으면 'bridge', 없으면 'samehole' */
+  groupKind: 'samehole' | 'bridge';
   body: SequenceNode;
   /** 앞 숫자 — 그룹 전체를 N번 반복. 예: 3[F,T] → count=3 */
   count: number;

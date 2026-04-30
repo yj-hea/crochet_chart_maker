@@ -147,7 +147,7 @@ function effectiveSymH(op: Op): number {
  * MAGIC/SKIP/기둥코 연속 op 는 링 슬롯을 차지하지 않음. 그 외는 produce 와 일치.
  */
 function visualProduceFor(op: Op): number {
-  if (op.kind === 'MAGIC' || op.kind === 'SKIP') return 0;
+  if (op.kind === 'MAGIC' || op.kind === 'SKIP' || op.kind === 'BRIDGE_ANCHOR') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
   return op.produce;
 }
@@ -426,7 +426,7 @@ function findAdjacentNonChain(
   let j = ((from % n) + n) % n;
   for (let k = 0; k < n; k++) {
     const t = stitches[indices[j]!]!;
-    if (t.op.kind !== 'CHAIN' && !t.op.turningChain && t.op.kind !== 'MAGIC' && t.op.kind !== 'SKIP') return t;
+    if (t.op.kind !== 'CHAIN' && !t.op.turningChain && t.op.kind !== 'MAGIC' && t.op.kind !== 'SKIP' && t.op.kind !== 'BRIDGE_ANCHOR') return t;
     j = ((j + direction) % n + n) % n;
   }
   return undefined;

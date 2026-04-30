@@ -18,6 +18,7 @@ export type StitchKind =
   | 'POPCORN'  // P 팝콘뜨기
   | 'BUBBLE'   // B 버블뜨기 (bobble)
   | 'SKIP'     // skip(N) 바늘 비우기 (N개 부모 건너뛰기)
+  | 'BRIDGE_ANCHOR' // 체인 브릿지의 앵커 op — 부모 M개를 소비하고 다음 단의 부모 슬롯 1개로 노출. 시각적으로는 비표시(사슬 호로 대체).
   | 'TC';      // tc(...) 기둥코 마커 — 파서 토큰 전용 (Op 에는 나타나지 않음)
 
 export type ModifierKind = 'BLO'; // blo 뒤이랑뜨기 (future: FLO 앞이랑뜨기)
@@ -52,6 +53,7 @@ export const STITCH_META: Record<StitchKind, StitchMeta> = {
   POPCORN:{ kind: 'POPCORN', canonical: 'P', korean: '팝콘뜨기', english: 'popcorn (pop)',      baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
   BUBBLE:{ kind: 'BUBBLE',canonical: 'B', korean: '버블뜨기',   english: 'bobble (bo)',         baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 9   },
   SKIP:  { kind: 'SKIP',  canonical: 'skip', korean: '바늘 비우기', english: 'skip',             baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 4   },
+  BRIDGE_ANCHOR: { kind: 'BRIDGE_ANCHOR', canonical: 'bridge', korean: '체인 브릿지', english: 'chain bridge anchor', baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: 0 },
   TC:    { kind: 'TC',    canonical: 'tc',   korean: '기둥코',      english: 'turning chain',    baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 0   },
 };
 

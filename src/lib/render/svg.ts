@@ -181,8 +181,10 @@ function renderConnections(stitches: PositionedStitch[]): string {
   const seen = new Set<string>();
   for (let i = 0; i < stitches.length; i++) {
     const s = stitches[i]!;
-    // SKIP 은 건너뜀 표시일 뿐 실제 연결 관계가 아니므로 연결선 생략
-    if (s.op.kind === 'SKIP') continue;
+    // SKIP 은 건너뜀 표시일 뿐 실제 연결 관계가 아니므로 연결선 생략.
+    // BRIDGE_ANCHOR 도 자체의 부모(skip 대상)로의 선은 그리지 않음 — 다음 단 자식이
+    // 앵커를 부모로 잡을 때 그 자식 쪽에서 연결선이 그려짐.
+    if (s.op.kind === 'SKIP' || s.op.kind === 'BRIDGE_ANCHOR') continue;
     for (const pidx of s.parentIndices) {
       const key = `${pidx}-${i}`;
       if (seen.has(key)) continue;
@@ -222,6 +224,8 @@ function renderRoundGroups(stitches: PositionedStitch[]): string {
 }
 
 function renderStitchUse(s: PositionedStitch): string {
+  // BRIDGE_ANCHOR 는 시각적으로 표시되지 않는 가상 앵커 (다음 단의 부모 좌표 역할만 함).
+  if (s.op.kind === 'BRIDGE_ANCHOR') return '';
   const x = fmt(s.position.x);
   const y = fmt(s.position.y);
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);

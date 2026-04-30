@@ -27,6 +27,12 @@ export interface Op {
   inSameHoleGroup?: boolean;
   /** `[^...]` 기둥코 그룹에 속한 op. true 면 그룹 전체가 슬롯 1개로 축약되고 세로 스택 렌더 */
   turningChain?: boolean;
+  /**
+   * 체인 브릿지 그룹(`[NO, skip(M)]`)에 속한 op.
+   * true 인 CHAIN 들은 부모 M개 위 호로 렌더되고, true 인 BRIDGE_ANCHOR 는
+   * 호의 중점에 가상 앵커로 자리잡아 다음 단의 부모 슬롯 역할만 한다.
+   */
+  inBridge?: boolean;
   /** V/A의 base stitch — 렌더 시 심볼 선택용 */
   baseKind?: StitchKind;
   /**

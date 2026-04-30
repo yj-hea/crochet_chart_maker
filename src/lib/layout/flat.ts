@@ -20,7 +20,7 @@ const MARKER_SIDE_OFFSET = 16;
 
 /** op 가 행에서 차지하는 시각적 셀 수. samehole chain 은 arc 로 처리되므로 셀 미차지. */
 function visualProduceFor(op: Op): number {
-  if (op.kind === 'MAGIC' || op.kind === 'SKIP') return 0;
+  if (op.kind === 'MAGIC' || op.kind === 'SKIP' || op.kind === 'BRIDGE_ANCHOR') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
   if (op.inSameHoleGroup && op.kind === 'CHAIN') return 0;
   return op.produce;
@@ -210,7 +210,7 @@ function placeRow(
 
   const visibleIndices = thisStitchIndices.filter((i) => {
     const k = stitches[i]!.op.kind;
-    return k !== 'MAGIC' && k !== 'SKIP';
+    return k !== 'MAGIC' && k !== 'SKIP' && k !== 'BRIDGE_ANCHOR';
   });
   if (visibleIndices.length > 0) {
     const startStitchIdx = direction === 1
@@ -324,7 +324,7 @@ function findAdjacentNonChain(
     const t = stitches[indices[j]!]!;
     if (t.op.kind === 'CHAIN') continue;
     if (t.op.turningChain) continue;
-    if (t.op.kind === 'MAGIC' || t.op.kind === 'SKIP') continue;
+    if (t.op.kind === 'MAGIC' || t.op.kind === 'SKIP' || t.op.kind === 'BRIDGE_ANCHOR') continue;
     return t;
   }
   return undefined;

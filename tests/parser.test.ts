@@ -222,6 +222,59 @@ describe('parseRound — samehole [...]', () => {
     expect(r.errors).toEqual([]);
     expect(r.body?.elements.map((e) => e.type)).toEqual(['stitch', 'samehole', 'stitch']);
   });
+
+  it('groupKind=samehole 기본', () => {
+    const r = parseRound(1, '[F,T]');
+    const el = r.body!.elements[0]!;
+    if (el.type !== 'samehole') throw new Error('expected samehole');
+    expect(el.groupKind).toBe('samehole');
+  });
+});
+
+describe('parseRound — bridge [...,skip(N)]', () => {
+  it('[5O, skip(3)] 은 bridge 로 분류', () => {
+    const r = parseRound(1, '[5O, skip(3)]');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0]!;
+    if (el.type !== 'samehole') throw new Error('expected samehole node');
+    expect(el.groupKind).toBe('bridge');
+    expect(el.body.elements).toHaveLength(2);
+  });
+
+  it('[skip(3), 5O] 도 bridge (순서 무관)', () => {
+    const r = parseRound(1, '[skip(3), 5O]');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0]!;
+    if (el.type !== 'samehole') throw new Error('expected samehole');
+    expect(el.groupKind).toBe('bridge');
+  });
+
+  it('bridge 안에 사슬 외 stitch 금지', () => {
+    const r = parseRound(1, '[5O, X, skip(3)]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('invalid_samehole');
+  });
+
+  it('bridge 안에 skip 2 개 금지', () => {
+    const r = parseRound(1, '[2O, skip(1), 2O, skip(1)]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('invalid_samehole');
+  });
+
+  it('bridge prefix count 허용', () => {
+    const r = parseRound(1, '3[5O, skip(3)]');
+    expect(r.errors).toEqual([]);
+    const el = r.body!.elements[0]!;
+    if (el.type !== 'samehole') throw new Error('expected samehole');
+    expect(el.groupKind).toBe('bridge');
+    expect(el.count).toBe(3);
+  });
+
+  it('bridge 안에 repeat/tc/중첩[] 금지', () => {
+    const r = parseRound(1, '[(2O)*2, skip(3)]');
+    expect(r.body).toBeUndefined();
+    expect(r.errors[0]!.kind).toBe('invalid_samehole');
+  });
 });
 
 describe('parseRound — stitch annotations', () => {

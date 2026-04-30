@@ -124,6 +124,10 @@ function expandRepeat(node: RepeatNode, out: Op[]): void {
  * tc(...) 도 내부에 올 수 있으며 turningChain 플래그는 tc 확장 시 이미 설정되어 있음.
  */
 function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
+  if (node.groupKind === 'bridge') {
+    expandBridge(node, out);
+    return;
+  }
   for (let i = 0; i < node.count; i++) {
     const groupOps: Op[] = [];
     expandSequence(node.body, groupOps);
@@ -152,5 +156,44 @@ function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
         });
       }
     }
+  }
+}
+
+/**
+ * 체인 브릿지 그룹 `[NO, skip(M)]` 확장:
+ *   N 개의 CHAIN op (consume=0, produce=0, inBridge=true) +
+ *   1 개의 BRIDGE_ANCHOR op (consume=M, produce=1, inBridge=true).
+ *
+ * AST 본문 안의 사슬/skip 순서와 무관하게 항상 "사슬 N + 앵커 1" 순서로 emit.
+ * group count > 1 인 경우 (예: `3[5O, skip(3)]`) 패턴을 N 번 반복.
+ */
+function expandBridge(node: SameHoleGroupNode, out: Op[]): void {
+  let chainTotal = 0;
+  let skipTotal = 0;
+  for (const el of node.body.elements) {
+    if (el.type === 'stitch' && el.kind === 'CHAIN') chainTotal += el.count;
+    else if (el.type === 'skip') skipTotal += el.count;
+  }
+  if (skipTotal === 0) return; // 파서가 보장하지만 방어적 가드.
+
+  for (let i = 0; i < node.count; i++) {
+    for (let k = 0; k < chainTotal; k++) {
+      out.push({
+        kind: 'CHAIN',
+        expansion: 1,
+        consume: 0,
+        produce: 0,
+        inBridge: true,
+        sourceRange: node.range,
+      });
+    }
+    out.push({
+      kind: 'BRIDGE_ANCHOR',
+      expansion: 1,
+      consume: skipTotal,
+      produce: 1,
+      inBridge: true,
+      sourceRange: node.range,
+    });
   }
 }
