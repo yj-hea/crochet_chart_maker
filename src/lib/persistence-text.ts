@@ -37,6 +37,8 @@ export interface TextSerializeInput {
   roundMemos?: ReadonlyMap<number, string>;
   /** Read 모드 진행 위치. 없으면 `# 진행` 섹션 생략. */
   progress?: SavedProgress;
+  /** 평면 도안 정렬: 'L'|'R'|'C'. 기본 L 일 땐 섹션 생략. */
+  flatAlign?: 'L' | 'R' | 'C';
 }
 
 export function serializeAsText(input: TextSerializeInput): string {
@@ -60,6 +62,10 @@ export function serializeAsText(input: TextSerializeInput): string {
     const { round, stitch } = input.progress;
     const body = stitch === null ? `${round}단` : `${round}단 ${stitch + 1}코`;
     sections.push(`# 진행\n${body}`);
+  }
+
+  if (input.flatAlign && input.flatAlign !== 'L') {
+    sections.push(`# 정렬\n${input.flatAlign}`);
   }
 
   return sections.join('\n\n') + '\n';
@@ -95,6 +101,7 @@ export function parseTextFormat(text: string): TextImportResult {
   let shape: ShapeKind = 'circular';
   let patternMemo: string | undefined;
   let progress: SavedProgress | undefined;
+  let flatAlign: 'L' | 'R' | 'C' | undefined;
   const rounds: { source: string; memo?: string }[] = [];
 
   for (const sec of sections) {
@@ -112,6 +119,11 @@ export function parseTextFormat(text: string): TextImportResult {
       case '도안 메모':
         if (joined) patternMemo = joined;
         break;
+      case '정렬': {
+        const v = (joined.split('\n')[0] ?? '').trim().toUpperCase();
+        if (v === 'L' || v === 'R' || v === 'C') flatAlign = v;
+        break;
+      }
       case '진행': {
         // `2단` 또는 `2단 3코` (사용자 1-based 표기) 를 받아 round/stitch(0-based) 로 변환.
         const line = joined.split('\n')[0] ?? '';
@@ -187,6 +199,7 @@ export function parseTextFormat(text: string): TextImportResult {
     rounds: rounds.map((r) => ({ source: r.source })),
     ...(comments.length > 0 ? { comments } : {}),
     ...(progress ? { progress } : {}),
+    ...(flatAlign ? { flatAlign } : {}),
   };
   return { saved, name };
 }

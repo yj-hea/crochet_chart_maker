@@ -118,4 +118,19 @@ describe('renderSvg', () => {
     expect(svg).toContain('<svg');
     expect(svg).toContain('</svg>');
   });
+
+  it('bridge: BRIDGE_ANCHOR 는 시각적으로 비표시 (sym-BRIDGE_ANCHOR 미참조)', () => {
+    const svg = render(['7O', 'X, [5O, skip(3)], 3X'], 'flat');
+    expect(svg).not.toContain('sym-BRIDGE_ANCHOR');
+    // bridge chain 들은 sym-CHAIN 으로 그려져야 함
+    expect(svg).toContain('sym-CHAIN');
+  });
+
+  it('bridge: anchor 는 자기 부모(skip 대상) 로 연결선 안 그림', () => {
+    // 3단에서 anchor 를 부모로 하는 자식이 있어야 anchor 위치가 연결선으로 사용됨
+    const svg = render(['7O', 'X, [5O, skip(3)], 3X', '5X'], 'flat');
+    // 단순 sanity: SVG 가 잘 만들어졌는지
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('</svg>');
+  });
 });

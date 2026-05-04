@@ -32,7 +32,7 @@ export const renderedChart = derived(
     if (validRounds.length === 0) return null;
     const layout = $pattern.shape === 'circular'
       ? layoutCircular(validRounds)
-      : layoutFlat(validRounds, { flipVertical: $flatFlipVertical });
+      : layoutFlat(validRounds, { flipVertical: $flatFlipVertical, align: $pattern.flatAlign });
     return {
       svg: renderSvg({ layout, showGrid: $showGrid, showConnections: $showConnections }),
       width: layout.bounds.width,

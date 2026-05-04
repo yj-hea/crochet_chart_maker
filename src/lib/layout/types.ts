@@ -28,6 +28,12 @@ export interface PositionedStitch {
    * - A(DEC), MAGIC, SLIP: 0~1 (다음 단 부모로 잘 사용 안 됨)
    */
   exposedSlots: number;
+  /** true 면 SVG 렌더 시 이 스티치를 그리지 않음 (bridge 축약 등). 슬롯/연결 관계는 유지. */
+  hidden?: boolean;
+  /** 비어있지 않으면 이 stitch 의 위치에 텍스트 라벨을 추가로 그림 (예: bridge 축약 시 "(15)"). */
+  labelText?: string;
+  /** 라벨 폰트 크기 (px). 미지정 시 renderer 의 기본값. */
+  labelFontSize?: number;
 }
 
 export interface LayoutBounds {

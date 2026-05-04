@@ -96,6 +96,7 @@ export function serializeActiveTab(): { name: string; content: string } | null {
     rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
     comments: active.comments,
     ...(active.progress ? { progress: active.progress } : {}),
+    ...(active.flatAlign ? { flatAlign: active.flatAlign } : {}),
   });
   return { name: active.name, content: JSON.stringify(data, null, 2) };
 }

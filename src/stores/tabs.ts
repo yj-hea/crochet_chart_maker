@@ -51,12 +51,16 @@ export interface PatternRoundState {
   expanded?: ExpandedRound;
 }
 
+export type FlatAlign = 'L' | 'R' | 'C';
+
 export interface Tab {
   id: string;
   name: string;
   shape: ShapeKind;
   rounds: PatternRoundState[];
   comments: Comment[];
+  /** 평면 도안에서 단마다 코 수가 다를 때 max 단 기준 좁은 단의 정렬 방향. 기본 'L'. */
+  flatAlign?: FlatAlign;
   /** Read 모드 진행 상태 — 파일에 포함해 다른 기기에서 이어보기 가능 */
   progress?: SavedProgress;
 }
@@ -119,6 +123,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     shape: saved.shape,
     rounds: reparseAll(rounds),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
+    ...(saved.flatAlign ? { flatAlign: saved.flatAlign } : {}),
     ...(saved.progress ? { progress: saved.progress } : {}),
   };
 }
@@ -208,6 +213,7 @@ workspace.subscribe((ws) => {
       }),
       comments: t.comments,
       ...(t.progress ? { progress: t.progress } : {}),
+      ...(t.flatAlign ? { flatAlign: t.flatAlign } : {}),
     })),
     activeTabId: ws.activeTabId,
   });
@@ -232,9 +238,9 @@ export function setTabProgress(id: string, progress: SavedProgress | undefined):
 export const pattern = derived(workspace, ($ws) => {
   const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
   if (active) {
-    return { shape: active.shape, rounds: active.rounds };
+    return { shape: active.shape, rounds: active.rounds, flatAlign: active.flatAlign ?? 'L' as FlatAlign };
   }
-  return { shape: 'circular' as ShapeKind, rounds: [] as PatternRoundState[] };
+  return { shape: 'circular' as ShapeKind, rounds: [] as PatternRoundState[], flatAlign: 'L' as FlatAlign };
 });
 
 export const activeTabId = derived(workspace, ($ws) => $ws.activeTabId);
@@ -350,6 +356,10 @@ export function setShape(shape: ShapeKind): void {
   updateActiveTab((t) => ({ ...t, shape }));
 }
 
+export function setFlatAlign(align: FlatAlign): void {
+  updateActiveTab((t) => ({ ...t, flatAlign: align }));
+}
+
 // ============================================================
 // 코멘트 CRUD
 // ============================================================
@@ -405,6 +415,7 @@ export function exportToFile(): void {
       shape: active.shape,
       rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
       comments: active.comments,
+      ...(active.flatAlign ? { flatAlign: active.flatAlign } : {}),
       ...(active.progress ? { progress: active.progress } : {}),
     },
     active.name || 'pattern',
@@ -431,6 +442,7 @@ export function exportAsTextFile(): void {
     patternMemo,
     roundMemos,
     progress: active.progress,
+    flatAlign: active.flatAlign,
   });
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -479,6 +491,7 @@ export async function importFromFile(file: File): Promise<void> {
       shape: saved.shape,
       rounds: newRounds,
       comments: newComments,
+      ...(saved.flatAlign ? { flatAlign: saved.flatAlign } : {}),
       ...(clampedProgress ? { progress: clampedProgress } : {}),
     };
     return { tabs: [...ws.tabs, newTab], activeTabId: tabId };

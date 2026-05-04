@@ -95,8 +95,8 @@ export const SYMBOL_DEFS = `
   <line x1="0" y1="-9" x2="4" y2="5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
 </g>
 <g id="sym-SKIP">
-  <!-- 바늘 비우기: 짧은 가로 점선 -->
-  <line x1="-5" y1="0" x2="5" y2="0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-dasharray="2 1.5"/>
+  <!-- 바늘비우기 (yarn over): 작은 빈 원. 사슬보다 작게 그려 구분. -->
+  <circle cx="0" cy="0" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
 </g>
 <g id="sym-BUBBLE">
   <!-- 구슬(버블)뜨기: 상단 가로선 + 구체 외곽 + 세로 중심선 + 중앙 교차 해칭 -->

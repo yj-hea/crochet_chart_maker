@@ -45,11 +45,13 @@ function expandSequence(node: SequenceNode, out: Op[]): void {
 }
 
 function expandSkip(node: SkipNode, out: Op[]): void {
+  // skip(n) 은 n 개의 코를 나타냄 — 부모 n 개 소비, 다음 단에 n 개 슬롯 노출
+  // (대바늘의 바늘비우기처럼 빈 코 자리를 다음 단의 부모로 그대로 통과시킴).
   out.push({
     kind: 'SKIP',
     expansion: 1,
     consume: node.count,
-    produce: 0,
+    produce: node.count,
     sourceRange: node.range,
   });
 }

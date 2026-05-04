@@ -224,10 +224,19 @@ function renderRoundGroups(stitches: PositionedStitch[]): string {
 }
 
 function renderStitchUse(s: PositionedStitch): string {
-  // BRIDGE_ANCHOR 는 시각적으로 표시되지 않는 가상 앵커 (다음 단의 부모 좌표 역할만 함).
-  if (s.op.kind === 'BRIDGE_ANCHOR') return '';
+  // hidden: bridge 축약된 가운데 사슬 등은 표시 생략.
+  if (s.hidden) return '';
   const x = fmt(s.position.x);
   const y = fmt(s.position.y);
+  // labelText 가 있으면 stitch 자체는 비표시지만 라벨 텍스트는 그림 (BRIDGE_ANCHOR 의 (N) 등).
+  // 폰트 크기는 layout 단계에서 가용 폭 기반으로 계산되어 labelFontSize 에 들어옴.
+  if (s.labelText) {
+    const safe = escapeAttr(s.labelText);
+    const fontSize = s.labelFontSize ?? 11;
+    return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="${fmt(fontSize)}" fill="currentColor">${safe}</text>`;
+  }
+  // BRIDGE_ANCHOR / SKIP 은 시각 표시 없음 (cell 자리는 차지하지만 기호는 빈 자리로 둠).
+  if (s.op.kind === 'BRIDGE_ANCHOR' || s.op.kind === 'SKIP') return '';
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
   const colorStyle = s.op.color ? ` style="color: ${escapeAttr(s.op.color)}"` : '';
 

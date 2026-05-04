@@ -159,6 +159,33 @@ describe('layoutCircular', () => {
     expect(radii[2]!).toBeGreaterThan(radii[1]!);
   });
 
+  it('bridge: anchor 가 다음 단의 부모로 노출되고 chain 은 호로 배치', () => {
+    const res = layoutFromSources(['mr, 10x', '2x, [3O, skip(3)], 5x', '8x']);
+    const r2 = res.stitches.filter((s) => s.roundIndex === 2);
+    const anchor = r2.find((s) => s.op.kind === 'BRIDGE_ANCHOR')!;
+    expect(anchor).toBeDefined();
+    expect(anchor.exposedSlots).toBe(1);
+    expect(anchor.parentIndices).toHaveLength(3);
+
+    const r3 = res.stitches.filter((s) => s.roundIndex === 3);
+    expect(r3).toHaveLength(8);
+    const anchorIdx = res.stitches.indexOf(anchor);
+    const childOfAnchor = r3.filter((s) => s.parentIndices.includes(anchorIdx));
+    expect(childOfAnchor).toHaveLength(1);
+
+    const r1SC = res.stitches.find((s) => s.roundIndex === 1 && s.op.kind === 'SC')!;
+    const r1baseR = Math.hypot(r1SC.position.x, r1SC.position.y);
+    const r2SC = r2.find((s) => s.op.kind === 'SC')!;
+    const r2baseR = Math.hypot(r2SC.position.x, r2SC.position.y);
+    const chains = r2.filter((s) => s.op.kind === 'CHAIN');
+    expect(chains).toHaveLength(3);
+    for (const c of chains) {
+      const r = Math.hypot(c.position.x, c.position.y);
+      expect(r).toBeGreaterThan(r1baseR - 1);
+      expect(r).toBeLessThan(r2baseR + 1);
+    }
+  });
+
   it('SLIP 은 이제 코수에 포함 (produce=1)', () => {
     const res = layoutFromSources(['mr, 6x', '5x, 1sl']);
     const r2 = res.stitches.filter((s) => s.roundIndex === 2);

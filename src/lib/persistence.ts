@@ -48,6 +48,8 @@ export interface SavedPattern {
   rounds: SavedRound[];
   comments?: SavedComment[];
   progress?: SavedProgress;
+  /** 평면 도안 정렬 모드: 'L'|'R'|'C' (기본 'L'). circular 도안에서는 무시. */
+  flatAlign?: 'L' | 'R' | 'C';
 }
 
 export interface SerializeInput {
@@ -56,6 +58,7 @@ export interface SerializeInput {
   rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
   comments?: ReadonlyArray<SavedComment>;
   progress?: SavedProgress;
+  flatAlign?: 'L' | 'R' | 'C';
 }
 
 /** 현재 상태를 저장용 객체로 직렬화. id/parsed/expanded 등 파생값은 제외 */
@@ -81,6 +84,7 @@ export function serialize(state: SerializeInput): SavedPattern {
     }),
     ...(normalizedComments && normalizedComments.length > 0 ? { comments: normalizedComments } : {}),
     ...(state.progress ? { progress: state.progress } : {}),
+    ...(state.flatAlign ? { flatAlign: state.flatAlign } : {}),
   };
 }
 
@@ -125,6 +129,7 @@ export function validate(data: unknown): SavedPattern {
   });
   const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
   const progress = validateProgress(d.progress);
+  const flatAlign = (d.flatAlign === 'L' || d.flatAlign === 'R' || d.flatAlign === 'C') ? d.flatAlign : undefined;
   return {
     version: 1,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : '',
@@ -132,6 +137,7 @@ export function validate(data: unknown): SavedPattern {
     rounds,
     ...(comments ? { comments } : {}),
     ...(progress ? { progress } : {}),
+    ...(flatAlign ? { flatAlign } : {}),
   };
 }
 
@@ -206,6 +212,7 @@ export interface SavedWorkspaceTab {
   rounds: SavedRound[];
   comments?: SavedComment[];
   progress?: SavedProgress;
+  flatAlign?: 'L' | 'R' | 'C';
 }
 
 export interface SavedWorkspace {
@@ -232,6 +239,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
       }),
       ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
       ...(t.progress ? { progress: t.progress } : {}),
+      ...(t.flatAlign ? { flatAlign: t.flatAlign } : {}),
     })),
     activeTabId: ws.activeTabId,
   };
@@ -266,6 +274,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
       }),
       ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
       ...(validateProgress(tt.progress) ? { progress: validateProgress(tt.progress) as SavedProgress } : {}),
+      ...((tt.flatAlign === 'L' || tt.flatAlign === 'R' || tt.flatAlign === 'C') ? { flatAlign: tt.flatAlign } : {}),
     };
   });
   const activeTabId = typeof d.activeTabId === 'string' ? d.activeTabId : (tabs[0]?.id ?? '');

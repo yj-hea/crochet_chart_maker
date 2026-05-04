@@ -232,6 +232,76 @@ function placeRound(
       continue;
     }
 
+    // BRIDGE_ANCHOR: 부모 M개를 소비하고 그 호의 중점에 가상 앵커를 배치.
+    // 직전에 들어온 inBridge CHAIN op 들은 부모 호를 따라 재배치한다.
+    // 앵커는 시각적으로 비표시이지만 다음 단 부모로서 1 슬롯을 차지 (exposedSlots=1).
+    if (op.kind === 'BRIDGE_ANCHOR') {
+      const skipParents: number[] = [];
+      for (let k = 0; k < op.consume; k++) {
+        const p = parentSlotMap[parentCursor + k];
+        if (p !== undefined) skipParents.push(p);
+      }
+      parentCursor += op.consume;
+
+      // 앵커 위치 = 건너뛴 부모들의 벡터 평균 방향, baseRadius.
+      let anchorAngle = START_ANGLE;
+      let anchorPos: Point;
+      if (skipParents.length > 0) {
+        let vx = 0, vy = 0;
+        for (const pi of skipParents) {
+          const a = Math.atan2(stitches[pi]!.position.y, stitches[pi]!.position.x);
+          vx += Math.cos(a); vy += Math.sin(a);
+        }
+        anchorAngle = Math.atan2(vy, vx);
+        anchorPos = polarToCartesian(baseRadius, anchorAngle);
+      } else {
+        anchorPos = polarToCartesian(baseRadius, anchorAngle);
+      }
+
+      const anchorIdx = stitches.length;
+      stitches.push({
+        op, roundIndex: roundIdx,
+        position: anchorPos, angle: anchorAngle + Math.PI / 2,
+        parentIndices: skipParents, exposedSlots: 1,
+      });
+      thisStitchIndices.push(anchorIdx);
+
+      // 직전에 임시 배치된 bridge CHAIN op 들을 부모 호 위에 재배치.
+      const chainSlot: number[] = [];
+      for (let j = thisStitchIndices.length - 2; j >= 0; j--) {
+        const stIdx = thisStitchIndices[j]!;
+        const stOp = stitches[stIdx]!.op;
+        if (stOp.inBridge && stOp.kind === 'CHAIN') chainSlot.unshift(stIdx);
+        else break;
+      }
+      if (chainSlot.length > 0 && skipParents.length > 0) {
+        const startA = Math.atan2(
+          stitches[skipParents[0]!]!.position.y,
+          stitches[skipParents[0]!]!.position.x,
+        );
+        const endA = Math.atan2(
+          stitches[skipParents[skipParents.length - 1]!]!.position.y,
+          stitches[skipParents[skipParents.length - 1]!]!.position.x,
+        );
+        // wrap-around 보정: 차이가 π 보다 크면 짧은 쪽으로 보간
+        let delta = endA - startA;
+        if (delta > Math.PI) delta -= 2 * Math.PI;
+        else if (delta < -Math.PI) delta += 2 * Math.PI;
+        // 사슬은 부모 링과 현재 링 사이의 호로 그려짐 — 두 반경의 평균
+        const prevBase = baseRadiusByRound.get(roundIdx - 1) ?? baseRadius;
+        const chainR = (prevBase + baseRadius) / 2;
+        for (let k = 0; k < chainSlot.length; k++) {
+          const t = (k + 1) / (chainSlot.length + 1);
+          const a = startA + delta * t;
+          const cpos = polarToCartesian(chainR, a);
+          const st = stitches[chainSlot[k]!]!;
+          st.position = cpos;
+          st.angle = a + Math.PI / 2;
+        }
+      }
+      continue;
+    }
+
     let parents: number[];
     if (op.sameHoleContinuation) {
       parents = lastGroupParents;

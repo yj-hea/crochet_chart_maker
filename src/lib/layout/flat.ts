@@ -1,13 +1,17 @@
 /**
- * 평면 도안 레이아웃.
+ * 평면 도안 레이아웃 (cell 기반, claim = max(visualProduce, consume)).
  *
- * - 각 Op 은 1개의 PositionedStitch 를 만든다.
- * - 각 round 는 독립적으로 uniform cell (FLAT_CELL_WIDTH) 에 배치한 뒤,
- *   자식 round 의 첫 child x 로 부모를 맞춰 정렬(`alignParentRows`) 한다.
- *   → 자식이 samehole 로 여러 셀로 확장되면 부모는 첫 셀 위치로 이동하고,
- *     나머지 자식 셀들은 부모 행에 빈칸으로 남는다.
- * - MAGIC 은 row 1 아래 1셀 독립 위치.
- * - tc(...) 는 세로 스택, samehole chain 은 위로 볼록한 arc.
+ * 핵심 모델:
+ *  - 각 단은 자기 ops 의 *claim* 합만큼 셀을 가짐. claim = max(시각 슬롯 수, 소비 부모 수).
+ *    → SKIP(N), BRIDGE_ANCHOR(consume=M) 처럼 시각 슬롯이 0 이라도 부모 N/M 개 분량의 셀을 차지.
+ *    → 그래서 부모 행이 갖는 폭과 자식 행의 폭이 자연스럽게 맞음.
+ *  - V(produce=N), 다중 stitch samehole 그룹은 produce 가 dominant 이라 N 셀 차지 → 행 확장.
+ *  - 각 op 는 자기 claim 의 가운데에 배치. 그룹 안 visible 들은 각자 1셀씩.
+ *  - 슬롯 맵은 produce 슬롯 각각의 cell 중심 x 를 저장 → 자식이 W 간격으로 정확히 정렬.
+ *  - 체인 브릿지 [NO, skip(M)] : anchor 가 M 셀을 차지, 가운데 중심에 invisible anchor 1슬롯 노출,
+ *    사슬은 그 셀 영역 위로 호. 사슬 ≥5 이면 첫/마지막 + (N) 라벨로 축약.
+ *  - SKIP / MAGIC / 사슬 호의 사슬 / tc 연속 등 시각 비표시 op 도 자기 claim 만큼 셀을 차지.
+ *  - tc(...) 는 turningChain 컬럼으로 세로 스택, samehole CHAIN 은 위로 볼록한 arc 후처리.
  */
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
@@ -18,12 +22,24 @@ import { STITCH_META } from '$lib/model/stitch';
 
 const MARKER_SIDE_OFFSET = 16;
 
-/** op 가 행에서 차지하는 시각적 셀 수. samehole chain 은 arc 로 처리되므로 셀 미차지. */
+/** op 가 행에서 차지하는 시각적 셀 수 (visible only). samehole/bridge chain 은 arc 처리. */
 function visualProduceFor(op: Op): number {
   if (op.kind === 'MAGIC' || op.kind === 'SKIP' || op.kind === 'BRIDGE_ANCHOR') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
   if (op.inSameHoleGroup && op.kind === 'CHAIN') return 0;
+  if (op.inBridge && op.kind === 'CHAIN') return 0;
   return op.produce;
+}
+
+/** op 가 행에서 *예약하는* 셀 수. 1 코 = 1 cell. SKIP 과 bridge 는 안 보이지만 1 cell 자리. */
+function visualClaimFor(op: Op): number {
+  if (op.kind === 'MAGIC') return 0; // MAGIC 은 행 위쪽에 별도 배치
+  if (op.inBridge && op.kind === 'CHAIN') return 0; // bridge 사슬은 anchor 의 셀 안에 호로 그려짐
+  if (op.turningChain && op.sameHoleContinuation) return 0; // tc 연속은 세로 스택
+  if (op.inSameHoleGroup && op.kind === 'CHAIN') return 0; // samehole 사슬은 호
+  if (op.kind === 'SKIP') return op.consume; // SKIP(n) = n cells 자리 (빈칸, 시각 비표시)
+  if (op.kind === 'BRIDGE_ANCHOR') return op.consume; // bridge = skip(M) 의 M cells 자리, 사슬 호가 위에 그려짐
+  return Math.max(visualProduceFor(op), op.consume);
 }
 
 function effectiveSymH(op: Op): number {
@@ -38,28 +54,52 @@ function effectiveSymH(op: Op): number {
 export interface FlatOptions {
   /** 상하 반전: true 면 1단이 위쪽에 오고 이후 단이 아래로 쌓임. */
   flipVertical?: boolean;
+  /**
+   * 단마다 cell 수가 다를 때 좁은 단을 가장 긴 단(max) 의 cell 위치 어느 쪽에 정렬할지.
+   *  - 'L': 부모코 오른쪽에 공백 (좁은 단을 max 의 좌측 끝에 정렬, 자식은 오른쪽으로 펼침)
+   *  - 'R': 부모코 왼쪽에 공백 (좁은 단을 max 의 우측 끝에 정렬, 자식은 왼쪽으로 펼침)
+   *  - 'C': 가운데 정렬. [3x] 같은 홀수 그룹에선 가운데 stitch 가 부모코 x 와 같음.
+   */
+  align?: 'L' | 'R' | 'C';
+}
+
+/** 부모 행의 슬롯 정보. 자식이 자기 부모 슬롯의 정확한 x 를 알 수 있게 한다. */
+interface SlotInfo {
+  stitchIdx: number;
+  x: number;
 }
 
 export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): LayoutResult {
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
-  const slotMapByRound = new Map<number, number[]>();
+  const slotMapByRound = new Map<number, SlotInfo[]>();
+  const align: 'L' | 'R' | 'C' = opts.align ?? 'L';
 
-  // 1) 각 round 를 자체 slot 수 기준 uniform 셀 폭으로 배치.
-  for (const round of rounds) {
-    placeRow(round, stitches, slotMapByRound, roundMarkers);
+  // 모든 단의 cell 수 중 max — 차트 폭 기준. 좁은 단은 max 안에서 align 으로 정렬.
+  const cellCounts = rounds.map((r) => r.ops.reduce((sum, op) => sum + visualClaimFor(op), 0));
+  const maxCells = Math.max(0, ...cellCounts);
+
+  // 1) 각 round 를 max 폭 안에서 align 따라 cell 기반 배치.
+  for (let i = 0; i < rounds.length; i++) {
+    const round = rounds[i]!;
+    const y = -(round.index - 1) * FLAT_CELL_HEIGHT;
+    const thisCells = cellCounts[i]!;
+    placeRow(round, stitches, slotMapByRound, roundMarkers, y, thisCells, maxCells, align);
   }
 
-  // 2) 부모 행을 첫 자식 x 에 정렬 — tc 등 stitch 위치 이동이 필요한 후처리 전에 먼저 수행
-  alignParentRows(stitches);
+  // 2) 부모를 자식 그룹 위치로 align (L/R/C). 큰 round 부터 cascade.
+  alignParentToChildren(stitches, align);
 
-  // 3) tc 세로 스택 — alignParentRows 이후 첫 op 의 갱신된 x 기준으로 스택
+  // 2.5) 각 단에서 op 순서대로 x 단조 증가 (인접 코끼리 W 간격 이상) 보정.
+  enforceRowMonotonic(stitches);
+
+  // 2) tc 세로 스택
   repositionTurningChainColumns(stitches);
 
-  // 4) samehole 사슬 arc
+  // 3) samehole 사슬 arc
   repositionChainArcs(stitches);
 
-  // 5) roundMarker 위치 재계산 — stitch 이동이 완료된 뒤 참조 stitch 의 최종 x 로 맞춤
+  // 4) roundMarker 위치 재계산 — stitch 이동이 완료된 뒤 참조 stitch 의 최종 x 로 맞춤
   for (const m of roundMarkers) {
     const mExt = m as RoundMarker & { _stitchIdx?: number };
     if (mExt._stitchIdx !== undefined) {
@@ -115,99 +155,153 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
 function placeRow(
   round: ExpandedRound,
   stitches: PositionedStitch[],
-  slotMapByRound: Map<number, number[]>,
+  slotMapByRound: Map<number, SlotInfo[]>,
   roundMarkers: RoundMarker[],
+  y: number,
+  thisCells: number,
+  maxCells: number,
+  align: 'L' | 'R' | 'C',
 ): void {
   const { index: roundIdx } = round;
-  const rowSlots = round.ops.reduce((sum, op) => sum + visualProduceFor(op), 0);
-
-  const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
-  const startX = -((rowSlots - 1) * FLAT_CELL_WIDTH) / 2;
+  const W = FLAT_CELL_WIDTH;
   const direction: 1 | -1 = round.direction === 'reverse' ? -1 : 1;
   const angle = 0;
 
-  const parentSlotMap = slotMapByRound.get(roundIdx - 1) ?? [];
+  const parentSlots = slotMapByRound.get(roundIdx - 1) ?? [];
+
+  // 각 op 의 claim 합으로 행 폭 결정. align 에 따라 max 폭 안에서 위치.
+  const claims = round.ops.map((op) => visualClaimFor(op));
+  const cellSpacing = W;
+  const chartLeft = -((maxCells - 1) * W) / 2;
+  const chartRight = +((maxCells - 1) * W) / 2;
+  let startX: number;
+  if (thisCells <= 0) {
+    startX = 0;
+  } else if (align === 'L') {
+    startX = chartLeft;
+  } else if (align === 'R') {
+    startX = chartRight - (thisCells - 1) * W;
+  } else {
+    startX = -((thisCells - 1) * W) / 2;
+  }
+
   const thisStitchIndices: number[] = [];
   let parentCursor = 0;
-  let slotCursor = 0;
+  let cellCursor = 0;
   let lastGroupParents: number[] = [];
-  let currentGroupFirstX: number | null = null;
 
-  for (const op of round.ops) {
-    if (op.kind === 'MAGIC') {
-      const idx = stitches.length;
-      stitches.push({
-        op, roundIndex: roundIdx,
-        position: { x: 0, y: y + FLAT_CELL_HEIGHT },
-        angle: 0, parentIndices: [], exposedSlots: 0,
-      });
-      thisStitchIndices.push(idx);
-      continue;
+  function consumeParents(consume: number): number[] {
+    const idxs: number[] = [];
+    for (let k = 0; k < consume; k++) {
+      const slot = parentSlots[parentCursor + k];
+      if (slot !== undefined) idxs.push(slot.stitchIdx);
     }
+    parentCursor += consume;
+    return idxs;
+  }
 
-    let parents: number[];
-    if (op.sameHoleContinuation) {
-      parents = lastGroupParents;
-    } else {
-      parents = [];
-      for (let k = 0; k < op.consume; k++) {
-        const p = parentSlotMap[parentCursor + k];
-        if (p !== undefined) parents.push(p);
-      }
-      parentCursor += op.consume;
-      lastGroupParents = parents;
-    }
+  /** claim 셀의 가운데 x (이 단의 stretched cellSpacing 기준) */
+  function claimCenterX(claim: number): number {
+    if (claim <= 0) return startX + cellCursor * cellSpacing;
+    return startX + (cellCursor + (claim - 1) / 2) * cellSpacing;
+  }
 
-    const vSlots = visualProduceFor(op);
-
-    if (vSlots === 0) {
-      // samehole chain / tc continuation / SKIP — 부모 위치에 임시 배치, arc/column 후처리에서 조정
-      let px: number;
-      let py = y;
-      if (op.inSameHoleGroup && op.sameHoleContinuation && currentGroupFirstX !== null) {
-        px = currentGroupFirstX;
-      } else {
-        const ref = parents.length > 0 ? stitches[parents[0]!] : undefined;
-        if (ref) { px = ref.position.x; py = ref.position.y; }
-        else { px = 0; }
-      }
-      const idx = stitches.length;
-      stitches.push({
-        op, roundIndex: roundIdx,
-        position: { x: px, y: py }, angle,
-        parentIndices: parents, exposedSlots: op.produce,
-      });
-      thisStitchIndices.push(idx);
-      continue;
-    }
-
-    const startSlotX = startX + slotCursor * FLAT_CELL_WIDTH;
-    const endSlotX = startX + (slotCursor + vSlots - 1) * FLAT_CELL_WIDTH;
-    const midX = (startSlotX + endSlotX) / 2;
-
+  function pushStitch(
+    op: Op, position: Point, opAngle: number, parentIdxs: number[], exposedSlots: number,
+  ): number {
     const idx = stitches.length;
     stitches.push({
-      op, roundIndex: roundIdx,
-      position: { x: midX, y }, angle,
-      parentIndices: parents, exposedSlots: op.produce,
+      op, roundIndex: roundIdx, position, angle: opAngle,
+      parentIndices: parentIdxs, exposedSlots,
     });
     thisStitchIndices.push(idx);
-    slotCursor += vSlots;
-
-    if (op.inSameHoleGroup && !op.sameHoleContinuation) {
-      currentGroupFirstX = midX;
-    } else if (!op.inSameHoleGroup) {
-      currentGroupFirstX = null;
-    }
+    return idx;
   }
 
-  const slotMap: number[] = [];
+  for (let opIdx = 0; opIdx < round.ops.length; opIdx++) {
+    const op = round.ops[opIdx]!;
+    const claim = claims[opIdx]!;
+
+    // MAGIC: 행 위쪽에 고정 위치
+    if (op.kind === 'MAGIC') {
+      pushStitch(op, { x: 0, y: y + FLAT_CELL_HEIGHT }, 0, [], 0);
+      continue;
+    }
+
+    // BRIDGE_ANCHOR: claim 가운데에 invisible 앵커, 직전 사슬 호로 재배치
+    if (op.kind === 'BRIDGE_ANCHOR') {
+      const parentIdxs = consumeParents(op.consume);
+      const cx = claimCenterX(claim);
+      const leftCellX = startX + cellCursor * cellSpacing;
+      const rightCellX = startX + (cellCursor + claim - 1) * cellSpacing;
+      const anchorIdx = pushStitch(op, { x: cx, y }, 0, parentIdxs, op.produce);
+      placeBridgeChainsArc(stitches, thisStitchIndices, anchorIdx, leftCellX, rightCellX, parentIdxs, y);
+      cellCursor += claim;
+      continue;
+    }
+
+    // 부모 결정 — sameHoleContinuation 은 anchor 의 부모 재사용
+    const parents = op.sameHoleContinuation ? lastGroupParents : consumeParents(op.consume);
+    if (!op.sameHoleContinuation) lastGroupParents = parents;
+
+    // SKIP(n): n cells 자리 차지 (시각 비표시). 다음 단에 n 개 슬롯 노출 (코 자리 통과).
+    if (op.kind === 'SKIP') {
+      pushStitch(op, { x: claimCenterX(claim), y }, angle, parents, op.produce);
+      cellCursor += claim;
+      continue;
+    }
+
+    // inBridge CHAIN: 임시 위치 (BRIDGE_ANCHOR 처리 시 호로 재배치). 셀 미차지.
+    if (op.inBridge && op.kind === 'CHAIN') {
+      pushStitch(op, { x: 0, y }, angle, [], 0);
+      continue;
+    }
+
+    // 셀 미차지 op (samehole CHAIN / tc continuation) — 그룹 임시 위치, 후처리에서 호/스택 정렬
+    if (claim === 0) {
+      pushStitch(op, { x: claimCenterX(0), y }, angle, parents, op.produce);
+      continue;
+    }
+
+    // 일반 visible op (SC/V/A/samehole anchor·continuation/HDC/...).
+    // V (INC, produce>consume) 는 claim 의 왼쪽 셀에 배치하고 나머지 셀은 비워둠
+    // (pre-refactor 의 alignParentRows 결과와 일치 — V 옆에 빈 코 자리).
+    // DEC/BRIDGE_ANCHOR (consume>produce) 와 SC/samehole (claim=1) 은 claim 가운데.
+    const stitchX =
+      op.produce > op.consume && claim > 1
+        ? startX + cellCursor * cellSpacing // 왼쪽 셀 중심
+        : claimCenterX(claim);
+    pushStitch(op, { x: stitchX, y }, angle, parents, op.produce);
+    cellCursor += claim;
+  }
+
+  // 슬롯 맵 (per-slot x 포함) 빌드.
+  // - V (claim=produce>1, 왼쪽 셀 배치): slot[k] = stitch.x + k*W (오른쪽으로 펼침)
+  // - DEC / BRIDGE_ANCHOR (claim>produce, 단일 produce): slot at stitch.x
+  // - SC/samehole 각 stitch (claim=1): slot at stitch.x
+  const slotInfos: SlotInfo[] = [];
   for (const sIdx of thisStitchIndices) {
     const s = stitches[sIdx]!;
-    for (let k = 0; k < s.exposedSlots; k++) slotMap.push(sIdx);
+    const N = s.exposedSlots;
+    if (N === 0) continue;
+    const op = s.op;
+    if (N > 1 && op.produce > op.consume) {
+      // V — stitch.x 가 leftmost 셀 중심, slot 들은 오른쪽으로 N-1 셀 이어짐
+      for (let k = 0; k < N; k++) {
+        slotInfos.push({ stitchIdx: sIdx, x: s.position.x + k * cellSpacing });
+      }
+    } else if (N === 1) {
+      slotInfos.push({ stitchIdx: sIdx, x: s.position.x });
+    } else {
+      // 일반화 fallback (현재 케이스 없음)
+      for (let k = 0; k < N; k++) {
+        slotInfos.push({ stitchIdx: sIdx, x: s.position.x + (k - (N - 1) / 2) * cellSpacing });
+      }
+    }
   }
-  slotMapByRound.set(roundIdx, slotMap);
+  slotMapByRound.set(roundIdx, slotInfos);
 
+  // 라운드 시작 마커
   const visibleIndices = thisStitchIndices.filter((i) => {
     const k = stitches[i]!.op.kind;
     return k !== 'MAGIC' && k !== 'SKIP' && k !== 'BRIDGE_ANCHOR';
@@ -216,7 +310,6 @@ function placeRow(
     const startStitchIdx = direction === 1
       ? visibleIndices[0]!
       : visibleIndices[visibleIndices.length - 1]!;
-    // 실제 좌표는 후처리에서 재계산 — 여기선 참조만 저장
     roundMarkers.push({
       roundIndex: roundIdx,
       position: { x: 0, y: 0 },
@@ -226,13 +319,118 @@ function placeRow(
   }
 }
 
+/**
+ * BRIDGE_ANCHOR 처리 직후, thisStitchIndices 끝에서 거슬러 올라가며 inBridge CHAIN 들을
+ * anchor 의 *M cells (= consume = skip(M))* 폭에 호로 배치.
+ *
+ *  - 호 폭 = M cells (anchor 가 차지한 셀들의 좌/우 끝 사이).
+ *  - 사슬 4개까지: 호 위에 균등 분포로 모두 표시.
+ *  - 5개 이상: 첫 사슬 + (N) 라벨 + 마지막 사슬로 축약 (가운데는 hidden).
+ *  - bulge 는 행 간격의 30% 이하로 캡 (너무 높지 않게).
+ *  - 호의 정점은 부모 *반대* 방향 (위로 볼록).
+ */
+function placeBridgeChainsArc(
+  stitches: PositionedStitch[],
+  thisStitchIndices: number[],
+  anchorIdx: number,
+  leftCellX: number,
+  rightCellX: number,
+  parentIdxs: number[],
+  y: number,
+): void {
+  const chainSlot: number[] = [];
+  for (let j = thisStitchIndices.length - 2; j >= 0; j--) {
+    const stIdx = thisStitchIndices[j]!;
+    const stOp = stitches[stIdx]!.op;
+    if (stOp.inBridge && stOp.kind === 'CHAIN') chainSlot.unshift(stIdx);
+    else break;
+  }
+  const N = chainSlot.length;
+  if (N === 0) return;
+
+  const ABBREV_THRESHOLD = 5;
+  const abbreviated = N >= ABBREV_THRESHOLD;
+
+  // 호 폭 = anchor 의 M cells 영역. M=1 이면 1 cell 폭으로 fallback.
+  const anchor = stitches[anchorIdx]!;
+  const cellChord = Math.abs(rightCellX - leftCellX);
+  const minChord = FLAT_CELL_WIDTH * 0.8;
+  let leftX = leftCellX, rightX = rightCellX;
+  if (cellChord < minChord) {
+    const center = (leftCellX + rightCellX) / 2;
+    leftX = center - minChord / 2;
+    rightX = center + minChord / 2;
+  }
+  const left = { x: leftX, y };
+  const right = { x: rightX, y };
+
+  const parentY = parentIdxs.length > 0 ? stitches[parentIdxs[0]!]!.position.y : y - FLAT_CELL_HEIGHT;
+  const bulge = Math.min(FLAT_CELL_HEIGHT * 0.3, Math.abs(rightX - leftX) * 0.2);
+
+  const dirY = Math.sign(y - parentY) || -1; // 부모 반대 방향
+  const cx = (left.x + right.x) / 2;
+  const cy = y + 2 * bulge * dirY;
+
+  // 좌표 계산 helper
+  const evalAt = (t: number) => {
+    const bx = bezierQuad(left.x, cx, right.x, t);
+    const by = bezierQuad(left.y, cy, right.y, t);
+    const tx = bezierQuadDeriv(left.x, cx, right.x, t);
+    const ty = bezierQuadDeriv(left.y, cy, right.y, t);
+    return { x: bx, y: by, angle: Math.atan2(ty, tx) };
+  };
+
+  if (abbreviated) {
+    // 첫/마지막 사슬은 호의 양 끝 (chord 거의 끝) 에 표시. 가운데 자리에는 숫자 라벨.
+    // 사슬 기호 사이 가용 폭에 맞춰 폰트 자동 축소.
+    const firstP = evalAt(0.05);
+    const lastP = evalAt(0.95);
+    const firstSt = stitches[chainSlot[0]!]!;
+    firstSt.position = { x: firstP.x, y: firstP.y };
+    firstSt.angle = firstP.angle;
+    const lastSt = stitches[chainSlot[N - 1]!]!;
+    lastSt.position = { x: lastP.x, y: lastP.y };
+    lastSt.angle = lastP.angle;
+    // 가운데 사슬들 모두 hidden — 가운데 자리는 라벨로 대체.
+    for (let k = 1; k < N - 1; k++) {
+      const st = stitches[chainSlot[k]!]!;
+      st.hidden = true;
+      st.position = { x: anchor.position.x, y };
+    }
+    // 라벨 = N (괄호 없이 숫자만). 가운데 사슬 자리에 표시.
+    const labelP = evalAt(0.5);
+    anchor.position = { x: labelP.x, y: labelP.y };
+    const labelText = String(N);
+    anchor.labelText = labelText;
+    // 가용 폭 = 첫/마지막 사슬 사이 안쪽 - 마진. 사슬 기호 반폭 5px, 마진 1px.
+    const SYMBOL_HALF = 5;
+    const MARGIN = 1;
+    const available = Math.max(6, Math.abs(lastP.x - firstP.x) - 2 * SYMBOL_HALF - 2 * MARGIN);
+    const CHAR_WIDTH_RATIO = 0.55;
+    const idealSize = available / (labelText.length * CHAR_WIDTH_RATIO);
+    anchor.labelFontSize = Math.max(7, Math.min(11, idealSize));
+  } else {
+    // 정상: 호 길이 기준으로 N 개 균등 배치.
+    const arcWidth = Math.abs(right.x - left.x);
+    const CHAIN_SPACING = arcWidth / Math.max(N + 1, 2);
+    const tValues = sampleByArcLength(left, { x: cx, y: cy }, right, N, CHAIN_SPACING);
+    for (let k = 0; k < N; k++) {
+      const p = evalAt(tValues[k]!);
+      const st = stitches[chainSlot[k]!]!;
+      st.position = { x: p.x, y: p.y };
+      st.angle = p.angle;
+    }
+  }
+}
+
+
 // ============================================================
-// 부모 행 정렬 — 위 round 의 첫 자식 x 로 아래 round 의 부모 stitch 이동
-// (decrease A 처럼 자식이 여러 부모를 소비하는 경우는 건드리지 않음)
+// 부모 → 자식 그룹 정렬 (L: firstKid, R: lastKid, C: 평균).
+// DEC/BRIDGE_ANCHOR 처럼 자식이 다중 부모 공유 시 이동 금지.
+// 큰 round 부터 작은 순으로 내려가며 연쇄 적용.
 // ============================================================
 
-function alignParentRows(stitches: PositionedStitch[]): void {
-  // childrenOf[parentIdx] = [childStitchIdx, ...] (연결 순서대로)
+function alignParentToChildren(stitches: PositionedStitch[], align: 'L' | 'R' | 'C'): void {
   const childrenOf = new Map<number, number[]>();
   for (let i = 0; i < stitches.length; i++) {
     for (const pIdx of stitches[i]!.parentIndices) {
@@ -242,7 +440,6 @@ function alignParentRows(stitches: PositionedStitch[]): void {
     }
   }
 
-  // 큰 round 인덱스부터 작은 순으로 내려가며 부모 이동. 연쇄 이동을 위해 한 번에 처리.
   const byRound = new Map<number, number[]>();
   for (let i = 0; i < stitches.length; i++) {
     const r = stitches[i]!.roundIndex;
@@ -254,13 +451,73 @@ function alignParentRows(stitches: PositionedStitch[]): void {
     const parents = byRound.get(r) ?? [];
     for (const pIdx of parents) {
       const parent = stitches[pIdx]!;
-      if (parent.op.kind === 'MAGIC') continue; // MAGIC 은 고정 위치 유지
+      if (parent.op.kind === 'MAGIC') continue;
       const kids = childrenOf.get(pIdx);
       if (!kids || kids.length === 0) continue;
       const firstKid = stitches[kids[0]!]!;
-      // A(dec): 자식이 여러 부모를 공유. 이 경우 부모 이동은 금지
       if (firstKid.parentIndices.length > 1) continue;
-      parent.position = { x: firstKid.position.x, y: parent.position.y };
+      let targetX: number;
+      if (align === 'L') {
+        targetX = firstKid.position.x;
+      } else if (align === 'R') {
+        targetX = stitches[kids[kids.length - 1]!]!.position.x;
+      } else {
+        let sum = 0;
+        for (const k of kids) sum += stitches[k]!.position.x;
+        targetX = sum / kids.length;
+      }
+      if (parent.position.x === targetX) continue;
+      const dx = targetX - parent.position.x;
+      parent.position = { x: targetX, y: parent.position.y };
+      // BRIDGE_ANCHOR 가 이동하면 자기 호의 사슬들도 같은 dx 만큼 함께 이동.
+      if (parent.op.kind === 'BRIDGE_ANCHOR') {
+        for (let j = pIdx - 1; j >= 0; j--) {
+          const t = stitches[j]!;
+          if (t.roundIndex !== parent.roundIndex) break;
+          if (!t.op.inBridge || t.op.kind !== 'CHAIN') break;
+          t.position = { x: t.position.x + dx, y: t.position.y };
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 각 단에서 op 순서대로 인접 코의 x 가 단조 증가하도록 보정.
+ * cascade 가 stitch 를 자식 위치로 끌어와 op 순서에 비해 너무 왼쪽이 되면 (= SKIP 위치 등에 겹침),
+ * prev.x + W 까지 오른쪽으로 push. samehole continuation 은 anchor 와 함께 이동하므로 같이 push.
+ * BRIDGE_ANCHOR 의 사슬도 anchor 와 함께 push.
+ */
+function enforceRowMonotonic(stitches: PositionedStitch[]): void {
+  const W = FLAT_CELL_WIDTH;
+  const byRound = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    const r = stitches[i]!.roundIndex;
+    if (!byRound.has(r)) byRound.set(r, []);
+    byRound.get(r)!.push(i);
+  }
+  for (const indices of byRound.values()) {
+    let prevX = -Infinity;
+    for (const idx of indices) {
+      const s = stitches[idx]!;
+      if (s.op.kind === 'MAGIC') continue; // MAGIC 은 별도 위치
+      // bridge 사슬은 호로 그려져 cell 순서에 없음 — 단조 체크 skip.
+      if (s.op.inBridge && s.op.kind === 'CHAIN') continue;
+      const minX = prevX === -Infinity ? s.position.x : prevX + W;
+      if (s.position.x < minX) {
+        const dx = minX - s.position.x;
+        s.position = { x: minX, y: s.position.y };
+        // BRIDGE_ANCHOR 가 push 되면 자기 호의 사슬들도 같이 이동.
+        if (s.op.kind === 'BRIDGE_ANCHOR') {
+          for (let j = idx - 1; j >= 0; j--) {
+            const t = stitches[j]!;
+            if (t.roundIndex !== s.roundIndex) break;
+            if (!t.op.inBridge || t.op.kind !== 'CHAIN') break;
+            t.position = { x: t.position.x + dx, y: t.position.y };
+          }
+        }
+      }
+      prevX = s.position.x;
     }
   }
 }

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
   import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical } from '$stores/mode';
+  import { setFlatAlign } from '$stores/tabs';
+  import type { FlatAlign } from '$stores/tabs';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
 
@@ -206,6 +208,20 @@
       >
         <i class="fa-solid fa-arrows-up-down"></i> {$flatFlipVertical ? '1단 ↑' : '1단 ↓'}
       </button>
+      <div class="align-group" role="group" aria-label="좁은 단 정렬">
+        {#each ['L', 'R', 'C'] as a (a)}
+          <button
+            type="button"
+            class="tool-btn toggle-btn align-btn"
+            class:active={$pattern.flatAlign === a}
+            onclick={() => setFlatAlign(a as FlatAlign)}
+            aria-pressed={$pattern.flatAlign === a}
+            title={a === 'L' ? '왼쪽 정렬 (부모 오른쪽 공백)'
+              : a === 'R' ? '오른쪽 정렬 (부모 왼쪽 공백)'
+              : '가운데 정렬'}
+          >{a}</button>
+        {/each}
+      </div>
     {/if}
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -275,6 +291,31 @@
   }
   .spacer {
     flex: 1;
+  }
+  .align-group {
+    display: inline-flex;
+    gap: 0;
+  }
+  .align-btn {
+    width: 24px;
+    padding: 0;
+    border-radius: 0;
+    font-weight: 600;
+  }
+  .align-btn:first-child {
+    border-top-left-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
+  }
+  .align-btn:last-child {
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+  }
+  .align-btn + .align-btn {
+    border-left: 0;
+  }
+  .align-btn.active {
+    background: var(--bg-hover);
+    color: var(--text);
   }
   .grid-dot {
     display: inline-block;
