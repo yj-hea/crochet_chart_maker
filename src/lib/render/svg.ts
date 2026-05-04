@@ -235,8 +235,8 @@ function renderStitchUse(s: PositionedStitch): string {
     const fontSize = s.labelFontSize ?? 11;
     return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="${fmt(fontSize)}" fill="currentColor">${safe}</text>`;
   }
-  // BRIDGE_ANCHOR / SKIP 은 시각 표시 없음 (cell 자리는 차지하지만 기호는 빈 자리로 둠).
-  if (s.op.kind === 'BRIDGE_ANCHOR' || s.op.kind === 'SKIP') return '';
+  // BRIDGE_ANCHOR 는 라벨/사슬로 대체되므로 표시 생략.
+  if (s.op.kind === 'BRIDGE_ANCHOR') return '';
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
   const colorStyle = s.op.color ? ` style="color: ${escapeAttr(s.op.color)}"` : '';
 
