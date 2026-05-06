@@ -143,14 +143,14 @@ function effectiveSymH(op: Op): number {
 }
 
 /**
- * op 가 링에서 차지하는 시각적 슬롯 수.
- * MAGIC/SKIP/기둥코 연속 op 는 링 슬롯을 차지하지 않음. 그 외는 produce 와 일치.
+ * op 가 링에서 차지하는 시각적 슬롯 수 = max(produce, consume).
+ * MAGIC, 장식 (chain/tc cont, produce=0 && consume=0) 은 0.
+ * SKIP (produce=0, consume=1) 은 1 슬롯 (자리 차지) — 다음 단으로는 노출 X.
  */
 function visualProduceFor(op: Op): number {
   if (op.kind === 'MAGIC') return 0;
-  if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
-  // SKIP 도 1 코 — 링 슬롯을 차지 (다른 기호와 겹치지 않게).
-  return op.produce;
+  if (op.produce === 0 && op.consume === 0) return 0;
+  return Math.max(op.produce, op.consume);
 }
 
 /** 기호 하단이 baseRadius에 맞도록 심볼 반높이만큼 밀어냄 */

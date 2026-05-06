@@ -45,14 +45,14 @@ function expandSequence(node: SequenceNode, out: Op[]): void {
 }
 
 function expandSkip(node: SkipNode, out: Op[]): void {
-  // skip(n) = n 개의 SKIP 코. 각 SKIP 은 1 코 (1 cell, 1 슬롯) — 부모 1개 소비,
-  // 다음 단에 1개 슬롯 노출 (코 자리 통과). n 개의 op 으로 펼쳐서 일관되게 처리.
+  // skip(n) = n 개의 SKIP 코. 각 SKIP 은 부모 1개를 소비하고 자기 자리 1 cell 차지.
+  // produce=0 — SKIP 위에는 코를 뜰 수 없으므로 다음 단 부모로 노출되지 않음.
   for (let i = 0; i < node.count; i++) {
     out.push({
       kind: 'SKIP',
       expansion: 1,
       consume: 1,
-      produce: 1,
+      produce: 0,
       sourceRange: node.range,
     });
   }
