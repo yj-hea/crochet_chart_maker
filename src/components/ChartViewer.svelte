@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
-  import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical } from '$stores/mode';
+  import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
 
@@ -205,6 +205,29 @@
         title={$flatFlipVertical ? '1단이 위 (반전됨)' : '1단이 아래 (기본). 클릭하여 반전'}
       >
         <i class="fa-solid fa-arrows-up-down"></i> {$flatFlipVertical ? '1단 ↑' : '1단 ↓'}
+      </button>
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        onclick={() => flatAlign.update((v) => v === 'L' ? 'C' : v === 'C' ? 'R' : 'L')}
+        title={
+          $flatAlign === 'L' ? '좌측 정렬 (자식이 우측으로 펼쳐짐). 클릭: 가운데' :
+          $flatAlign === 'C' ? '가운데 정렬. 클릭: 우측' :
+          '우측 정렬 (자식이 좌측으로 펼쳐짐). 클릭: 좌측'
+        }
+      >
+        <i class="fa-solid fa-align-{$flatAlign === 'L' ? 'left' : $flatAlign === 'R' ? 'right' : 'center'}"></i>
+        {$flatAlign}
+      </button>
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        class:active={$flatCascade}
+        onclick={() => flatCascade.update((v) => !v)}
+        aria-pressed={$flatCascade}
+        title={$flatCascade ? 'Cascade 켜짐 (부모가 자식 위치로 이동). 클릭: 끄기' : 'Cascade 꺼짐 (cell 위치 유지, 슬랜트). 클릭: 켜기'}
+      >
+        <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
       </button>
     {/if}
   </div>

@@ -31,3 +31,18 @@ export const showConnections = writable<boolean>(true);
  * true 면 1단이 위, 이후 단이 아래로.
  */
 export const flatFlipVertical = writable<boolean>(false);
+
+/**
+ * 평면 도안에서 단마다 코 수가 다를 때 좁은 단을 max 폭 안에서 어디에 정렬할지.
+ *  - 'L': 좌측 끝. 자식 그룹이 부모 우측으로 펼쳐짐.
+ *  - 'R': 우측 끝. 자식 그룹이 부모 좌측으로 펼쳐짐.
+ *  - 'C': 가운데.
+ */
+export type FlatAlign = 'L' | 'R' | 'C';
+export const flatAlign = writable<FlatAlign>('L');
+
+/**
+ * 평면 cascade — 부모 행을 자식 행의 첫 자식 x 로 이동시켜 정렬.
+ * true (기본): cascade 적용. false: 각 단을 자기 cell 위치에 그대로 두고 연결선이 슬랜트.
+ */
+export const flatCascade = writable<boolean>(true);

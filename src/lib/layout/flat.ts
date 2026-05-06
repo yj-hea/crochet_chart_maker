@@ -38,20 +38,36 @@ function effectiveSymH(op: Op): number {
 export interface FlatOptions {
   /** 상하 반전: true 면 1단이 위쪽에 오고 이후 단이 아래로 쌓임. */
   flipVertical?: boolean;
+  /**
+   * 단마다 cell 수가 다를 때 좁은 단을 max 단의 어느 쪽에 정렬할지.
+   *  - 'L': 좌측 끝. 자식 그룹이 부모 우측으로 펼쳐짐.
+   *  - 'R': 우측 끝. 자식 그룹이 부모 좌측으로 펼쳐짐.
+   *  - 'C': 가운데 (기본 동작 — pre-refactor).
+   */
+  align?: 'L' | 'R' | 'C';
+  /**
+   * 부모 행 cascade. true (기본): 부모를 첫 자식 x 로 이동. false: cell 위치 유지, 연결선 슬랜트.
+   */
+  cascade?: boolean;
 }
 
 export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): LayoutResult {
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
   const slotMapByRound = new Map<number, number[]>();
+  const align: 'L' | 'R' | 'C' = opts.align ?? 'C';
+  const cascade = opts.cascade ?? true;
 
-  // 1) 각 round 를 자체 slot 수 기준 uniform 셀 폭으로 배치.
+  // chart 폭 = max 단 slot 수 — L/R/C 정렬은 이 폭 안에서 좁은 단을 위치시킴.
+  const maxSlots = Math.max(0, ...rounds.map((r) => r.ops.reduce((s, o) => s + visualProduceFor(o), 0)));
+
+  // 1) 각 round 를 max 폭 안에서 align 따라 uniform 셀 폭으로 배치.
   for (const round of rounds) {
-    placeRow(round, stitches, slotMapByRound, roundMarkers);
+    placeRow(round, stitches, slotMapByRound, roundMarkers, maxSlots, align);
   }
 
-  // 2) 부모 행을 첫 자식 x 에 정렬 — tc 등 stitch 위치 이동이 필요한 후처리 전에 먼저 수행
-  alignParentRows(stitches);
+  // 2) 부모 행 cascade — align 방향에 맞춰 첫/끝/평균 자식 x 로 부모 이동.
+  if (cascade) alignParentRows(stitches, align);
 
   // 3) tc 세로 스택 — alignParentRows 이후 첫 op 의 갱신된 x 기준으로 스택
   repositionTurningChainColumns(stitches);
@@ -94,7 +110,6 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   ]);
 
   // 6) 그리드 가이드 — 최대 slot 수 행 기준 uniform 셀
-  const maxSlots = Math.max(0, ...rounds.map((r) => r.ops.reduce((s, o) => s + visualProduceFor(o), 0)));
   const xOffset = maxSlots % 2 === 0 ? 0 : FLAT_CELL_WIDTH / 2;
   const yOffset = FLAT_CELL_HEIGHT / 2;
 
@@ -117,12 +132,26 @@ function placeRow(
   stitches: PositionedStitch[],
   slotMapByRound: Map<number, number[]>,
   roundMarkers: RoundMarker[],
+  maxSlots: number,
+  align: 'L' | 'R' | 'C',
 ): void {
   const { index: roundIdx } = round;
   const rowSlots = round.ops.reduce((sum, op) => sum + visualProduceFor(op), 0);
 
   const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
-  const startX = -((rowSlots - 1) * FLAT_CELL_WIDTH) / 2;
+  const W = FLAT_CELL_WIDTH;
+  // chart 좌측 끝 x (max 단 leftmost slot 의 중심) — L/R/C 정렬 기준점.
+  const chartLeft = -((maxSlots - 1) * W) / 2;
+  let startX: number;
+  if (rowSlots <= 0) {
+    startX = 0;
+  } else if (align === 'L') {
+    startX = chartLeft;
+  } else if (align === 'R') {
+    startX = chartLeft + (maxSlots - rowSlots) * W;
+  } else {
+    startX = -((rowSlots - 1) * W) / 2; // C: 자체 가운데 정렬
+  }
   const direction: 1 | -1 = round.direction === 'reverse' ? -1 : 1;
   const angle = 0;
 
@@ -181,8 +210,8 @@ function placeRow(
       continue;
     }
 
-    const startSlotX = startX + slotCursor * FLAT_CELL_WIDTH;
-    const endSlotX = startX + (slotCursor + vSlots - 1) * FLAT_CELL_WIDTH;
+    const startSlotX = startX + slotCursor * W;
+    const endSlotX = startX + (slotCursor + vSlots - 1) * W;
     const midX = (startSlotX + endSlotX) / 2;
 
     const idx = stitches.length;
@@ -231,7 +260,7 @@ function placeRow(
 // (decrease A 처럼 자식이 여러 부모를 소비하는 경우는 건드리지 않음)
 // ============================================================
 
-function alignParentRows(stitches: PositionedStitch[]): void {
+function alignParentRows(stitches: PositionedStitch[], align: 'L' | 'R' | 'C'): void {
   // childrenOf[parentIdx] = [childStitchIdx, ...] (연결 순서대로)
   const childrenOf = new Map<number, number[]>();
   for (let i = 0; i < stitches.length; i++) {
@@ -260,7 +289,17 @@ function alignParentRows(stitches: PositionedStitch[]): void {
       const firstKid = stitches[kids[0]!]!;
       // A(dec): 자식이 여러 부모를 공유. 이 경우 부모 이동은 금지
       if (firstKid.parentIndices.length > 1) continue;
-      parent.position = { x: firstKid.position.x, y: parent.position.y };
+      let targetX: number;
+      if (align === 'L') {
+        targetX = firstKid.position.x;
+      } else if (align === 'R') {
+        targetX = stitches[kids[kids.length - 1]!]!.position.x;
+      } else {
+        let sum = 0;
+        for (const k of kids) sum += stitches[k]!.position.x;
+        targetX = sum / kids.length;
+      }
+      parent.position = { x: targetX, y: parent.position.y };
     }
   }
 }
