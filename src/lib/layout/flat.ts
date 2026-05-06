@@ -20,9 +20,11 @@ const MARKER_SIDE_OFFSET = 16;
 
 /** op 가 행에서 차지하는 시각적 셀 수. samehole chain 은 arc 로 처리되므로 셀 미차지. */
 function visualProduceFor(op: Op): number {
-  if (op.kind === 'MAGIC' || op.kind === 'SKIP') return 0;
+  if (op.kind === 'MAGIC') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
-  if (op.inSameHoleGroup && op.kind === 'CHAIN') return 0;
+  // chain samehole: anchor 는 1 코로 cell 차지 (op.produce=1), conts 는 호로만 그려져 cell 0.
+  if (op.inSameHoleGroup && op.kind === 'CHAIN') return op.sameHoleContinuation ? 0 : op.produce;
+  // SKIP 도 1 코 — 시각 비표시지만 1 cell 차지 (다른 기호와 겹치지 않게).
   return op.produce;
 }
 
@@ -67,7 +69,15 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   }
 
   // 2) 부모 행 cascade — align 방향에 맞춰 첫/끝/평균 자식 x 로 부모 이동.
-  if (cascade) alignParentRows(stitches, align);
+  //    동시에 자식이 다중 부모 소비 (DEC, bridge) 시 자식을 부모 위치로 역정렬.
+  if (cascade) {
+    alignChildToParents(stitches, align);
+    alignParentRows(stitches, align);
+  }
+
+  // 2.5) 코 겹침 방지 — 각 행에서 op 순서대로 x 가 W 이상 단조 증가하도록 보정.
+  //      cascade 가 만든 충돌이나 단 사이 slot 불일치로 생긴 동일 위치 stitch 를 흩뿌림.
+  enforceRowMonotonic(stitches);
 
   // 3) tc 세로 스택 — alignParentRows 이후 첫 op 의 갱신된 x 기준으로 스택
   repositionTurningChainColumns(stitches);
@@ -260,6 +270,42 @@ function placeRow(
 // (decrease A 처럼 자식이 여러 부모를 소비하는 경우는 건드리지 않음)
 // ============================================================
 
+/**
+ * 자식 → 부모 역방향 align: 자식 위치를 부모 위치 기준으로 맞춤.
+ *  - 다중 부모 자식 (DEC, bridge anchor): L=첫 부모 / R=마지막 부모 / C=평균 부모.
+ *  - 단일 부모 자식: 부모가 *유일한 자식* 일 때만 (1:1 매핑) 부모 x 로 이동.
+ *    부모가 여러 자식을 가진 경우 (V/[Nx] 확장) 는 자식이 cell-based 자리에서 펼쳐져야 하므로 이동 X.
+ */
+function alignChildToParents(stitches: PositionedStitch[], align: 'L' | 'R' | 'C'): void {
+  // 부모별 자식 수 카운트 — V (parent → multi kids) 인지 1:1 인지 구분.
+  const kidsCount = new Map<number, number>();
+  for (const s of stitches) {
+    for (const p of s.parentIndices) kidsCount.set(p, (kidsCount.get(p) ?? 0) + 1);
+  }
+  for (const s of stitches) {
+    const parents = s.parentIndices;
+    if (parents.length === 0) continue;
+    if (parents.length >= 2) {
+      const xs = parents.map((p) => stitches[p]!.position.x);
+      let targetX: number;
+      if (align === 'L') targetX = xs[0]!;
+      else if (align === 'R') targetX = xs[xs.length - 1]!;
+      else {
+        let sum = 0;
+        for (const x of xs) sum += x;
+        targetX = sum / xs.length;
+      }
+      s.position = { x: targetX, y: s.position.y };
+    } else {
+      // 단일 부모 — 부모가 유일한 자식 (1:1) 일 때만 이동.
+      const parentIdx = parents[0]!;
+      if ((kidsCount.get(parentIdx) ?? 0) === 1) {
+        s.position = { x: stitches[parentIdx]!.position.x, y: s.position.y };
+      }
+    }
+  }
+}
+
 function alignParentRows(stitches: PositionedStitch[], align: 'L' | 'R' | 'C'): void {
   // childrenOf[parentIdx] = [childStitchIdx, ...] (연결 순서대로)
   const childrenOf = new Map<number, number[]>();
@@ -353,6 +399,34 @@ function isSameholeArcChain(s: PositionedStitch | undefined): boolean {
   return s.op.kind === 'CHAIN';
 }
 
+/**
+ * 각 행에서 op 순서대로 x 가 인접 코 너비 (FLAT_CELL_WIDTH) 이상 단조 증가하도록 보정.
+ * cascade 후 충돌/순서 깨짐을 회복. claim=0 op (chain cont, tc cont) 는 후처리에서
+ * 호/스택으로 정리되므로 여기서 단조 체크 skip.
+ */
+function enforceRowMonotonic(stitches: PositionedStitch[]): void {
+  const W = FLAT_CELL_WIDTH;
+  const byRound = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    const r = stitches[i]!.roundIndex;
+    if (!byRound.has(r)) byRound.set(r, []);
+    byRound.get(r)!.push(i);
+  }
+  for (const indices of byRound.values()) {
+    let prevX = -Infinity;
+    for (const idx of indices) {
+      const s = stitches[idx]!;
+      if (s.op.kind === 'MAGIC') continue;
+      if (visualProduceFor(s.op) === 0) continue;
+      const minX = prevX === -Infinity ? s.position.x : prevX + W;
+      if (s.position.x < minX) {
+        s.position = { x: minX, y: s.position.y };
+      }
+      prevX = s.position.x;
+    }
+  }
+}
+
 function findAdjacentNonChain(
   stitches: PositionedStitch[],
   indices: number[],
@@ -363,7 +437,8 @@ function findAdjacentNonChain(
     const t = stitches[indices[j]!]!;
     if (t.op.kind === 'CHAIN') continue;
     if (t.op.turningChain) continue;
-    if (t.op.kind === 'MAGIC' || t.op.kind === 'SKIP') continue;
+    if (t.op.kind === 'MAGIC') continue;
+    // SKIP 도 1 코 (boundary 역할). chain arc 가 SKIP 위에 침범하지 않도록 포함.
     return t;
   }
   return undefined;
@@ -395,9 +470,21 @@ function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[
     const next = findAdjacentNonChain(stitches, indices, runEnd, 1);
     if (!prev && !next) continue;
 
+    // anchor 의 위치 (cascade/alignChildToParents 결과) 를 cluster 가운데로 사용 — 그래야
+    // L/R/C cascade 가 anchor 에 반영되고, bridge 의 부모 정렬이 chain 호에도 보임.
+    const anchor = stitches[indices[runStart]!]!;
+    const anchorX = anchor.position.x;
+    // chord 폭은 prev/next 의 거리를 그대로 사용 (호의 가로 폭). 단, *anchor 중심* 에 정렬.
     const topOffset = (s: PositionedStitch) => ({ x: s.position.x, y: s.position.y - effectiveSymH(s.op) });
-    const leftTop = prev ? topOffset(prev) : { x: (next!.position.x - FLAT_CELL_WIDTH), y: next!.position.y - effectiveSymH(next!.op) };
-    const rightTop = next ? topOffset(next) : { x: (prev!.position.x + FLAT_CELL_WIDTH), y: prev!.position.y - effectiveSymH(prev!.op) };
+    const prevTop = prev ? topOffset(prev) : { x: anchorX - FLAT_CELL_WIDTH, y: (next!.position.y - effectiveSymH(next!.op)) };
+    const nextTop = next ? topOffset(next) : { x: anchorX + FLAT_CELL_WIDTH, y: (prev!.position.y - effectiveSymH(prev!.op)) };
+    const halfChord = Math.max(
+      anchorX - prevTop.x,
+      nextTop.x - anchorX,
+      FLAT_CELL_WIDTH * 0.5,
+    );
+    const leftTop = { x: anchorX - halfChord, y: prevTop.y };
+    const rightTop = { x: anchorX + halfChord, y: nextTop.y };
 
     const dx = rightTop.x - leftTop.x;
     const dy = rightTop.y - leftTop.y;
@@ -409,7 +496,13 @@ function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[
     const requiredArc = chainSpan + 2 * ANCHOR_GAP;
     const arcRatio = chord > 0.001 ? requiredArc / chord : 1;
     const minBulgeRatio = 0.15;
-    const h_bez = chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1))));
+    // bulge 캡 — chain 호가 다음 단 영역을 침범하지 않게.
+    // h_bez ≤ FLAT_CELL_HEIGHT*0.3 ≈ 9.6 → midpoint 가 row 위로 ~17 정도, 다음 단 HDC 와 5px+ 여유.
+    const maxBulge = FLAT_CELL_HEIGHT * 0.3;
+    const h_bez = Math.min(
+      maxBulge,
+      chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1)))),
+    );
     const cOffset = 2 * h_bez;
 
     let perpX: number, perpY: number;
@@ -427,6 +520,12 @@ function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[
     const cy = midY + cOffset * perpY;
 
     const tValues = sampleByArcLength(leftTop, { x: cx, y: cy }, rightTop, runLen, CHAIN_SPACING);
+    // anchor (chain[0]) 가 cluster 가운데에 오도록 t-value 재배치 — 부모 연결선이
+    // 부모 코의 *중점* 으로 가게. 다른 chain (cont) 들은 좌우로 spread.
+    const midSampleIdx = Math.floor((runLen - 1) / 2);
+    if (midSampleIdx > 0 && midSampleIdx < runLen) {
+      [tValues[0], tValues[midSampleIdx]] = [tValues[midSampleIdx]!, tValues[0]!];
+    }
     for (let j = 0; j < runLen; j++) {
       const t = tValues[j]!;
       const bx = bezierQuad(leftTop.x, cx, rightTop.x, t);

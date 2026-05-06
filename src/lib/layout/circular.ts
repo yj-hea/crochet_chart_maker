@@ -147,8 +147,9 @@ function effectiveSymH(op: Op): number {
  * MAGIC/SKIP/기둥코 연속 op 는 링 슬롯을 차지하지 않음. 그 외는 produce 와 일치.
  */
 function visualProduceFor(op: Op): number {
-  if (op.kind === 'MAGIC' || op.kind === 'SKIP') return 0;
+  if (op.kind === 'MAGIC') return 0;
   if (op.turningChain) return op.sameHoleContinuation ? 0 : 1;
+  // SKIP 도 1 코 — 링 슬롯을 차지 (다른 기호와 겹치지 않게).
   return op.produce;
 }
 

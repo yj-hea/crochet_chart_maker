@@ -45,13 +45,17 @@ function expandSequence(node: SequenceNode, out: Op[]): void {
 }
 
 function expandSkip(node: SkipNode, out: Op[]): void {
-  out.push({
-    kind: 'SKIP',
-    expansion: 1,
-    consume: node.count,
-    produce: 0,
-    sourceRange: node.range,
-  });
+  // skip(n) = n 개의 SKIP 코. 각 SKIP 은 1 코 (1 cell, 1 슬롯) — 부모 1개 소비,
+  // 다음 단에 1개 슬롯 노출 (코 자리 통과). n 개의 op 으로 펼쳐서 일관되게 처리.
+  for (let i = 0; i < node.count; i++) {
+    out.push({
+      kind: 'SKIP',
+      expansion: 1,
+      consume: 1,
+      produce: 1,
+      sourceRange: node.range,
+    });
+  }
 }
 
 /**
@@ -124,6 +128,8 @@ function expandRepeat(node: RepeatNode, out: Op[]): void {
  * tc(...) 도 내부에 올 수 있으며 turningChain 플래그는 tc 확장 시 이미 설정되어 있음.
  */
 function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
+  // bridgeConsume: `Ntog([Nch])` 인 경우 anchor 가 N 부모를 소비.
+  const anchorConsume = node.bridgeConsume ?? 1;
   for (let i = 0; i < node.count; i++) {
     const groupOps: Op[] = [];
     expandSequence(node.body, groupOps);
@@ -132,12 +138,15 @@ function expandSameHole(node: SameHoleGroupNode, out: Op[]): void {
     for (let k = 0; k < groupOps.length; k++) {
       const op = groupOps[k]!;
       const isChain = op.kind === 'CHAIN';
-      const effectiveProduce = isChain ? 0 : op.produce;
+      // chain samehole 은 *그룹 전체가 1 코* — anchor 만 produce=1, conts 는 0.
+      // (단일 stitch 1코와 동등하게, 다음 단에 1슬롯 노출.)
+      // 그 외 stitch 의 samehole 은 V^N 처럼 모두 produce 그대로 (각자 슬롯).
+      const effectiveProduce = isChain ? (k === 0 ? 1 : 0) : op.produce;
       if (k === 0) {
-        // 첫 op 는 그룹의 앵커 — consume 을 1 로 승격 (chain 등 consume=0 도 포함)
+        // 첫 op 는 그룹의 앵커 — bridgeConsume 이 지정된 경우 그 값 (Ntog([...])), 아니면 1.
         out.push({
           ...op,
-          consume: 1,
+          consume: anchorConsume,
           produce: effectiveProduce,
           sameHoleContinuation: false,
           inSameHoleGroup: true,

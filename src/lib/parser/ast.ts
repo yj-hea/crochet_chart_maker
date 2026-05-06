@@ -54,6 +54,12 @@ export interface SameHoleGroupNode {
   body: SequenceNode;
   /** 앞 숫자 — 그룹 전체를 N번 반복. 예: 3[F,T] → count=3 */
   count: number;
+  /**
+   * 브릿지 소비 수 — `Ntog([Nch])` 같이 그룹 anchor 가 N 개의 부모 코를 소비할 때 N.
+   * 미지정 (= 일반 `[...]`) 면 anchor consume = 1.
+   * 설정 시 anchor consume = bridgeConsume (그룹 안의 chain 들은 prev row 의 N 부모 위 호로 그려짐).
+   */
+  bridgeConsume?: number;
   range: SourceRange;
 }
 

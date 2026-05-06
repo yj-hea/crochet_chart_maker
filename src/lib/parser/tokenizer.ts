@@ -12,6 +12,8 @@ export type TokenType =
   | 'NUMBER'    // 숫자 (양의 정수)
   | 'STITCH'    // 코 기호 (@, X, V 등)
   | 'MODIFIER'  // 수식자 (blo 등)
+  | 'TOG'       // 키워드 'tog' — N개 부모 → 1 코 (DEC alias). 예: x3tog, 3tog(x)
+  | 'IN'        // 키워드 'in' — 1 부모 → N 코 (INC alias). 예: x3in, 3in(x)
   | 'COMMA'     // ,
   | 'LPAREN'    // (
   | 'RPAREN'    // )
@@ -142,6 +144,14 @@ export function tokenize(input: string): Token[] {
       continue;
     }
 
+    // 3.5) 키워드: tog, in (다음 문자가 알파벳이 아닐 때만 매칭 — `inc`, `together` 등과 구분)
+    const kwMatch = tryKeywordMatch(input, i);
+    if (kwMatch) {
+      tokens.push({ type: kwMatch.type, range: { start: i, end: i + kwMatch.length }, text: kwMatch.text });
+      i += kwMatch.length;
+      continue;
+    }
+
     // 4) 별칭 longest-match
     const aliasMatch = tryAliasMatch(input, i);
     if (aliasMatch) {
@@ -167,6 +177,27 @@ export function tokenize(input: string): Token[] {
   }
 
   return tokens;
+}
+
+/**
+ * 키워드 매칭: `tog`, `in` 같은 식별자형 키워드. 뒤에 알파벳이 오면 부분 매칭으로 간주하고 거부.
+ * (예: `inc` 는 INC stitch alias 로 별칭 매칭이 처리하고, 여기선 `in` 단독만 IN 토큰으로 인식.)
+ */
+function tryKeywordMatch(
+  input: string,
+  start: number,
+): { type: TokenType; length: number; text: string } | undefined {
+  const KEYWORDS: ReadonlyArray<{ kw: string; type: TokenType }> = [
+    { kw: 'tog', type: 'TOG' },
+    { kw: 'in',  type: 'IN' },
+  ];
+  for (const { kw, type } of KEYWORDS) {
+    if (!input.startsWith(kw, start)) continue;
+    const next = input[start + kw.length];
+    if (next !== undefined && /[A-Za-z]/.test(next)) continue;
+    return { type, length: kw.length, text: kw };
+  }
+  return undefined;
 }
 
 function tryStructural(ch: string): TokenType | undefined {

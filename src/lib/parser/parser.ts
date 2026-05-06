@@ -257,7 +257,7 @@ class Parser {
   /**
    * stitchElement ::= modifier? count? stitch expansion?
    */
-  private parseStitchElement(): StitchNode | undefined {
+  private parseStitchElement(): ElementNode | undefined {
     const first = this.peek();
     if (!first) return undefined;
     const startPos = first.range.start;
@@ -272,9 +272,13 @@ class Parser {
       this.advance();
     }
 
-    // 선택적 count
+    // 선택적 count — *function form (Ntog(x) / Nin(x)) 와 충돌 가능*. NUMBER 뒤가 TOG/IN 이면 함수형으로 분기.
     const maybeCount = this.peek();
     if (maybeCount?.type === 'NUMBER') {
+      const after = this.peek(1);
+      if (after?.type === 'TOG' || after?.type === 'IN') {
+        return this.parseFunctionForm(startPos, modifier);
+      }
       count = maybeCount.value as number;
       this.advance();
     }
@@ -305,7 +309,7 @@ class Parser {
       );
       return undefined;
     }
-    const kind = stitchTok.value as StitchKind;
+    let kind = stitchTok.value as StitchKind;
     this.advance();
 
     // V/A 뒤에 선택적 base stitch (T/F/E/X/DTR): VT^2, AF^3, VDTR 등
@@ -347,6 +351,33 @@ class Parser {
       }
       this.advance();
       yarnOverCount = n;
+    }
+
+    // 선택적 expansion (suffix form): NUMBER tog/in — 예: x3tog, x3in.
+    //   X/T/F/E/dtr 같은 base stitch 뒤에서만 허용. V/A 뒤에는 의미 충돌 → 거부.
+    const sufNum = this.peek();
+    const sufKw = this.peek(1);
+    if (sufNum?.type === 'NUMBER' && (sufKw?.type === 'TOG' || sufKw?.type === 'IN')) {
+      const isBase = kind === 'SC' || kind === 'HDC' || kind === 'DC' || kind === 'TR' || kind === 'DTR';
+      if (!isBase) {
+        this.error(
+          'invalid_expansion',
+          { start: sufNum.range.start, end: sufKw.range.end },
+          `${STITCH_META[kind].canonical} 뒤에는 \`${sufKw.type === 'TOG' ? 'tog' : 'in'}\` 접미사를 사용할 수 없습니다 (base stitch X/T/F/E/dtr 만 허용)`,
+        );
+        return undefined;
+      }
+      const n = sufNum.value as number;
+      if (n < 1) {
+        this.error('invalid_number', sufNum.range, `${sufKw.type === 'TOG' ? 'tog' : 'in'} 수는 1 이상이어야 합니다`);
+        return undefined;
+      }
+      // x3tog → AX^3 (DEC, baseKind=SC, expansion=3). x3in → VX^3 (INC, ...).
+      baseKind = kind;
+      kind = sufKw.type === 'TOG' ? 'DEC' : 'INC';
+      expansion = n;
+      this.advance(); // NUMBER
+      this.advance(); // TOG / IN
     }
 
     // 선택적 expansion: ^NUMBER
@@ -430,6 +461,116 @@ class Parser {
       comment,
       color,
       range: { start: startPos, end: (this.peek(-1)?.range.end) ?? startPos },
+    };
+  }
+
+  /**
+   * 함수 형태: `Ntog(x)` / `Nin(x)` — 진입 시 NUMBER, TOG/IN 미소비 상태.
+   *   `Ntog(x)` ≡ `AX^N` (DEC, baseKind=SC, expansion=N)
+   *   `Nin(x)`  ≡ `VX^N` (INC, baseKind=SC, expansion=N)
+   * X 자리에는 base stitch (X/T/F/E/dtr) 만 허용.
+   */
+  private parseFunctionForm(startPos: number, modifier: ModifierKind | undefined): ElementNode | undefined {
+    const numTok = this.peek()!;
+    const kwTok = this.peek(1)!;
+    const n = numTok.value as number;
+    if (n < 1) {
+      this.error('invalid_number', numTok.range, `${kwTok.text} 수는 1 이상이어야 합니다`);
+      return undefined;
+    }
+    this.advance(); // NUMBER
+    this.advance(); // TOG / IN
+
+    const lp = this.peek();
+    if (!lp || lp.type !== 'LPAREN') {
+      this.error('unexpected_token', lp?.range ?? this.eofRange(), `${kwTok.text}( 가 필요합니다`);
+      return undefined;
+    }
+    this.advance();
+
+    const inner = this.peek();
+    // `Ntog([...])` 또는 `Nin([...])` — samehole chain 그룹이 1코로 수렴 (브릿지).
+    // 현재 in 은 chain samehole 미지원 (의미 모호) — tog 만 허용.
+    if (inner?.type === 'LBRACKET') {
+      if (kwTok.type !== 'TOG') {
+        this.error('unexpected_token', inner.range, `${kwTok.text}([...]) 형태는 tog 에서만 허용`);
+        return undefined;
+      }
+      const group = this.parseSameHoleElement();
+      if (!group) return undefined;
+      // 브릿지 의미: 그룹 안 모든 stitch 가 CHAIN 이어야 함 (chain bridge).
+      const allChain = group.body.elements.every((el) => {
+        if (el.type !== 'stitch') return false;
+        return el.kind === 'CHAIN';
+      });
+      if (!allChain) {
+        this.error('unexpected_token', group.range, `tog([...]) 안에는 chain (ch) 만 허용 — 브릿지 패턴`);
+        return undefined;
+      }
+      group.bridgeConsume = n;
+      const rp = this.peek();
+      if (!rp || rp.type !== 'RPAREN') {
+        this.error('unclosed_paren', rp?.range ?? this.eofRange(), `${kwTok.text}( 에 대응하는 \`)\` 가 필요합니다`);
+        return undefined;
+      }
+      this.advance();
+      return group;
+    }
+
+    if (!inner || inner.type !== 'STITCH') {
+      this.error('unexpected_token', inner?.range ?? this.eofRange(), `${kwTok.text}( 안에는 base stitch (x/t/f/e/dtr/ch) 또는 [Nch] 가 필요합니다`);
+      return undefined;
+    }
+    const sk = inner.value as StitchKind;
+
+    // CHAIN 단독: `Ntog(ch)` — `Ntog([1ch])` 와 동의어 (chain 1개의 samehole 그룹, anchor consume=N).
+    if (sk === 'CHAIN') {
+      if (kwTok.type !== 'TOG') {
+        this.error('unexpected_token', inner.range, `${kwTok.text}(ch) 형태는 tog 에서만 허용`);
+        return undefined;
+      }
+      this.advance(); // CHAIN stitch
+      const rp = this.peek();
+      if (!rp || rp.type !== 'RPAREN') {
+        this.error('unclosed_paren', rp?.range ?? this.eofRange(), `${kwTok.text}( 에 대응하는 \`)\` 가 필요합니다`);
+        return undefined;
+      }
+      this.advance();
+      // 동의어 변환: SameHoleGroupNode { body: [chain], bridgeConsume: N }
+      const innerRange = { start: inner.range.start, end: inner.range.end };
+      const chainNode: StitchNode = {
+        type: 'stitch', kind: 'CHAIN', count: 1, range: innerRange,
+      };
+      return {
+        type: 'samehole',
+        body: { type: 'sequence', elements: [chainNode], range: innerRange },
+        count: 1,
+        bridgeConsume: n,
+        range: { start: startPos, end: rp.range.end },
+      };
+    }
+
+    if (sk !== 'SC' && sk !== 'HDC' && sk !== 'DC' && sk !== 'TR' && sk !== 'DTR') {
+      this.error('unexpected_token', inner.range, `${kwTok.text}( 안에는 base stitch (x/t/f/e/dtr/ch) 만 허용`);
+      return undefined;
+    }
+    this.advance();
+
+    const rp = this.peek();
+    if (!rp || rp.type !== 'RPAREN') {
+      this.error('unclosed_paren', rp?.range ?? this.eofRange(), `${kwTok.text}( 에 대응하는 \`)\` 가 필요합니다`);
+      return undefined;
+    }
+    this.advance();
+
+    return {
+      type: 'stitch',
+      kind: kwTok.type === 'TOG' ? 'DEC' : 'INC',
+      count: 1,
+      expansion: n,
+      modifier,
+      baseKind: sk,
+      range: { start: startPos, end: rp.range.end },
     };
   }
 
