@@ -8,7 +8,7 @@
 
 import { derived } from 'svelte/store';
 import { pattern } from './tabs';
-import { showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade } from './mode';
+import { showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
 import { layoutCircular } from '$lib/layout/circular';
 import { layoutFlat } from '$lib/layout/flat';
@@ -22,8 +22,8 @@ export interface RenderedChart {
 }
 
 export const renderedChart = derived(
-  [pattern, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade],
-  ([$pattern, $showGrid, $showConnections, $flatFlipVertical, $flatAlign, $flatCascade]): RenderedChart | null => {
+  [pattern, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign],
+  ([$pattern, $showGrid, $showConnections, $flatFlipVertical, $flatAlign, $flatCascade, $flatVAlign]): RenderedChart | null => {
     const validRounds: ExpandedRound[] = [];
     for (const r of $pattern.rounds) {
       if (r.expanded) validRounds.push(r.expanded);
@@ -31,11 +31,12 @@ export const renderedChart = derived(
     }
     if (validRounds.length === 0) return null;
     const layout = $pattern.shape === 'circular'
-      ? layoutCircular(validRounds)
+      ? layoutCircular(validRounds, { vAlign: $flatVAlign })
       : layoutFlat(validRounds, {
           flipVertical: $flatFlipVertical,
           align: $flatAlign,
           cascade: $flatCascade,
+          vAlign: $flatVAlign,
         });
     return {
       svg: renderSvg({ layout, showGrid: $showGrid, showConnections: $showConnections }),

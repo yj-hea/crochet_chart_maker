@@ -26,13 +26,22 @@ function directionSign(dir: 'forward' | 'reverse' | undefined): 1 | -1 {
 export interface CircularOptions {
   stitchArc?: number;
   minRadius?: number;
+  /**
+   * 세로 (반경) 정렬.
+   *  - 'same': 같은 단의 코들이 동일 baseRadius (기본).
+   *  - 'even': 각 코가 부모 반경 + 부모/자기 halfH + gap. 같은 단도 다른 반경 가능.
+   */
+  vAlign?: 'same' | 'even';
 }
+
+const RADIAL_GAP = 30; // 'even' 모드에서 부모 ↔ 자식 사이 빈 반경 간격.
 
 export function layoutCircular(
   rounds: ExpandedRound[],
   opts: CircularOptions = {},
 ): LayoutResult {
   const minRadius = opts.minRadius ?? FIRST_RING_RADIUS;
+  const vAlign: 'same' | 'even' = opts.vAlign ?? 'same';
 
   // 1) 각 단의 슬롯 수(시각 기준), baseRadius 사전 계산
   const slotCountByRound = new Map<number, number>();
@@ -72,11 +81,11 @@ export function layoutCircular(
   const slotMapByRound = new Map<number, number[]>();
 
   for (const round of rounds) {
-    placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers);
+    placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers, vAlign);
   }
 
   // 3) `[^...]` 기둥코 후처리 — 세로 스택으로 쌓기
-  repositionTurningChainColumns(stitches, baseRadiusByRound);
+  repositionTurningChainColumns(stitches);
 
   // 4) 사슬 호: 연속된 CHAIN 만 대상, top-to-top anchor (기둥코는 제외)
   repositionChainArcs(stitches);
@@ -158,6 +167,12 @@ function stitchRadius(baseRadius: number, op: Op): number {
   return baseRadius + effectiveSymH(op);
 }
 
+/** stitch 의 바깥 끝까지 거리 — center 반경 + 자기 halfH. */
+function stitchOuterRadius(s: PositionedStitch): number {
+  const r = Math.sqrt(s.position.x * s.position.x + s.position.y * s.position.y);
+  return r + effectiveSymH(s.op);
+}
+
 function placeRound(
   round: ExpandedRound,
   stitches: PositionedStitch[],
@@ -165,6 +180,7 @@ function placeRound(
   baseRadiusByRound: Map<number, number>,
   slotCountByRound: Map<number, number>,
   roundMarkers: RoundMarker[],
+  vAlign: 'same' | 'even',
 ): void {
   const { index: roundIdx } = round;
   const ringSlots = slotCountByRound.get(roundIdx) ?? 0;
@@ -278,7 +294,19 @@ function placeRound(
     const endAngle = angleAt(endSlot, ringSlots, dirSign);
     const midAngle = (startAngle + endAngle) / 2;
 
-    const r = stitchRadius(baseRadius, op);
+    // 'even' 모드: 부모 (가장 바깥) 반경 + 부모/자기 halfH + gap. 부모 없으면 baseRadius 사용.
+    let r: number;
+    if (vAlign === 'even' && parents.length > 0) {
+      let topParentIdx = parents[0]!;
+      let topParentR = stitchOuterRadius(stitches[topParentIdx]!);
+      for (let k = 1; k < parents.length; k++) {
+        const pr = stitchOuterRadius(stitches[parents[k]!]!);
+        if (pr > topParentR) { topParentR = pr; topParentIdx = parents[k]!; }
+      }
+      r = topParentR + RADIAL_GAP + effectiveSymH(op);
+    } else {
+      r = stitchRadius(baseRadius, op);
+    }
     const pos = polarToCartesian(r, midAngle);
 
     // V/A 는 부모 방향에 맞춰 기울이기 (연결선 각도와 일치)
@@ -344,10 +372,7 @@ function placeRound(
  * 첫 op(sameHoleContinuation=false)가 해당 슬롯의 정상 각도에 놓여 있으므로,
  * 그 각도를 기준으로 모든 op 를 r=baseR+symH, baseR+3·symH, ... 에 쌓는다.
  */
-function repositionTurningChainColumns(
-  stitches: PositionedStitch[],
-  baseRadiusByRound: Map<number, number>,
-): void {
+function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
   for (let i = 0; i < stitches.length; i++) {
     const s = stitches[i]!;
     if (!s.op.turningChain) continue;
@@ -363,13 +388,17 @@ function repositionTurningChainColumns(
       groupIndices.push(j);
     }
 
-    const baseR = baseRadiusByRound.get(s.roundIndex) ?? FIRST_RING_RADIUS;
+    // anchor 의 실제 반경 기준으로 위로 쌓음 — even 모드에서 anchor 가 parent 반경에 따라
+    // 다른 위치에 있어도 정상 동작.
+    const anchorR = Math.sqrt(s.position.x * s.position.x + s.position.y * s.position.y);
+    const anchorH = effectiveSymH(s.op);
     const columnAngle = Math.atan2(s.position.y, s.position.x);
     const chainSymH = STITCH_META['CHAIN'].symbolHalfHeight;
+    const innerEdge = anchorR - anchorH; // anchor 의 안쪽 끝
 
     for (let k = 0; k < groupIndices.length; k++) {
       const cs = stitches[groupIndices[k]!]!;
-      const r = baseR + chainSymH + k * chainSymH * 2;
+      const r = innerEdge + chainSymH + k * chainSymH * 2;
       cs.position = polarToCartesian(r, columnAngle);
       cs.angle = columnAngle + Math.PI / 2;
     }
