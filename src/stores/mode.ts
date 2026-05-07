@@ -46,3 +46,11 @@ export const flatAlign = writable<FlatAlign>('L');
  * true (기본): cascade 적용. false: 각 단을 자기 cell 위치에 그대로 두고 연결선이 슬랜트.
  */
 export const flatCascade = writable<boolean>(true);
+
+/**
+ * 평면 세로 정렬 모드.
+ *  - 'same': 같은 단의 모든 코가 같은 y (현재 기본 동작).
+ *  - 'even': 각 코가 부모 코로부터 일정 간격 떨어져 배치 — 부모/자기 높이 따라 같은 단도 다른 y 가능.
+ */
+export type FlatVAlign = 'same' | 'even';
+export const flatVAlign = writable<FlatVAlign>('same');

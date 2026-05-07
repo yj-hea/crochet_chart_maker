@@ -11,7 +11,7 @@
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from './types';
-import { FLAT_CELL_WIDTH, FLAT_CELL_HEIGHT } from './constants';
+import { FLAT_CELL_WIDTH } from './constants';
 import { computeBounds, markerFarPoint } from './bounds';
 import { STITCH_META } from '$lib/model/stitch';
 
@@ -122,7 +122,15 @@ export interface FlatOptions {
    * 부모 행 cascade. true (기본): 부모를 첫 자식 x 로 이동. false: cell 위치 유지, 연결선 슬랜트.
    */
   cascade?: boolean;
+  /**
+   * 세로 정렬.
+   *  - 'same': 같은 단의 모든 코가 동일 y (기본).
+   *  - 'even': 각 코가 부모 코로부터 일정 간격 떨어져 배치 — 부모/자기 높이 따라 같은 단도 y 다름.
+   */
+  vAlign?: 'same' | 'even';
 }
+
+const Y_GAP = 25; // stitch 위/아래 사이 빈 공간 (px). 사슬 호 여유 + 시각적 spacing.
 
 export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): LayoutResult {
   const stitches: PositionedStitch[] = [];
@@ -130,6 +138,18 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   const slotMapByRound = new Map<number, number[]>();
   const align: 'L' | 'R' | 'C' = opts.align ?? 'C';
   const cascade = opts.cascade ?? true;
+  const vAlign: 'same' | 'even' = opts.vAlign ?? 'same';
+
+  // 패턴에 사용된 max half-height 기준 row 간격 산정. SC/CHAIN 만 있으면 32 (기존 동일),
+  // DC/TR/DTR 포함 시 자동 확장 — 사슬 호 bulge 가 위 단 침범하지 않도록.
+  let maxHalfH = 0;
+  for (const round of rounds) {
+    for (const op of round.ops) {
+      const h = effectiveSymH(op);
+      if (h > maxHalfH) maxHalfH = h;
+    }
+  }
+  const cellH = Math.max(32, 2 * maxHalfH + Y_GAP);
 
   // op 별 effective claim — cascade ON 시 자식 claim 을 부모로 전파.
   const effClaims = computeEffectiveClaims(rounds, cascade);
@@ -142,7 +162,7 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
 
   // 1) 각 round 를 max 폭 안에서 align 따라 uniform cell 배치.
   for (let i = 0; i < rounds.length; i++) {
-    placeRow(rounds[i]!, stitches, slotMapByRound, roundMarkers, maxSlots, align, effClaims[i]!);
+    placeRow(rounds[i]!, stitches, slotMapByRound, roundMarkers, maxSlots, align, effClaims[i]!, cellH);
   }
 
   // 2) cascade ON: 다중 부모 자식 (DEC, bridge anchor) 만 부모 L/R/C 위치로 align.
@@ -154,9 +174,12 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   // 3) 행 안 op 순서대로 x 단조 증가 보정 — cascade 충돌이나 slot 불일치로 인한 같은 자리 stitch 흩뿌림.
   enforceRowMonotonic(stitches);
 
-  // 4) tc 기둥코 세로 스택, samehole 사슬 호 후처리.
+  // 4) vAlign 'even' — 각 코 y = 가장 위 부모 y - 부모/자기 halfH - gap.
+  if (vAlign === 'even') applyEvenVAlign(stitches);
+
+  // 5) tc 기둥코 세로 스택, samehole 사슬 호 후처리.
   repositionTurningChainColumns(stitches);
-  repositionChainArcs(stitches);
+  repositionChainArcs(stitches, cellH);
 
   // 5) roundMarker 의 최종 좌표 — stitch 이동 완료 후 참조 stitch 의 최종 x 기준.
   for (const m of roundMarkers) {
@@ -194,7 +217,7 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
 
   // 그리드 가이드 — 최대 cell 수 기준 uniform.
   const xOffset = maxSlots % 2 === 0 ? 0 : FLAT_CELL_WIDTH / 2;
-  const yOffset = FLAT_CELL_HEIGHT / 2;
+  const yOffset = cellH / 2;
 
   return {
     stitches,
@@ -202,12 +225,35 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
     gridGuide: {
       type: 'rect',
       cellWidth: FLAT_CELL_WIDTH,
-      cellHeight: FLAT_CELL_HEIGHT,
+      cellHeight: cellH,
       xOffset,
       yOffset,
     },
     roundMarkers,
   };
+}
+
+/**
+ * vAlign 'even' — 각 stitch 의 y 를 부모 위치 + 자기 높이로 재계산.
+ *  - 1단 (parents 없음): y=0 그대로.
+ *  - parents 다수 (DEC/bridge): 가장 위 (smallest y) 부모 기준.
+ *  - parent halfH + own halfH + Y_GAP 만큼 위로.
+ *  - sameHoleContinuation 인 op (사슬 conts 등) 는 anchor 와 같은 y 로 통일 — 사슬 호는
+ *    후처리에서 anchor y 기준 재배치되므로 별도 처리 불필요.
+ */
+function applyEvenVAlign(stitches: PositionedStitch[]): void {
+  for (const s of stitches) {
+    if (s.parentIndices.length === 0) continue;
+    let topParentIdx = s.parentIndices[0]!;
+    let topY = stitches[topParentIdx]!.position.y;
+    for (let k = 1; k < s.parentIndices.length; k++) {
+      const py = stitches[s.parentIndices[k]!]!.position.y;
+      if (py < topY) { topY = py; topParentIdx = s.parentIndices[k]!; }
+    }
+    const parentH = effectiveSymH(stitches[topParentIdx]!.op);
+    const ownH = effectiveSymH(s.op);
+    s.position = { x: s.position.x, y: topY - parentH - ownH - Y_GAP };
+  }
 }
 
 function placeRow(
@@ -218,11 +264,12 @@ function placeRow(
   maxSlots: number,
   align: 'L' | 'R' | 'C',
   rowClaims: number[],
+  cellH: number,
 ): void {
   const { index: roundIdx } = round;
   const rowSlots = rowClaims.reduce((s, c) => s + c, 0);
 
-  const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
+  const y = -(roundIdx - 1) * cellH;
   const W = FLAT_CELL_WIDTH;
   // chart 좌측 끝 x (max 단 leftmost slot 의 중심) — L/R/C 정렬 기준점.
   const chartLeft = -((maxSlots - 1) * W) / 2;
@@ -251,7 +298,7 @@ function placeRow(
       const idx = stitches.length;
       stitches.push({
         op, roundIndex: roundIdx,
-        position: { x: 0, y: y + FLAT_CELL_HEIGHT },
+        position: { x: 0, y: y + cellH },
         angle: 0, parentIndices: [], exposedSlots: 0,
       });
       thisStitchIndices.push(idx);
@@ -470,7 +517,7 @@ function findAdjacentNonChain(
   return undefined;
 }
 
-function repositionChainArcs(stitches: PositionedStitch[]): void {
+function repositionChainArcs(stitches: PositionedStitch[], cellH: number): void {
   const byRound = new Map<number, number[]>();
   for (let i = 0; i < stitches.length; i++) {
     const ri = stitches[i]!.roundIndex;
@@ -479,11 +526,11 @@ function repositionChainArcs(stitches: PositionedStitch[]): void {
     byRound.set(ri, arr);
   }
   for (const indices of byRound.values()) {
-    repositionChainArcsInRow(stitches, indices);
+    repositionChainArcsInRow(stitches, indices, cellH);
   }
 }
 
-function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[]): void {
+function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[], cellH: number): void {
   let i = 0;
   while (i < indices.length) {
     if (!isSameholeArcChain(stitches[indices[i]!])) { i++; continue; }
@@ -523,8 +570,8 @@ function repositionChainArcsInRow(stitches: PositionedStitch[], indices: number[
     const arcRatio = chord > 0.001 ? requiredArc / chord : 1;
     const minBulgeRatio = 0.15;
     // bulge 캡 — chain 호가 다음 단 영역을 침범하지 않게.
-    // h_bez ≤ FLAT_CELL_HEIGHT*0.3 ≈ 9.6 → midpoint 가 row 위로 ~17 정도, 다음 단 HDC 와 5px+ 여유.
-    const maxBulge = FLAT_CELL_HEIGHT * 0.3;
+    // h_bez ≤ cellH*0.3 → midpoint 가 row 위로 약간, 다음 단 코와 여유 확보.
+    const maxBulge = cellH * 0.3;
     const h_bez = Math.min(
       maxBulge,
       chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1)))),

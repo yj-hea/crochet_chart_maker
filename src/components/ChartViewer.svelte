@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
-  import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade } from '$stores/mode';
+  import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
 
@@ -228,6 +228,19 @@
         title={$flatCascade ? 'Cascade 켜짐 (부모가 자식 위치로 이동). 클릭: 끄기' : 'Cascade 꺼짐 (cell 위치 유지, 슬랜트). 클릭: 켜기'}
       >
         <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
+      </button>
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        onclick={() => flatVAlign.update((v) => v === 'same' ? 'even' : 'same')}
+        title={
+          $flatVAlign === 'same'
+            ? '같은 단 동일 y (기본). 클릭: 균등 간격 (부모로부터 일정 거리)'
+            : '균등 간격 — 각 코가 부모 위치 + 자기 높이로 배치. 클릭: 동일 y'
+        }
+      >
+        <i class="fa-solid fa-{$flatVAlign === 'same' ? 'grip-lines' : 'arrows-up-to-line'}"></i>
+        {$flatVAlign === 'same' ? '동일 y' : '균등 간격'}
       </button>
     {/if}
   </div>
