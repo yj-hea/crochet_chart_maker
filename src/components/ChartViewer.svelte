@@ -179,70 +179,76 @@
 <div class="chart-viewer">
   <div class="toolbar">
     <span class="spacer"></span>
-    <button
-      type="button"
-      class="tool-btn toggle-btn"
-      class:active={$showGrid}
-      onclick={() => showGrid.update((v) => !v)}
-      aria-pressed={$showGrid}
-      title={$showGrid ? '그리드 숨기기' : '그리드 표시'}
-    ><span class="grid-dot" class:on={$showGrid}></span> Grid {$showGrid ? 'On' : 'Off'}</button>
-    <button
-      type="button"
-      class="tool-btn toggle-btn"
-      class:active={$showConnections}
-      onclick={() => showConnections.update((v) => !v)}
-      aria-pressed={$showConnections}
-      title={$showConnections ? '연결선 숨기기' : '연결선 표시'}
-    ><span class="grid-dot" class:on={$showConnections}></span> Lines {$showConnections ? 'On' : 'Off'}</button>
-    {#if $pattern.shape === 'flat'}
+    <div class="btn-group">
       <button
         type="button"
         class="tool-btn toggle-btn"
-        class:active={$flatFlipVertical}
-        onclick={() => flatFlipVertical.update((v) => !v)}
-        aria-pressed={$flatFlipVertical}
-        title={$flatFlipVertical ? '1단이 위 (반전됨)' : '1단이 아래 (기본). 클릭하여 반전'}
-      >
-        <i class="fa-solid fa-arrows-up-down"></i> {$flatFlipVertical ? '1단 ↑' : '1단 ↓'}
-      </button>
+        class:active={$showGrid}
+        onclick={() => showGrid.update((v) => !v)}
+        aria-pressed={$showGrid}
+        title={$showGrid ? '그리드 숨기기' : '그리드 표시'}
+      ><span class="grid-dot" class:on={$showGrid}></span> Grid {$showGrid ? 'On' : 'Off'}</button>
       <button
         type="button"
         class="tool-btn toggle-btn"
-        onclick={() => flatAlign.update((v) => v === 'L' ? 'C' : v === 'C' ? 'R' : 'L')}
-        title={
-          $flatAlign === 'L' ? '좌측 정렬 (자식이 우측으로 펼쳐짐). 클릭: 가운데' :
-          $flatAlign === 'C' ? '가운데 정렬. 클릭: 우측' :
-          '우측 정렬 (자식이 좌측으로 펼쳐짐). 클릭: 좌측'
-        }
-      >
-        <i class="fa-solid fa-align-{$flatAlign === 'L' ? 'left' : $flatAlign === 'R' ? 'right' : 'center'}"></i>
-        {$flatAlign}
-      </button>
-      <button
-        type="button"
-        class="tool-btn toggle-btn"
-        class:active={$flatCascade}
-        onclick={() => flatCascade.update((v) => !v)}
-        aria-pressed={$flatCascade}
-        title={$flatCascade ? 'Cascade 켜짐 (부모가 자식 위치로 이동). 클릭: 끄기' : 'Cascade 꺼짐 (cell 위치 유지, 슬랜트). 클릭: 켜기'}
-      >
-        <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
-      </button>
+        class:active={$showConnections}
+        onclick={() => showConnections.update((v) => !v)}
+        aria-pressed={$showConnections}
+        title={$showConnections ? '연결선 숨기기' : '연결선 표시'}
+      ><span class="grid-dot" class:on={$showConnections}></span> Lines {$showConnections ? 'On' : 'Off'}</button>
+      {#if $pattern.shape === 'flat'}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          class:active={$flatFlipVertical}
+          onclick={() => flatFlipVertical.update((v) => !v)}
+          aria-pressed={$flatFlipVertical}
+          title={$flatFlipVertical ? '1단이 위 (반전됨)' : '1단이 아래 (기본). 클릭하여 반전'}
+        >
+          <i class="fa-solid fa-arrows-up-down"></i> {$flatFlipVertical ? '1단 ↑' : '1단 ↓'}
+        </button>
+      {/if}
+    </div>
+    <div class="btn-group">
+      {#if $pattern.shape === 'flat'}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          onclick={() => flatAlign.update((v) => v === 'L' ? 'C' : v === 'C' ? 'R' : 'L')}
+          title={
+            $flatAlign === 'L' ? '좌측 정렬 (자식이 우측으로 펼쳐짐). 클릭: 가운데' :
+            $flatAlign === 'C' ? '가운데 정렬. 클릭: 우측' :
+            '우측 정렬 (자식이 좌측으로 펼쳐짐). 클릭: 좌측'
+          }
+        >
+          <i class="fa-solid fa-align-{$flatAlign === 'L' ? 'left' : $flatAlign === 'R' ? 'right' : 'center'}"></i>
+          {$flatAlign}
+        </button>
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          class:active={$flatCascade}
+          onclick={() => flatCascade.update((v) => !v)}
+          aria-pressed={$flatCascade}
+          title={$flatCascade ? 'Cascade 켜짐 (부모가 자식 위치로 이동). 클릭: 끄기' : 'Cascade 꺼짐 (cell 위치 유지, 슬랜트). 클릭: 켜기'}
+        >
+          <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
+        </button>
+      {/if}
       <button
         type="button"
         class="tool-btn toggle-btn"
         onclick={() => flatVAlign.update((v) => v === 'same' ? 'even' : 'same')}
         title={
           $flatVAlign === 'same'
-            ? '같은 단 동일 y (기본). 클릭: 균등 간격 (부모로부터 일정 거리)'
-            : '균등 간격 — 각 코가 부모 위치 + 자기 높이로 배치. 클릭: 동일 y'
+            ? '같은 단 동일 위치 (기본). 클릭: 균등 간격 (부모로부터 일정 거리)'
+            : '균등 간격 — 각 코가 부모 위치 + 자기 높이로 배치. 클릭: 동일 위치'
         }
       >
         <i class="fa-solid fa-{$flatVAlign === 'same' ? 'grip-lines' : 'arrows-up-to-line'}"></i>
-        {$flatVAlign === 'same' ? '동일 y' : '균등 간격'}
+        {$flatVAlign === 'same' ? '동일 위치' : '균등 간격'}
       </button>
-    {/if}
+    </div>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -282,12 +288,19 @@
   }
   .toolbar {
     display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    column-gap: 8px;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border-light);
     justify-content: flex-end;
     align-items: center;
     background: var(--bg-warm);
+  }
+  .btn-group {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 4px;
   }
   .tool-btn {
     height: 28px;

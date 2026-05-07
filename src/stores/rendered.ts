@@ -31,7 +31,7 @@ export const renderedChart = derived(
     }
     if (validRounds.length === 0) return null;
     const layout = $pattern.shape === 'circular'
-      ? layoutCircular(validRounds)
+      ? layoutCircular(validRounds, { vAlign: $flatVAlign })
       : layoutFlat(validRounds, {
           flipVertical: $flatFlipVertical,
           align: $flatAlign,
