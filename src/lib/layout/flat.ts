@@ -33,6 +33,72 @@ function visualClaim(op: Op): number {
   return Math.max(op.produce, op.consume);
 }
 
+/**
+ * cascade ON 시 op 별 *전파된* claim — 자식이 단일 부모 (exclusive) 이면 그 자식의
+ * effective claim 이 부모로 합산되어 올라감. 다중 부모 자식 (DEC, bridge) 은 차단.
+ *
+ * 결과: V (claim=2) 가 R3 에 있으면 R2 부모 X 도 claim=2, R1 그 부모 chain 도 claim=2 →
+ * 모든 단이 같은 폭 (= max 단 폭) 으로 spread 됨.
+ *
+ * cascade OFF 시 own visualClaim 그대로 반환 — 각 단이 자기 ops 너비로 배치.
+ */
+function computeEffectiveClaims(rounds: ExpandedRound[], cascade: boolean): number[][] {
+  const own: number[][] = rounds.map((r) => r.ops.map(visualClaim));
+  if (!cascade) return own;
+
+  // op-level slot map: 각 round 의 produce 순서대로 op index 매핑.
+  const slotMaps: number[][] = rounds.map((r) => {
+    const sm: number[] = [];
+    for (let i = 0; i < r.ops.length; i++) {
+      const op = r.ops[i]!;
+      for (let k = 0; k < op.produce; k++) sm.push(i);
+    }
+    return sm;
+  });
+
+  // 각 op 의 *exclusive 자식* 리스트 — 자식이 단일 부모일 때만 추가.
+  const exclusiveKids: number[][][] = rounds.map((r) => r.ops.map(() => []));
+  for (let r = 1; r < rounds.length; r++) {
+    const round = rounds[r]!;
+    const prevSm = slotMaps[r - 1] ?? [];
+    let parentCursor = 0;
+    let lastGroupParentOps: number[] = [];
+    for (let opIdx = 0; opIdx < round.ops.length; opIdx++) {
+      const op = round.ops[opIdx]!;
+      let parentOps: number[];
+      if (op.sameHoleContinuation) {
+        parentOps = lastGroupParentOps;
+      } else {
+        parentOps = [];
+        for (let k = 0; k < op.consume; k++) {
+          const p = prevSm[parentCursor + k];
+          if (p !== undefined) parentOps.push(p);
+        }
+        parentCursor += op.consume;
+        lastGroupParentOps = parentOps;
+      }
+      // 단일 부모 + produce>0 자식만 exclusive 로 인정.
+      if (parentOps.length === 1 && op.produce > 0) {
+        exclusiveKids[r - 1]![parentOps[0]!]!.push(opIdx);
+      }
+    }
+  }
+
+  // 높은 단부터 낮은 단으로 walk — effective = max(own, sum of exclusive kids).
+  const eff: number[][] = own.map((c) => [...c]);
+  for (let r = rounds.length - 2; r >= 0; r--) {
+    const ops = rounds[r]!.ops;
+    for (let opIdx = 0; opIdx < ops.length; opIdx++) {
+      let sum = 0;
+      for (const k of exclusiveKids[r]![opIdx]!) {
+        sum += eff[r + 1]![k]!;
+      }
+      eff[r]![opIdx] = Math.max(eff[r]![opIdx]!, sum);
+    }
+  }
+  return eff;
+}
+
 function effectiveSymH(op: Op): number {
   const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
   const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
@@ -65,21 +131,24 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   const align: 'L' | 'R' | 'C' = opts.align ?? 'C';
   const cascade = opts.cascade ?? true;
 
-  // chart 폭 = max 단 cell 수 (= visualClaim 합) — L/R/C 정렬의 기준.
-  const maxSlots = Math.max(0, ...rounds.map((r) => r.ops.reduce((s, o) => s + visualClaim(o), 0)));
+  // op 별 effective claim — cascade ON 시 자식 claim 을 부모로 전파.
+  const effClaims = computeEffectiveClaims(rounds, cascade);
+
+  // chart 폭 = max 단 cell 수 — 모든 단이 동일 폭으로 spread (cascade ON).
+  const maxSlots = Math.max(
+    0,
+    ...effClaims.map((row) => row.reduce((s, c) => s + c, 0)),
+  );
 
   // 1) 각 round 를 max 폭 안에서 align 따라 uniform cell 배치.
-  for (const round of rounds) {
-    placeRow(round, stitches, slotMapByRound, roundMarkers, maxSlots, align);
+  for (let i = 0; i < rounds.length; i++) {
+    placeRow(rounds[i]!, stitches, slotMapByRound, roundMarkers, maxSlots, align, effClaims[i]!);
   }
 
-  // 2) cascade ON 의 두 방향 정렬:
-  //   - 다중 부모 자식 (DEC, bridge anchor): 부모 L/R/C 위치로 align (alignChildToParents).
-  //   - 부모: 자식 L/R/C 위치로 align (alignParentRows). V 확장 시 부모도 자식 펼침에 맞춰 이동.
-  // 결과: 모든 round 가 같은 grid 위 spread, 자식 V 가 있는 곳에선 부모도 spread 따라감.
+  // 2) cascade ON: 다중 부모 자식 (DEC, bridge anchor) 만 부모 L/R/C 위치로 align.
+  // 부모→자식 정렬은 effective claim 전파로 placeRow 단계에서 이미 컬럼 정렬됨.
   if (cascade) {
     alignChildToParents(stitches, align);
-    alignParentRows(stitches, align);
   }
 
   // 3) 행 안 op 순서대로 x 단조 증가 보정 — cascade 충돌이나 slot 불일치로 인한 같은 자리 stitch 흩뿌림.
@@ -148,9 +217,10 @@ function placeRow(
   roundMarkers: RoundMarker[],
   maxSlots: number,
   align: 'L' | 'R' | 'C',
+  rowClaims: number[],
 ): void {
   const { index: roundIdx } = round;
-  const rowSlots = round.ops.reduce((sum, op) => sum + visualClaim(op), 0);
+  const rowSlots = rowClaims.reduce((s, c) => s + c, 0);
 
   const y = -(roundIdx - 1) * FLAT_CELL_HEIGHT;
   const W = FLAT_CELL_WIDTH;
@@ -175,7 +245,8 @@ function placeRow(
   let slotCursor = 0;
   let lastGroupParents: number[] = [];
 
-  for (const op of round.ops) {
+  for (let opIdx = 0; opIdx < round.ops.length; opIdx++) {
+    const op = round.ops[opIdx]!;
     if (op.kind === 'MAGIC') {
       const idx = stitches.length;
       stitches.push({
@@ -201,7 +272,7 @@ function placeRow(
       lastGroupParents = parents;
     }
 
-    const vSlots = visualClaim(op);
+    const vSlots = rowClaims[opIdx]!;
     let px: number;
     let py = y;
     if (vSlots === 0) {
@@ -211,10 +282,14 @@ function placeRow(
       px = ref ? ref.position.x : 0;
       if (ref) py = ref.position.y;
     } else {
-      // 셀 자리 차지 — slot 영역 가운데 (V/A 처럼 N 칸 차지하면 칸들의 가운데).
+      // 셀 자리 차지 — claim>1 (V/A/bridge/propagated) 일 때 기호 자체는 1 cell.
+      // align 모드 따라 한쪽 cell 에 정렬: L=startSlot, R=endSlot, C=midpoint.
+      // (V^3 → "V . ." for L, ". . V" for R, ". V ." for C 등 — slotCursor 진행은 동일.)
       const startSlotX = startX + slotCursor * W;
       const endSlotX = startX + (slotCursor + vSlots - 1) * W;
-      px = (startSlotX + endSlotX) / 2;
+      if (align === 'L') px = startSlotX;
+      else if (align === 'R') px = endSlotX;
+      else px = (startSlotX + endSlotX) / 2;
       slotCursor += vSlots;
     }
 
@@ -256,54 +331,6 @@ function placeRow(
 // 부모 행 정렬 — 위 round 의 첫 자식 x 로 아래 round 의 부모 stitch 이동
 // (decrease A 처럼 자식이 여러 부모를 소비하는 경우는 건드리지 않음)
 // ============================================================
-
-/**
- * 부모 → 자식 align: 부모를 자식 L/R/C 위치로 이동 — V 확장 등 자식이 여러 cell 차지 시
- * 부모도 그 spread 따라가서 모든 round 가 같은 grid 폭 안에 align 되도록.
- *  - 자식이 다중 부모 공유 (DEC) 시 부모 이동 금지 (alignChildToParents 가 처리함).
- *  - MAGIC 은 고정 위치.
- */
-function alignParentRows(stitches: PositionedStitch[], align: 'L' | 'R' | 'C'): void {
-  const childrenOf = new Map<number, number[]>();
-  for (let i = 0; i < stitches.length; i++) {
-    if (stitches[i]!.exposedSlots <= 0) continue;
-    for (const pIdx of stitches[i]!.parentIndices) {
-      const arr = childrenOf.get(pIdx) ?? [];
-      arr.push(i);
-      childrenOf.set(pIdx, arr);
-    }
-  }
-  const byRound = new Map<number, number[]>();
-  for (let i = 0; i < stitches.length; i++) {
-    const r = stitches[i]!.roundIndex;
-    if (!byRound.has(r)) byRound.set(r, []);
-    byRound.get(r)!.push(i);
-  }
-  const rounds = [...byRound.keys()].sort((a, b) => b - a);
-  for (const r of rounds) {
-    for (const pIdx of byRound.get(r) ?? []) {
-      const parent = stitches[pIdx]!;
-      if (parent.op.kind === 'MAGIC') continue;
-      const kids = childrenOf.get(pIdx);
-      if (!kids || kids.length === 0) continue;
-      const firstKid = stitches[kids[0]!]!;
-      if (firstKid.parentIndices.length > 1) continue; // DEC/bridge: alignChildToParents 가 처리.
-      // 1:1 (단일 자식, 자식 claim=1) 은 cascade 안 함 — 부모가 narrower 자식 폭에 끌려가지 않게.
-      // V/samehole 확장 (자식 claim>1 또는 다중 자식) 일 때만 부모를 자식 spread 따라 이동.
-      const kidExpands = visualClaim(firstKid.op) > 1 || kids.length > 1;
-      if (!kidExpands) continue;
-      let targetX: number;
-      if (align === 'L') targetX = firstKid.position.x;
-      else if (align === 'R') targetX = stitches[kids[kids.length - 1]!]!.position.x;
-      else {
-        let sum = 0;
-        for (const k of kids) sum += stitches[k]!.position.x;
-        targetX = sum / kids.length;
-      }
-      parent.position = { x: targetX, y: parent.position.y };
-    }
-  }
-}
 
 /**
  * 자식 → 부모 align: 부모 column 으로 자식을 이동 → row 들이 같은 grid 위에 일관되게 spread.
