@@ -32,9 +32,25 @@ export interface CircularOptions {
    *  - 'even': 각 코가 부모 반경 + 부모/자기 halfH + gap. 같은 단도 다른 반경 가능.
    */
   vAlign?: 'same' | 'even';
+  /**
+   * Cascade — 부모 angular 위치 따라 자식 배치.
+   *  - true (기본): 1:1 → 부모 angle, V → 부모 territory 분할, DEC/bridge → 부모 angle 평균.
+   *  - false: 각 단을 균등 angular 간격으로 배치 (legacy).
+   */
+  cascade?: boolean;
 }
 
 const RADIAL_GAP = 30; // 'even' 모드에서 부모 ↔ 자식 사이 빈 반경 간격.
+
+interface SlotPos { angle: number; width: number; }
+
+function meanAngle(angles: number[]): number {
+  if (angles.length === 0) return 0;
+  if (angles.length === 1) return angles[0]!;
+  let sx = 0, sy = 0;
+  for (const a of angles) { sx += Math.cos(a); sy += Math.sin(a); }
+  return Math.atan2(sy, sx);
+}
 
 export function layoutCircular(
   rounds: ExpandedRound[],
@@ -42,6 +58,7 @@ export function layoutCircular(
 ): LayoutResult {
   const minRadius = opts.minRadius ?? FIRST_RING_RADIUS;
   const vAlign: 'same' | 'even' = opts.vAlign ?? 'same';
+  const cascade: boolean = opts.cascade ?? true;
 
   // 1) 각 단의 슬롯 수(시각 기준), baseRadius 사전 계산
   const slotCountByRound = new Map<number, number>();
@@ -79,9 +96,10 @@ export function layoutCircular(
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
   const slotMapByRound = new Map<number, number[]>();
+  const slotPosByRound = new Map<number, SlotPos[]>();
 
   for (const round of rounds) {
-    placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers, vAlign);
+    placeRound(round, stitches, slotMapByRound, baseRadiusByRound, slotCountByRound, roundMarkers, vAlign, cascade, slotPosByRound);
   }
 
   // 3) `[^...]` 기둥코 후처리 — 세로 스택으로 쌓기
@@ -181,6 +199,8 @@ function placeRound(
   slotCountByRound: Map<number, number>,
   roundMarkers: RoundMarker[],
   vAlign: 'same' | 'even',
+  cascade: boolean,
+  slotPosByRound: Map<number, SlotPos[]>,
 ): void {
   const { index: roundIdx } = round;
   const ringSlots = slotCountByRound.get(roundIdx) ?? 0;
@@ -188,10 +208,23 @@ function placeRound(
   const dirSign = directionSign(round.direction);
 
   const parentSlotMap = slotMapByRound.get(roundIdx - 1) ?? [];
+  const prevSlotPos = slotPosByRound.get(roundIdx - 1) ?? [];
+  // 이전 단의 슬롯 위치가 있을 때만 cascade 활성 — 1단 / cascade off 면 균등 angular.
+  const useCascade = cascade && prevSlotPos.length > 0;
   const thisStitchIndices: number[] = [];
+  const thisSlotPos: SlotPos[] = [];
   let parentCursor = 0;
   let slotCursor = 0;
   let lastGroupParents: number[] = [];
+  let lastGroupConsumeSlots: SlotPos[] = [];
+
+  // 같은 [...] 그룹 처리 컨텍스트 (cascade ON): 그룹 territory 를 producing member 수로 분할.
+  let sameHoleCtx: {
+    territoryWidth: number;
+    groupCenter: number;
+    produceMembers: number;
+    producedCount: number;
+  } | null = null;
 
   for (const op of round.ops) {
     if (op.kind === 'MAGIC') {
@@ -250,49 +283,128 @@ function placeRound(
     }
 
     let parents: number[];
+    let consumeSlots: SlotPos[];
     if (op.sameHoleContinuation) {
       parents = lastGroupParents;
+      consumeSlots = lastGroupConsumeSlots;
     } else {
       parents = [];
+      consumeSlots = [];
       for (let k = 0; k < op.consume; k++) {
         const p = parentSlotMap[parentCursor + k];
         if (p !== undefined) parents.push(p);
+        if (useCascade) {
+          const sp = prevSlotPos[parentCursor + k];
+          if (sp) consumeSlots.push(sp);
+        }
       }
       parentCursor += op.consume;
       lastGroupParents = parents;
+      lastGroupConsumeSlots = consumeSlots;
+    }
+
+    // samehole 그룹 anchor: 그룹 territory 산정 + producing member 수 미리 카운트.
+    if (useCascade && op.inSameHoleGroup && !op.sameHoleContinuation) {
+      const territoryWidth = consumeSlots.reduce((s, p) => s + p.width, 0);
+      const groupCenter = consumeSlots.length > 0 ? meanAngle(consumeSlots.map(p => p.angle)) : 0;
+      const opIdxLocal = round.ops.indexOf(op);
+      let pm = 0;
+      for (let k = opIdxLocal; k < round.ops.length; k++) {
+        const o = round.ops[k]!;
+        if (k > opIdxLocal && (!o.sameHoleContinuation || !o.inSameHoleGroup)) break;
+        if (o.produce > 0) pm++;
+      }
+      sameHoleCtx = { territoryWidth, groupCenter, produceMembers: Math.max(1, pm), producedCount: 0 };
+    } else if (!op.inSameHoleGroup) {
+      sameHoleCtx = null;
     }
 
     const vSlots = visualProduceFor(op);
 
-    // 링 슬롯을 차지하지 않는 op (예: 기둥코 continuation). 부모 각도 옆에 임시 배치 — 후처리에서 이동.
-    if (vSlots === 0) {
-      const refStitch = parents.length > 0 ? stitches[parents[0]!] : undefined;
-      let pos: Point;
-      let angle = 0;
-      if (refStitch) {
-        const parentAngle = Math.atan2(refStitch.position.y, refStitch.position.x);
-        const r = baseRadius + STITCH_META[op.kind].symbolHalfHeight;
-        const angOff = op.sameHoleContinuation ? 0.04 : 0;
-        pos = polarToCartesian(r, parentAngle + angOff);
-        angle = parentAngle + angOff + Math.PI / 2;
+    // op 의 visual angle 결정 + 다음 단을 위한 produce slot 위치 산출.
+    let midAngle: number;
+    const producePositions: SlotPos[] = [];
+    if (useCascade) {
+      if (op.inSameHoleGroup && sameHoleCtx) {
+        const ctx = sameHoleCtx;
+        if (op.produce > 0) {
+          const subW = ctx.territoryWidth / ctx.produceMembers;
+          midAngle = ctx.groupCenter - ctx.territoryWidth / 2 + subW * (ctx.producedCount + 0.5);
+          if (op.produce === 1) {
+            producePositions.push({ angle: midAngle, width: subW });
+          } else {
+            const ssW = subW / op.produce;
+            for (let k = 0; k < op.produce; k++) {
+              producePositions.push({ angle: midAngle - subW / 2 + ssW * (k + 0.5), width: ssW });
+            }
+          }
+          ctx.producedCount++;
+        } else {
+          // 장식 chain cont — 그룹 center 에 임시 배치, arc 후처리가 최종 위치 결정.
+          midAngle = ctx.groupCenter;
+        }
+      } else if (consumeSlots.length === 1) {
+        const cs = consumeSlots[0]!;
+        midAngle = cs.angle;
+        if (op.produce === 1) {
+          producePositions.push({ angle: midAngle, width: cs.width });
+        } else if (op.produce > 1) {
+          // V (1 consume, N produce): consume slot 을 N 등분.
+          const subW = cs.width / op.produce;
+          for (let k = 0; k < op.produce; k++) {
+            producePositions.push({ angle: midAngle - cs.width / 2 + subW * (k + 0.5), width: subW });
+          }
+        }
+      } else if (consumeSlots.length > 1) {
+        // DEC / bridge: 부모 angle 평균.
+        midAngle = meanAngle(consumeSlots.map(p => p.angle));
+        const sumW = consumeSlots.reduce((s, p) => s + p.width, 0);
+        if (op.produce === 1) {
+          producePositions.push({ angle: midAngle, width: sumW });
+        } else if (op.produce > 1) {
+          const subW = sumW / op.produce;
+          for (let k = 0; k < op.produce; k++) {
+            producePositions.push({ angle: midAngle - sumW / 2 + subW * (k + 0.5), width: subW });
+          }
+        }
       } else {
-        pos = { x: 0, y: 0 };
+        // 부모 슬롯 없음 (1단의 ops 중 일부 — 예: SLIP) — 균등 fallback.
+        const startSlot = slotCursor;
+        const endSlot = slotCursor + Math.max(1, vSlots) - 1;
+        midAngle = (angleAt(startSlot, ringSlots, dirSign) + angleAt(endSlot, ringSlots, dirSign)) / 2;
+        const sliceW = ringSlots > 0 ? 2 * Math.PI / ringSlots : 0;
+        for (let k = 0; k < op.produce; k++) {
+          producePositions.push({ angle: angleAt(slotCursor + k, ringSlots, dirSign), width: sliceW });
+        }
       }
+    } else {
+      // cascade off: 균등 angular.
+      const startSlot = slotCursor;
+      const endSlot = slotCursor + Math.max(1, vSlots) - 1;
+      midAngle = (angleAt(startSlot, ringSlots, dirSign) + angleAt(endSlot, ringSlots, dirSign)) / 2;
+      const sliceW = ringSlots > 0 ? 2 * Math.PI / ringSlots : 0;
+      for (let k = 0; k < op.produce; k++) {
+        producePositions.push({ angle: angleAt(slotCursor + k, ringSlots, dirSign), width: sliceW });
+      }
+    }
+
+    // 링 슬롯을 차지하지 않는 op (예: 기둥코/사슬 continuation). 부모/그룹 angle 옆에 임시 배치 — 후처리에서 이동.
+    if (vSlots === 0) {
+      const r = baseRadius + STITCH_META[op.kind].symbolHalfHeight;
+      const angOff = op.sameHoleContinuation ? 0.04 : 0;
+      const a = midAngle + angOff;
+      const pos = polarToCartesian(r, a);
       const idx = stitches.length;
       stitches.push({
         op, roundIndex: roundIdx,
-        position: pos, angle,
+        position: pos, angle: a + Math.PI / 2,
         parentIndices: parents, exposedSlots: 0,
       });
       thisStitchIndices.push(idx);
+      // produce slots: 보통 0 이지만 혹시 있으면 추가 (있을 일 거의 없음).
+      for (const sp of producePositions) thisSlotPos.push(sp);
       continue;
     }
-
-    const startSlot = slotCursor;
-    const endSlot = slotCursor + vSlots - 1;
-    const startAngle = angleAt(startSlot, ringSlots, dirSign);
-    const endAngle = angleAt(endSlot, ringSlots, dirSign);
-    const midAngle = (startAngle + endAngle) / 2;
 
     // 'even' 모드: 부모 (가장 바깥) 반경 + 부모/자기 halfH + gap. 부모 없으면 baseRadius 사용.
     let r: number;
@@ -331,10 +443,11 @@ function placeRound(
       parentIndices: parents, exposedSlots: op.produce,
     });
     thisStitchIndices.push(idx);
+    for (const sp of producePositions) thisSlotPos.push(sp);
     slotCursor += vSlots;
   }
 
-  // 슬롯 매핑
+  // 슬롯 매핑 + 슬롯 위치 저장 (다음 단 cascade 용).
   const slotMap: number[] = [];
   for (const sIdx of thisStitchIndices) {
     const s = stitches[sIdx]!;
@@ -343,6 +456,7 @@ function placeRound(
     }
   }
   slotMapByRound.set(roundIdx, slotMap);
+  slotPosByRound.set(roundIdx, thisSlotPos);
 
   // 시작 마커: MAGIC, CHAIN, SLIP 제외한 첫 visible stitch
   const firstVisible = thisStitchIndices.find(
@@ -496,6 +610,10 @@ function repositionChainArcsInRound(stitches: PositionedStitch[], indices: numbe
     const midX = (leftTop.x + rightTop.x) / 2;
     const midY = (leftTop.y + rightTop.y) / 2;
     const midDist = Math.sqrt(midX * midX + midY * midY);
+    // anchor tops 의 origin 까지 거리 — apex 가 이 라인 (= 단 outer 그리드) 이상에 오도록 강제.
+    const ltDist = Math.sqrt(leftTop.x * leftTop.x + leftTop.y * leftTop.y);
+    const rtDist = Math.sqrt(rightTop.x * rightTop.x + rightTop.y * rightTop.y);
+    const targetTopDist = Math.max(ltDist, rtDist);
 
     // CHAIN ellipse width 10 → spacing 9 로 1px 겹쳐 연결된 느낌
     const CHAIN_SPACING = 9;
@@ -510,7 +628,10 @@ function repositionChainArcsInRound(stitches: PositionedStitch[], indices: numbe
     // → h_bez = chord * sqrt((3/4) * max(0, arc/chord - 1))
     const arcRatio = chord > 0.001 ? requiredArc / chord : 1;
     const minBulgeRatio = 0.1; // 최소 볼록도 (좁은 arc 도 약간 굽게)
-    const h_bez = chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1))));
+    const baseH = chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1))));
+    // 그리드 라인 보정: apex distance ≈ midDist + h_bez 가 anchor tops radius 이상이도록.
+    const minBulgeForGrid = Math.max(0, targetTopDist - midDist);
+    const h_bez = Math.max(baseH, minBulgeForGrid);
     const cOffset = 2 * h_bez; // C 의 chord midpoint 로부터의 수직 거리
 
     // outward perpendicular: chord 에 수직이며 원점에서 멀어지는 방향

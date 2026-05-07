@@ -224,17 +224,17 @@
           <i class="fa-solid fa-align-{$flatAlign === 'L' ? 'left' : $flatAlign === 'R' ? 'right' : 'center'}"></i>
           {$flatAlign}
         </button>
-        <button
-          type="button"
-          class="tool-btn toggle-btn"
-          class:active={$flatCascade}
-          onclick={() => flatCascade.update((v) => !v)}
-          aria-pressed={$flatCascade}
-          title={$flatCascade ? 'Cascade 켜짐 (부모가 자식 위치로 이동). 클릭: 끄기' : 'Cascade 꺼짐 (cell 위치 유지, 슬랜트). 클릭: 켜기'}
-        >
-          <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
-        </button>
       {/if}
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        class:active={$flatCascade}
+        onclick={() => flatCascade.update((v) => !v)}
+        aria-pressed={$flatCascade}
+        title={$flatCascade ? 'Cascade 켜짐 (부모 위치로 정렬). 클릭: 끄기' : 'Cascade 꺼짐 (균등 간격). 클릭: 켜기'}
+      >
+        <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
+      </button>
       <button
         type="button"
         class="tool-btn toggle-btn"
