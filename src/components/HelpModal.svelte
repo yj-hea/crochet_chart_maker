@@ -89,6 +89,10 @@
             <tr><td><code>VT</code>, <code>VF</code>, <code>VE</code></td><td>긴뜨기 / 한길긴뜨기 / 두길긴뜨기 기반 늘림</td></tr>
             <tr><td><code>V^3</code></td><td>3개로 확장 (한 부모에서 3개 생성)</td></tr>
             <tr><td><code>A</code>, <code>AT</code>, <code>AF</code>, <code>A^3</code></td><td>동일 규칙의 줄임</td></tr>
+            <tr><td><code>x3tog</code>, <code>3tog(x)</code></td><td><code>AX^3</code> 와 동일 — 3 부모를 1코로 줄임 (영문 패턴 <code>sc3tog</code>)</td></tr>
+            <tr><td><code>x3in</code>, <code>3in(x)</code></td><td><code>VX^3</code> 와 동일 — 1 부모에서 3 코로 늘림 (영문 패턴 <code>3 sc in next st</code>)</td></tr>
+            <tr><td><code>3tog(ch)</code></td><td>3 부모를 1 사슬로 수렴 — <code>3tog([1ch])</code> 와 동의어</td></tr>
+            <tr><td><code>3tog([5ch])</code></td><td><b>사슬 브릿지</b> — 3 부모 위로 5 사슬 호. 다음 단에 1 슬롯 (호 가운데에서 부모 1코로 인지)</td></tr>
             <tr><td><code>tr(N)</code></td><td>N 길 긴뜨기 (N≥2). 예: <code>tr(4)</code> = 네길긴뜨기, <code>vtr(5)</code> = 다섯길긴뜨기 늘림</td></tr>
           </tbody>
         </table>
