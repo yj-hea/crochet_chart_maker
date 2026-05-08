@@ -527,6 +527,67 @@ function placeRound(
     s.position = polarToCartesian(newR, a);
   }
 
+  // 겹치는 cascade 코는 인접 non-overlap 양 끝을 anchor 로 outward bezier 호에 재배치.
+  // chord < MIN_CHORD 인 인접 쌍의 run 을 찾아 prev/next 사이 호로 fit.
+  const MIN_CHORD = 16;
+  const visibleOps = thisStitchIndices.filter((i) => {
+    const s = stitches[i]!;
+    const k = s.op.kind;
+    if (k === 'MAGIC' || k === 'SKIP') return false;
+    if (k === 'CHAIN' && s.op.inSameHoleGroup) return false; // arc 후처리.
+    return true;
+  });
+  const dist = (i: number, j: number) => {
+    const a = stitches[i]!.position, b = stitches[j]!.position;
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+  let runStart = -1;
+  for (let i = 1; i <= visibleOps.length; i++) {
+    const overlaps = i < visibleOps.length && dist(visibleOps[i - 1]!, visibleOps[i]!) < MIN_CHORD;
+    if (overlaps && runStart < 0) runStart = i - 1;
+    if (!overlaps && runStart >= 0) {
+      // run = [runStart .. i-1]
+      const runEnd = i - 1;
+      const runLen = runEnd - runStart + 1;
+      const prev = runStart > 0 ? stitches[visibleOps[runStart - 1]!] : null;
+      const next = runEnd < visibleOps.length - 1 ? stitches[visibleOps[runEnd + 1]!] : null;
+      if (prev && next && runLen >= 2) {
+        const left = prev.position, right = next.position;
+        const dx = right.x - left.x, dy = right.y - left.y;
+        const chord = Math.hypot(dx, dy);
+        const midX = (left.x + right.x) / 2, midY = (left.y + right.y) / 2;
+        const midDist = Math.hypot(midX, midY);
+        // arc 길이 = (run+2) - 1 spacing × MIN_CHORD (= run 멤버 + 양 anchor 사이 간격).
+        const requiredArc = (runLen + 1) * MIN_CHORD;
+        const arcRatio = chord > 0.001 ? requiredArc / chord : 1;
+        const minBulgeRatio = 0.15;
+        let h_bez = chord * Math.max(minBulgeRatio, Math.sqrt(Math.max(0, 0.75 * (arcRatio - 1))));
+        // outward perp.
+        let perpX: number, perpY: number;
+        if (chord < 0.001) { perpX = midX / Math.max(midDist, 1); perpY = midY / Math.max(midDist, 1); }
+        else {
+          const cdx = dx / chord, cdy = dy / chord;
+          const p1x = -cdy, p1y = cdx;
+          const mUnitX = midDist > 0.001 ? midX / midDist : 0;
+          const mUnitY = midDist > 0.001 ? midY / midDist : 1;
+          if (p1x * mUnitX + p1y * mUnitY >= 0) { perpX = p1x; perpY = p1y; }
+          else { perpX = cdy; perpY = -cdx; }
+        }
+        const cOffset = 2 * h_bez;
+        const cx = midX + cOffset * perpX, cy = midY + cOffset * perpY;
+        // 양 anchor 사이를 (runLen+1) 등분, 1..runLen 위치에 run 멤버 배치.
+        for (let k = 0; k < runLen; k++) {
+          const t = (k + 1) / (runLen + 1);
+          const mt = 1 - t;
+          const bx = mt * mt * left.x + 2 * mt * t * cx + t * t * right.x;
+          const by = mt * mt * left.y + 2 * mt * t * cy + t * t * right.y;
+          stitches[visibleOps[runStart + k]!]!.position = { x: bx, y: by };
+        }
+      }
+      runStart = -1;
+    }
+  }
+
   // 슬롯 매핑 + 슬롯 위치 저장 (다음 단 cascade 용).
   const slotMap: number[] = [];
   for (const sIdx of thisStitchIndices) {
