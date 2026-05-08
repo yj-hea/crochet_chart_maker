@@ -73,28 +73,29 @@ export function layoutCircular(
   const firstHeightBased = firstMaxH + FIRST_INNER_PAD;
   const minRadius = opts.minRadius ?? Math.max(firstCircumBased, firstHeightBased, 12);
 
-  // 1) 각 단의 슬롯 수(시각 기준), baseRadius 사전 계산
+  // 1) 각 단의 슬롯 수(시각 기준), baseRadius 사전 계산.
   const slotCountByRound = new Map<number, number>();
   const baseRadiusByRound = new Map<number, number>();
   let currentBase = minRadius;
 
-  for (const round of rounds) {
+  for (let rIdx = 0; rIdx < rounds.length; rIdx++) {
+    const round = rounds[rIdx]!;
     const slots = round.ops.reduce((sum, op) => sum + visualProduceFor(op), 0);
     slotCountByRound.set(round.index, slots);
     baseRadiusByRound.set(round.index, currentBase);
 
-    // 다음 단의 baseRadius = 심볼 높이 + 여백. 짧은 코도 최소 간격 보장.
-    const MIN_RING_SPACING = 32; // ring 간 최소 거리 (= 평면 cellH default).
-    const ROUND_GAP = 25; // 코 위 ↔ 다음 단 코 아래 사이 빈 공간 (= 평면 Y_GAP).
-    const MIN_SLOT_SPACING = 20; // 인접 슬롯 간 최소 간격 (px) — 코 수 많을 때 자동 반경 확대로 겹침 방지.
+    // 다음 단의 baseRadius 결정.
+    const MIN_RING_SPACING = 32;
+    const ROUND_GAP = 25;
+    const MIN_SLOT_SPACING = 16; // 인접 코 사이 chord-arc 최소 간격 (px) — V 심볼 너비 ~16 에 맞춤.
     const maxSymH = round.ops.reduce((max, op) => {
       if (op.kind === 'MAGIC') return max;
       return Math.max(max, effectiveSymH(op));
     }, 5);
     const heightBased = Math.max(maxSymH * 2 + ROUND_GAP, MIN_RING_SPACING);
 
-    // 다음 단의 슬롯 수가 많으면 원주가 충분하도록 반지름 보장
-    const nextRound = rounds[rounds.indexOf(round) + 1];
+    // 다음 단의 슬롯 수가 많으면 원주가 충분하도록 반지름 보장 (균등 분포 가정).
+    const nextRound = rounds[rIdx + 1];
     const nextSlots = nextRound
       ? nextRound.ops.reduce((s, op) => s + visualProduceFor(op), 0)
       : 0;
@@ -496,6 +497,34 @@ function placeRound(
     thisStitchIndices.push(idx);
     for (const sp of producePositions) thisSlotPos.push(sp);
     slotCursor += vSlots;
+  }
+
+  // 부모 없는 standalone chain (consume=0) 의 반경을 같은 단의 다음 (없으면 이전) 코로 맞춤.
+  // even 모드에서 기준 부모가 없어 default grid 위치에 남는 문제 해결.
+  for (let i = 0; i < thisStitchIndices.length; i++) {
+    const s = stitches[thisStitchIndices[i]!]!;
+    if (s.op.kind !== 'CHAIN' || s.parentIndices.length > 0) continue;
+    let neighbor: PositionedStitch | undefined;
+    for (let j = i + 1; j < thisStitchIndices.length; j++) {
+      const t = stitches[thisStitchIndices[j]!]!;
+      if (t.op.kind === 'MAGIC' || t.op.kind === 'SKIP') continue;
+      if (t.op.kind === 'CHAIN' && t.parentIndices.length === 0) continue;
+      neighbor = t;
+      break;
+    }
+    if (!neighbor) {
+      for (let j = i - 1; j >= 0; j--) {
+        const t = stitches[thisStitchIndices[j]!]!;
+        if (t.op.kind === 'MAGIC' || t.op.kind === 'SKIP') continue;
+        if (t.op.kind === 'CHAIN' && t.parentIndices.length === 0) continue;
+        neighbor = t;
+        break;
+      }
+    }
+    if (!neighbor) continue;
+    const newR = Math.sqrt(neighbor.position.x ** 2 + neighbor.position.y ** 2);
+    const a = Math.atan2(s.position.y, s.position.x);
+    s.position = polarToCartesian(newR, a);
   }
 
   // 슬롯 매핑 + 슬롯 위치 저장 (다음 단 cascade 용).
