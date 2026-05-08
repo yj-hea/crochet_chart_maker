@@ -450,11 +450,45 @@ function placeRound(
 
     // exposedSlots 는 다음 단 부모 매핑용 — 실제 produce 기준. SLIP 은 시각 슬롯 1개지만 produce=0.
     const idx = stitches.length;
-    stitches.push({
+    const newStitch: PositionedStitch = {
       op, roundIndex: roundIdx,
       position: pos, angle: symbolAngle,
       parentIndices: parents, exposedSlots: op.produce,
-    });
+    };
+    // chain samehole anchor 의 부모 territory 경계 — 사슬 호 재배치가 사용.
+    if (
+      op.kind === 'CHAIN' &&
+      op.inSameHoleGroup &&
+      !op.sameHoleContinuation &&
+      parents.length > 0
+    ) {
+      const firstP = stitches[parents[0]!]!;
+      const lastP = stitches[parents[parents.length - 1]!]!;
+      let firstSW: number, lastSW: number;
+      if (useCascade && consumeSlots.length > 0) {
+        firstSW = consumeSlots[0]!.width;
+        lastSW = consumeSlots[consumeSlots.length - 1]!.width;
+      } else {
+        const prevRing = slotCountByRound.get(roundIdx - 1) ?? 0;
+        const uniformW = prevRing > 0 ? 2 * Math.PI / prevRing : 0;
+        firstSW = uniformW;
+        lastSW = uniformW;
+      }
+      const firstA = Math.atan2(firstP.position.y, firstP.position.x);
+      const lastA = Math.atan2(lastP.position.y, lastP.position.x);
+      // chord 좌(= 진행 방향 시작) = 첫 부모의 진행-반대 방향 edge.
+      // 진행: forward dirSign=-1 (CCW, 각도 감소). leftEdge = firstAngle - dirSign * sw/2.
+      const leftA = firstA - dirSign * firstSW / 2;
+      const rightA = lastA + dirSign * lastSW / 2;
+      // bezier 끝점 radius = 사슬 anchor 자기 radius (= 현재 단 ring level). 부모 단 outer 가
+      // 아니라 자기 단 radius 를 써야 호가 이전 단 영역으로 내려가지 않음.
+      const anchorR = Math.sqrt(pos.x * pos.x + pos.y * pos.y);
+      newStitch.chainArcBounds = {
+        left: polarToCartesian(anchorR, leftA),
+        right: polarToCartesian(anchorR, rightA),
+      };
+    }
+    stitches.push(newStitch);
     thisStitchIndices.push(idx);
     for (const sp of producePositions) thisSlotPos.push(sp);
     slotCursor += vSlots;
@@ -571,7 +605,8 @@ function isSameholeArcChain(s: PositionedStitch | undefined): boolean {
   return s.op.kind === 'CHAIN';
 }
 
-/** 같은 단 내 인접 non-chain stitch 탐색. 원형 wrap-around. MAGIC/SKIP 은 건너뜀. */
+/** 같은 단 내 인접 non-chain stitch 탐색. 원형 wrap-around. CHAIN/turningChain/MAGIC 은 건너뜀.
+ *  SKIP 은 1 코 boundary 로 포함 — 사슬 호가 SKIP 영역을 가로지르지 않게 (평면과 동일 로직). */
 function findAdjacentNonChain(
   stitches: PositionedStitch[],
   indices: number[],
@@ -583,7 +618,7 @@ function findAdjacentNonChain(
   let j = ((from % n) + n) % n;
   for (let k = 0; k < n; k++) {
     const t = stitches[indices[j]!]!;
-    if (t.op.kind !== 'CHAIN' && !t.op.turningChain && t.op.kind !== 'MAGIC' && t.op.kind !== 'SKIP') return t;
+    if (t.op.kind !== 'CHAIN' && !t.op.turningChain && t.op.kind !== 'MAGIC') return t;
     j = ((j + direction) % n + n) % n;
   }
   return undefined;
@@ -603,18 +638,28 @@ function repositionChainArcsInRound(stitches: PositionedStitch[], indices: numbe
     const parentIdx = firstChain.parentIndices[0];
     const parent = parentIdx !== undefined ? stitches[parentIdx] : undefined;
 
-    // prev anchor: 단 내 앞쪽 non-chain (samehole 내/외 상관없음), 없으면 공유 부모
-    let prev = findAdjacentNonChain(stitches, indices, runStart - 1, -1);
-    if (!prev) prev = parent;
-
-    // next anchor: 단 내 뒤쪽 non-chain, 없으면 공유 부모
-    let next = findAdjacentNonChain(stitches, indices, runEnd, 1);
-    if (!next) next = parent;
-
-    if (!prev || !next) continue; // 앵커 없음
-
-    const leftTop = stitchTop(prev);
-    const rightTop = stitchTop(next);
+    // chain run 의 samehole anchor (sameHoleContinuation=false 인 첫 chain).
+    // 그 anchor 가 chainArcBounds 를 가지면 부모 territory 의 좌/우 경계를 직접 사용 →
+    // 호가 인접 stitch territory 로 침범하지 않고 부모 슬롯 폭 안에 머무름.
+    let runAnchor: PositionedStitch | null = null;
+    for (let k = runStart; k < runEnd; k++) {
+      const c = stitches[indices[k]!]!;
+      if (!c.op.sameHoleContinuation) { runAnchor = c; break; }
+    }
+    let leftTop: Point, rightTop: Point;
+    if (runAnchor && runAnchor.chainArcBounds) {
+      leftTop = runAnchor.chainArcBounds.left;
+      rightTop = runAnchor.chainArcBounds.right;
+    } else {
+      // fallback: 단 내 앞/뒤 non-chain stitch top.
+      let prev = findAdjacentNonChain(stitches, indices, runStart - 1, -1);
+      if (!prev) prev = parent;
+      let next = findAdjacentNonChain(stitches, indices, runEnd, 1);
+      if (!next) next = parent;
+      if (!prev || !next) continue;
+      leftTop = stitchTop(prev);
+      rightTop = stitchTop(next);
+    }
 
     // chord: anchor tops 간 직선 길이
     const dx = rightTop.x - leftTop.x;

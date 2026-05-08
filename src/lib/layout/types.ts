@@ -28,6 +28,12 @@ export interface PositionedStitch {
    * - A(DEC), MAGIC, SLIP: 0~1 (다음 단 부모로 잘 사용 안 됨)
    */
   exposedSlots: number;
+  /**
+   * 원형 chain samehole anchor 가 부모로부터 소비한 angular territory 의 양 끝 좌표.
+   * 사슬 호 재배치 시 이 두 점을 bezier 의 좌/우 끝으로 사용 → 호가 부모 슬롯 폭만큼만
+   * 펼쳐지고 인접 stitch territory 로 침범하지 않음.
+   */
+  chainArcBounds?: { left: Point; right: Point };
 }
 
 export interface LayoutBounds {
