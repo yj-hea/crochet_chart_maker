@@ -7,7 +7,14 @@
   import TabBar from './components/TabBar.svelte';
   import HelpModal from './components/HelpModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
-  import { initializeDropbox, lastDropboxAction } from './stores/dropbox';
+  import WorkspaceMenu from './components/WorkspaceMenu.svelte';
+  import { initializeDropbox, lastDropboxAction, dropboxConnected } from './stores/dropbox';
+  import {
+    initializeWorkspaceSync,
+    disposeWorkspaceSync,
+    createWorkspace,
+    workspaceList,
+  } from './stores/dropboxWorkspace';
   import { mode, currentRound, currentStitch } from './stores/mode';
   import { setTabProgress } from './stores/tabs';
   import { renderedChart } from './stores/rendered';
@@ -34,8 +41,43 @@
   let exportMenuTrigger: HTMLButtonElement | undefined = $state();
   let exportMenuEl: HTMLDivElement | undefined = $state();
 
-  // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화
-  onMount(() => { void initializeDropbox(); });
+  async function startWorkspaceSync(): Promise<void> {
+    const result = await initializeWorkspaceSync();
+    if (result.status === 'no-active') {
+      // 활성 워크스페이스 없음 — 처음 연결이거나 활성 ID 가 사라진 경우.
+      const wsCount = $workspaceList.length;
+      const msg = wsCount === 0
+        ? 'Dropbox 에 워크스페이스가 없습니다. 현재 작업을 첫 워크스페이스로 저장할까요?'
+        : 'Dropbox 에 저장된 워크스페이스 중 하나를 선택해서 시작하거나, 현재 작업을 새 워크스페이스로 저장할 수 있습니다.\n\n현재 작업을 새 워크스페이스로 저장할까요?';
+      if (confirm(msg)) {
+        const name = prompt('워크스페이스 이름:', 'default');
+        if (name) {
+          try { await createWorkspace({ name, source: 'current' }); }
+          catch (err) { alert(`생성 실패: ${err instanceof Error ? err.message : err}`); }
+        }
+      }
+    }
+  }
+
+  // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화 + 워크스페이스 동기화 시작.
+  onMount(() => {
+    void (async () => {
+      await initializeDropbox();
+      if ($dropboxConnected) {
+        await startWorkspaceSync();
+      }
+    })();
+  });
+  // 연결/해제 변화에 따라 sync 시작/정지.
+  let lastConnected = false;
+  $effect(() => {
+    if ($dropboxConnected && !lastConnected) {
+      void startWorkspaceSync();
+    } else if (!$dropboxConnected && lastConnected) {
+      disposeWorkspaceSync();
+    }
+    lastConnected = $dropboxConnected;
+  });
 
   // 내보내기 드롭다운 바깥 클릭 시 닫기
   onMount(() => {
@@ -308,6 +350,7 @@
 
   <div class="header-actions">
     <div class="btn-group">
+      <WorkspaceMenu />
       <DropboxMenu />
       <button type="button" class="icon-btn" onclick={handleReset} title="도안 비우기"><i class="fa-solid fa-eraser"></i></button>
       <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기 (.crochet.json / .txt)"><i class="fa-solid fa-folder-open"></i></button>

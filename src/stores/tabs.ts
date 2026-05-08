@@ -516,3 +516,17 @@ export function resetAllTabs(): void {
   const t = defaultTab();
   workspace.set({ tabs: [t], activeTabId: t.id });
 }
+
+/** 외부 (Dropbox 등) 에서 가져온 SavedWorkspace 를 활성 워크스페이스로 적용. */
+export function applyWorkspace(saved: import('$lib/persistence').SavedWorkspace): void {
+  const tabs = saved.tabs.map(tabFromSaved);
+  if (tabs.length === 0) {
+    const t = defaultTab();
+    workspace.set({ tabs: [t], activeTabId: t.id });
+    return;
+  }
+  const activeTabId = tabs.some((t) => t.id === saved.activeTabId)
+    ? saved.activeTabId
+    : tabs[0]!.id;
+  workspace.set({ tabs, activeTabId });
+}
