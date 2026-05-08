@@ -292,6 +292,9 @@ function placeRound(
         parentIndices: skipParents, exposedSlots: 0,
       });
       thisStitchIndices.push(idx);
+      // SKIP 도 ringSlots 에 1 칸 차지 — slotCursor 를 advance 시켜 다음 op 들의 slot index 가
+      // 어긋나지 않게.
+      slotCursor += visualProduceFor(op);
       continue;
     }
 
@@ -342,13 +345,14 @@ function placeRound(
         const ctx = sameHoleCtx;
         if (op.produce > 0) {
           const subW = ctx.territoryWidth / ctx.produceMembers;
-          midAngle = ctx.groupCenter - ctx.territoryWidth / 2 + subW * (ctx.producedCount + 0.5);
+          // forward (dirSign=-1) 일 때 sub 0 이 가장 높은 angle (CCW 시작) 에 위치하도록.
+          midAngle = ctx.groupCenter + dirSign * (subW * (ctx.producedCount + 0.5) - ctx.territoryWidth / 2);
           if (op.produce === 1) {
             producePositions.push({ angle: midAngle, width: subW });
           } else {
             const ssW = subW / op.produce;
             for (let k = 0; k < op.produce; k++) {
-              producePositions.push({ angle: midAngle - subW / 2 + ssW * (k + 0.5), width: ssW });
+              producePositions.push({ angle: midAngle + dirSign * (ssW * (k + 0.5) - subW / 2), width: ssW });
             }
           }
           ctx.producedCount++;
@@ -362,10 +366,10 @@ function placeRound(
         if (op.produce === 1) {
           producePositions.push({ angle: midAngle, width: cs.width });
         } else if (op.produce > 1) {
-          // V (1 consume, N produce): consume slot 을 N 등분.
+          // V (1 consume, N produce): consume slot 을 N 등분 — forward 시 sub 0 이 높은 angle.
           const subW = cs.width / op.produce;
           for (let k = 0; k < op.produce; k++) {
-            producePositions.push({ angle: midAngle - cs.width / 2 + subW * (k + 0.5), width: subW });
+            producePositions.push({ angle: midAngle + dirSign * (subW * (k + 0.5) - cs.width / 2), width: subW });
           }
         }
       } else if (consumeSlots.length > 1) {
@@ -377,7 +381,7 @@ function placeRound(
         } else if (op.produce > 1) {
           const subW = sumW / op.produce;
           for (let k = 0; k < op.produce; k++) {
-            producePositions.push({ angle: midAngle - sumW / 2 + subW * (k + 0.5), width: subW });
+            producePositions.push({ angle: midAngle + dirSign * (subW * (k + 0.5) - sumW / 2), width: subW });
           }
         }
       } else {
@@ -711,6 +715,18 @@ function repositionChainArcsInRound(stitches: PositionedStitch[], indices: numbe
     const cy = midY + cOffset * perpY;
 
     const tValues = sampleByArcLength(leftTop, { x: cx, y: cy }, rightTop, runLen, CHAIN_SPACING);
+
+    // run 내 chain anchor (sameHoleContinuation=false) 가 cluster 가운데에 오도록 t-swap.
+    // 다음 단 자식의 슬롯 위치 (= group center) 와 angular 정렬 → 연결선 비스듬해지지 않음.
+    let anchorRunIdx = -1;
+    for (let k = 0; k < runLen; k++) {
+      if (!stitches[indices[runStart + k]!]!.op.sameHoleContinuation) { anchorRunIdx = k; break; }
+    }
+    const midSampleIdx = Math.floor((runLen - 1) / 2);
+    if (anchorRunIdx >= 0 && anchorRunIdx !== midSampleIdx && midSampleIdx < runLen) {
+      [tValues[anchorRunIdx], tValues[midSampleIdx]] =
+        [tValues[midSampleIdx]!, tValues[anchorRunIdx]!];
+    }
 
     for (let j = 0; j < runLen; j++) {
       const t = tValues[j]!;
