@@ -107,15 +107,18 @@ describe('layoutCircular', () => {
   });
 
   it('samehole 사슬은 arc 로 클러스터 — CHAIN_SPACING=9 인접', () => {
-    // [3ch, 1f] 의 chains 는 공유 부모 / 다음 non-chain 사이 arc 에 클러스터
+    // [3ch, 1f] 의 chains 는 공유 부모 / 다음 non-chain 사이 arc 에 클러스터.
+    // anchor t-swap 로 array 순서와 공간 순서가 달라지므로 angle 기준 정렬 후 검사.
     const res = layoutFromSources(['mr, 6x', '[3ch, 1f], 5f']);
     const chains = res.stitches.filter((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN');
     expect(chains).toHaveLength(3);
-    // 인접 chain 거리 ≈ 9
-    for (let i = 1; i < chains.length; i++) {
+    const sorted = [...chains].sort(
+      (a, b) => Math.atan2(a.position.y, a.position.x) - Math.atan2(b.position.y, b.position.x),
+    );
+    for (let i = 1; i < sorted.length; i++) {
       const d = Math.hypot(
-        chains[i]!.position.x - chains[i - 1]!.position.x,
-        chains[i]!.position.y - chains[i - 1]!.position.y,
+        sorted[i]!.position.x - sorted[i - 1]!.position.x,
+        sorted[i]!.position.y - sorted[i - 1]!.position.y,
       );
       expect(d).toBeCloseTo(9, 0);
     }
