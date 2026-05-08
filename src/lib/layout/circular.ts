@@ -386,13 +386,27 @@ function placeRound(
           }
         }
       } else {
-        // 부모 슬롯 없음 (1단의 ops 중 일부 — 예: SLIP) — 균등 fallback.
-        const startSlot = slotCursor;
-        const endSlot = slotCursor + Math.max(1, vSlots) - 1;
-        midAngle = (angleAt(startSlot, ringSlots, dirSign) + angleAt(endSlot, ringSlots, dirSign)) / 2;
+        // 부모 슬롯 없음 (standalone chain 등). cascade ON 의 op 순서/angular 순서 어긋남 방지를 위해
+        // 직전 visible op 의 angle 에서 1 step (= 2π/ringSlots) 만큼 dirSign 방향으로 떨어진 위치에 배치.
+        // 직전 op 없으면 (라운드 시작) uniform slot fallback.
         const sliceW = ringSlots > 0 ? 2 * Math.PI / ringSlots : 0;
+        let prevVisible: PositionedStitch | undefined;
+        for (let p = thisStitchIndices.length - 1; p >= 0; p--) {
+          const cand = stitches[thisStitchIndices[p]!]!;
+          if (cand.op.kind === 'MAGIC') continue;
+          prevVisible = cand;
+          break;
+        }
+        if (prevVisible) {
+          const prevA = Math.atan2(prevVisible.position.y, prevVisible.position.x);
+          midAngle = prevA + dirSign * sliceW;
+        } else {
+          const startSlot = slotCursor;
+          const endSlot = slotCursor + Math.max(1, vSlots) - 1;
+          midAngle = (angleAt(startSlot, ringSlots, dirSign) + angleAt(endSlot, ringSlots, dirSign)) / 2;
+        }
         for (let k = 0; k < op.produce; k++) {
-          producePositions.push({ angle: angleAt(slotCursor + k, ringSlots, dirSign), width: sliceW });
+          producePositions.push({ angle: midAngle + dirSign * sliceW * k, width: sliceW });
         }
       }
     } else {
