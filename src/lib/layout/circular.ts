@@ -40,7 +40,7 @@ export interface CircularOptions {
   cascade?: boolean;
 }
 
-const RADIAL_GAP = 30; // 'even' 모드에서 부모 ↔ 자식 사이 빈 반경 간격.
+const RADIAL_GAP = 12; // 'even' 모드에서 부모 바깥 끝 ↔ 자식 안쪽 끝 사이 빈 반경 간격.
 
 interface SlotPos { angle: number; width: number; }
 
@@ -56,9 +56,22 @@ export function layoutCircular(
   rounds: ExpandedRound[],
   opts: CircularOptions = {},
 ): LayoutResult {
-  const minRadius = opts.minRadius ?? FIRST_RING_RADIUS;
   const vAlign: 'same' | 'even' = opts.vAlign ?? 'same';
   const cascade: boolean = opts.cascade ?? true;
+
+  // 1단 내용 따라 첫 ring 반경 적응. 상수보다 코 수/높이 기준이 더 자연스러움.
+  const FIRST_INNER_PAD = 8; // 가운데 magic ring/빈 공간.
+  const FIRST_MIN_SLOT_SPACING = 20; // 1단 내 코 사이 최소 chord-arc 간격.
+  const round1 = rounds[0];
+  const firstSlots = round1?.ops.reduce((s, op) => s + visualProduceFor(op), 0) ?? 0;
+  const firstMaxH = round1
+    ? round1.ops.reduce((m, op) => op.kind === 'MAGIC' ? m : Math.max(m, effectiveSymH(op)), 5)
+    : 5;
+  const firstCircumBased = firstSlots > 0
+    ? (firstSlots * FIRST_MIN_SLOT_SPACING) / (2 * Math.PI)
+    : 0;
+  const firstHeightBased = firstMaxH + FIRST_INNER_PAD;
+  const minRadius = opts.minRadius ?? Math.max(firstCircumBased, firstHeightBased, 12);
 
   // 1) 각 단의 슬롯 수(시각 기준), baseRadius 사전 계산
   const slotCountByRound = new Map<number, number>();
@@ -71,9 +84,9 @@ export function layoutCircular(
     baseRadiusByRound.set(round.index, currentBase);
 
     // 다음 단의 baseRadius = 심볼 높이 + 여백. 짧은 코도 최소 간격 보장.
-    const MIN_RING_SPACING = 48;
-    const ROUND_GAP = 30;
-    const MIN_SLOT_SPACING = 16; // 슬롯 간 최소 간격 (px)
+    const MIN_RING_SPACING = 32; // ring 간 최소 거리 (= 평면 cellH default).
+    const ROUND_GAP = 25; // 코 위 ↔ 다음 단 코 아래 사이 빈 공간 (= 평면 Y_GAP).
+    const MIN_SLOT_SPACING = 20; // 인접 슬롯 간 최소 간격 (px) — 코 수 많을 때 자동 반경 확대로 겹침 방지.
     const maxSymH = round.ops.reduce((max, op) => {
       if (op.kind === 'MAGIC') return max;
       return Math.max(max, effectiveSymH(op));
