@@ -231,6 +231,11 @@ function placeRound(
   let slotCursor = 0;
   let lastGroupParents: number[] = [];
   let lastGroupConsumeSlots: SlotPos[] = [];
+  // 같은 단 standalone chain 들의 produce slot 큐 + 자기 슬롯 위치. 다음 op 가 prev 단보다
+  // 먼저 여기서 consume — `Nch, Mx` → Mx 가 chain 위에 코.
+  const chainQueueIdx: number[] = []; // stitches[] 인덱스
+  const chainQueuePos: SlotPos[] = []; // cascade ON 시 부모 각도 정보
+  const consumedChains = new Set<number>();
 
   // 같은 [...] 그룹 처리 컨텍스트 (cascade ON): 그룹 territory 를 producing member 수로 분할.
   let sameHoleCtx: {
@@ -252,16 +257,25 @@ function placeRound(
       continue;
     }
 
-    // SKIP: 부모 N개만 건너뛰고 중간 반경에 마커 배치
+    // SKIP: 부모 N개 건너뜀. chain 큐 우선 (= chain 위에 안 뜨고 장식만 남김), 비면 prev 단.
     if (op.kind === 'SKIP') {
       const skipParents: number[] = [];
+      let consumedFromChainQueue = false;
       for (let k = 0; k < op.consume; k++) {
-        const p = parentSlotMap[parentCursor + k];
-        if (p !== undefined) skipParents.push(p);
+        if (chainQueueIdx.length > 0) {
+          const cIdx = chainQueueIdx.shift()!;
+          chainQueuePos.shift();
+          skipParents.push(cIdx);
+          consumedChains.add(cIdx);
+          consumedFromChainQueue = true;
+        } else {
+          const p = parentSlotMap[parentCursor];
+          if (p !== undefined) skipParents.push(p);
+          parentCursor++;
+        }
       }
-      parentCursor += op.consume;
 
-      // 건너뛴 부모들의 평균 각도, 현재/이전 단 사이 중간 반경에 배치
+      // 건너뛴 부모들의 평균 각도, prev 단 consume 시 중간 반경 / chain queue consume 시 chain 위.
       let sumX = 0, sumY = 0;
       for (const pi of skipParents) {
         sumX += stitches[pi]!.position.x;
@@ -269,7 +283,14 @@ function placeRound(
       }
       const nParents = skipParents.length;
       const prevBase = baseRadiusByRound.get(roundIdx - 1) ?? 0;
-      const midR = nParents > 0 ? (prevBase + baseRadius) / 2 : baseRadius;
+      let midR: number;
+      if (consumedFromChainQueue && skipParents.length > 0) {
+        // chain 위에 SKIP — X-on-chain 과 동일 layer (chain outerR + gap + halfH).
+        const parent = stitches[skipParents[0]!]!;
+        midR = stitchOuterRadius(parent) + RADIAL_GAP + effectiveSymH(op);
+      } else {
+        midR = nParents > 0 ? (prevBase + baseRadius) / 2 : baseRadius;
+      }
       let pos: Point;
       let markerAngle = START_ANGLE;
       if (nParents > 0) {
@@ -308,14 +329,22 @@ function placeRound(
       parents = [];
       consumeSlots = [];
       for (let k = 0; k < op.consume; k++) {
-        const p = parentSlotMap[parentCursor + k];
-        if (p !== undefined) parents.push(p);
-        if (useCascade) {
-          const sp = prevSlotPos[parentCursor + k];
-          if (sp) consumeSlots.push(sp);
+        if (chainQueueIdx.length > 0) {
+          const cIdx = chainQueueIdx.shift()!;
+          const cPos = chainQueuePos.shift();
+          parents.push(cIdx);
+          consumedChains.add(cIdx);
+          if (useCascade && cPos) consumeSlots.push(cPos);
+        } else {
+          const p = parentSlotMap[parentCursor];
+          if (p !== undefined) parents.push(p);
+          if (useCascade) {
+            const sp = prevSlotPos[parentCursor];
+            if (sp) consumeSlots.push(sp);
+          }
+          parentCursor++;
         }
       }
-      parentCursor += op.consume;
       lastGroupParents = parents;
       lastGroupConsumeSlots = consumeSlots;
     }
@@ -386,9 +415,8 @@ function placeRound(
           }
         }
       } else {
-        // 부모 슬롯 없음 (standalone chain 등). cascade ON 의 op 순서/angular 순서 어긋남 방지를 위해
-        // 직전 visible op 의 angle 에서 1 step (= 2π/ringSlots) 만큼 dirSign 방향으로 떨어진 위치에 배치.
-        // 직전 op 없으면 (라운드 시작) uniform slot fallback.
+        // 부모 슬롯 없음 (standalone chain 등). 직전 visible op 의 angle 에서 작은 step (= chain 너비
+        // 기준 MIN_CHORD/r) 만큼 떨어진 위치에 배치 — 뒤따르는 prev-consume op 와 충돌 방지.
         const sliceW = ringSlots > 0 ? 2 * Math.PI / ringSlots : 0;
         let prevVisible: PositionedStitch | undefined;
         for (let p = thisStitchIndices.length - 1; p >= 0; p--) {
@@ -397,16 +425,20 @@ function placeRound(
           prevVisible = cand;
           break;
         }
+        // chain step: chord 16px (sym 너비) ÷ 자기 단 baseRadius ≈ 7° at typical scale.
+        // sliceW 보다 좁아 chain run 이 압축되게 배치 — 뒤에 prev-consume op 들이 들어갈 공간 확보.
+        const stitchR = baseRadius + effectiveSymH(op);
+        const chainStep = Math.min(sliceW, 16 / Math.max(stitchR, 1));
         if (prevVisible) {
           const prevA = Math.atan2(prevVisible.position.y, prevVisible.position.x);
-          midAngle = prevA + dirSign * sliceW;
+          midAngle = prevA + dirSign * chainStep;
         } else {
           const startSlot = slotCursor;
           const endSlot = slotCursor + Math.max(1, vSlots) - 1;
           midAngle = (angleAt(startSlot, ringSlots, dirSign) + angleAt(endSlot, ringSlots, dirSign)) / 2;
         }
         for (let k = 0; k < op.produce; k++) {
-          producePositions.push({ angle: midAngle + dirSign * sliceW * k, width: sliceW });
+          producePositions.push({ angle: midAngle + dirSign * chainStep * k, width: chainStep });
         }
       }
     } else {
@@ -438,9 +470,19 @@ function placeRound(
       continue;
     }
 
+    // 같은 단 chain 을 부모로 가진 producing op (= chain 위에 뜨는 코) — chain 바깥으로 stack.
+    const inRoundParents = parents.filter((p) => stitches[p]!.roundIndex === roundIdx);
+    // SKIP 은 이미 위 분기에서 처리되어 여기 안 옴.
+    const stackOnInRoundChain = inRoundParents.length > 0 && op.produce > 0;
+
     // 'even' 모드: 부모 (가장 바깥) 반경 + 부모/자기 halfH + gap. 부모 없으면 baseRadius 사용.
     let r: number;
-    if (vAlign === 'even' && parents.length > 0) {
+    if (stackOnInRoundChain) {
+      const parent = stitches[inRoundParents[0]!]!;
+      r = stitchOuterRadius(parent) + RADIAL_GAP + effectiveSymH(op);
+      // angle 도 부모 따라가기 — alignChildToParents 없으니 직접.
+      midAngle = Math.atan2(parent.position.y, parent.position.x);
+    } else if (vAlign === 'even' && parents.length > 0) {
       let topParentIdx = parents[0]!;
       let topParentR = stitchOuterRadius(stitches[topParentIdx]!);
       for (let k = 1; k < parents.length; k++) {
@@ -511,13 +553,28 @@ function placeRound(
     thisStitchIndices.push(idx);
     for (const sp of producePositions) thisSlotPos.push(sp);
     slotCursor += vSlots;
+    // standalone CHAIN (samehole/turning chain 아님) 의 produce 를 chain queue 에 push.
+    if (
+      op.kind === 'CHAIN' &&
+      !op.inSameHoleGroup &&
+      !op.turningChain &&
+      op.produce > 0
+    ) {
+      for (let k = 0; k < op.produce; k++) {
+        chainQueueIdx.push(idx);
+        const sp = producePositions[k];
+        if (sp) chainQueuePos.push(sp);
+      }
+    }
   }
 
   // 부모 없는 standalone chain (consume=0) 의 반경을 같은 단의 다음 (없으면 이전) 코로 맞춤.
+  // 같은 단에서 위에 코가 떠진 chain (consumedChains) 은 stack 된 자식과 r 충돌하므로 제외.
   // even 모드에서 기준 부모가 없어 default grid 위치에 남는 문제 해결.
   for (let i = 0; i < thisStitchIndices.length; i++) {
     const s = stitches[thisStitchIndices[i]!]!;
     if (s.op.kind !== 'CHAIN' || s.parentIndices.length > 0) continue;
+    if (consumedChains.has(thisStitchIndices[i]!)) continue;
     let neighbor: PositionedStitch | undefined;
     for (let j = i + 1; j < thisStitchIndices.length; j++) {
       const t = stitches[thisStitchIndices[j]!]!;
@@ -541,14 +598,79 @@ function placeRound(
     s.position = polarToCartesian(newR, a);
   }
 
+  // chain run 의 angular 재분배 — chain 그룹 (consumed + decoration) 을 인접 non-chain op 사이
+  // angular span 에 균등 분포. consumed chain 위에 stack 된 sc 의 angle 도 함께 sync.
+  for (let i = 0; i < thisStitchIndices.length; ) {
+    const startIdx = thisStitchIndices[i]!;
+    const start = stitches[startIdx]!;
+    if (start.op.kind !== 'CHAIN' || start.op.inSameHoleGroup || start.op.turningChain || start.parentIndices.length > 0) {
+      i++; continue;
+    }
+    // 연속 chain run 수집.
+    const runIndices: number[] = [];
+    let j = i;
+    while (j < thisStitchIndices.length) {
+      const sIdx = thisStitchIndices[j]!;
+      const s = stitches[sIdx]!;
+      if (s.op.kind === 'CHAIN' && !s.op.inSameHoleGroup && !s.op.turningChain && s.parentIndices.length === 0) {
+        runIndices.push(sIdx);
+        j++;
+      } else break;
+    }
+    // prev/next visible non-chain (skip/magic 도 제외) anchor.
+    let prevA: number | null = null;
+    for (let p = i - 1; p >= 0; p--) {
+      const cand = stitches[thisStitchIndices[p]!]!;
+      if (cand.op.kind === 'MAGIC' || cand.op.kind === 'SKIP') continue;
+      if (cand.op.kind === 'CHAIN') continue;
+      prevA = Math.atan2(cand.position.y, cand.position.x);
+      break;
+    }
+    let nextA: number | null = null;
+    for (let p = j; p < thisStitchIndices.length; p++) {
+      const cand = stitches[thisStitchIndices[p]!]!;
+      if (cand.op.kind === 'MAGIC' || cand.op.kind === 'SKIP') continue;
+      if (cand.op.kind === 'CHAIN') continue;
+      // chain-as-parent stack 된 sc 도 chain run 의 자식이라 anchor 후보 X.
+      if (cand.parentIndices.some((pp) => stitches[pp]!.roundIndex === cand.roundIndex)) continue;
+      nextA = Math.atan2(cand.position.y, cand.position.x);
+      break;
+    }
+    if (prevA !== null && nextA !== null) {
+      // prev → next dirSign 방향 span 을 (run 길이 + 1) 등분 후 chain 들을 1..run 위치에.
+      let span = dirSign * (nextA - prevA);
+      while (span < 0) span += 2 * Math.PI;
+      while (span > 2 * Math.PI) span -= 2 * Math.PI;
+      const step = span / (runIndices.length + 1);
+      for (let k = 0; k < runIndices.length; k++) {
+        const chainIdx = runIndices[k]!;
+        const ch = stitches[chainIdx]!;
+        const newA = prevA + dirSign * step * (k + 1);
+        const chR = Math.sqrt(ch.position.x ** 2 + ch.position.y ** 2);
+        ch.position = polarToCartesian(chR, newA);
+        // 이 chain 위에 stack 된 sc 가 있으면 angle 도 sync.
+        for (const sIdx of thisStitchIndices) {
+          const s = stitches[sIdx]!;
+          if (s.parentIndices.includes(chainIdx)) {
+            const sR = Math.sqrt(s.position.x ** 2 + s.position.y ** 2);
+            s.position = polarToCartesian(sR, newA);
+          }
+        }
+      }
+    }
+    i = j;
+  }
+
   // 겹치는 cascade 코는 인접 non-overlap 양 끝을 anchor 로 outward bezier 호에 재배치.
-  // chord < MIN_CHORD 인 인접 쌍의 run 을 찾아 prev/next 사이 호로 fit.
+  // 같은 단 chain-as-parent 관계 (consumed chain + stack 된 sc) 는 이미 정확히 align 되어 있어 제외.
   const MIN_CHORD = 16;
   const visibleOps = thisStitchIndices.filter((i) => {
     const s = stitches[i]!;
     const k = s.op.kind;
     if (k === 'MAGIC' || k === 'SKIP') return false;
-    if (k === 'CHAIN' && s.op.inSameHoleGroup) return false; // arc 후처리.
+    if (k === 'CHAIN' && s.op.inSameHoleGroup) return false;
+    if (consumedChains.has(i)) return false; // chain-as-parent chain.
+    if (s.parentIndices.some((p) => stitches[p]!.roundIndex === s.roundIndex)) return false; // stack sc.
     return true;
   });
   const dist = (i: number, j: number) => {
@@ -603,15 +725,24 @@ function placeRound(
   }
 
   // 슬롯 매핑 + 슬롯 위치 저장 (다음 단 cascade 용).
+  // 같은 단에서 consume 된 chain 은 다음 단으로 노출 안 됨 (= 위에 코가 떠짐).
   const slotMap: number[] = [];
+  const filteredSlotPos: SlotPos[] = [];
+  let posCursor = 0;
   for (const sIdx of thisStitchIndices) {
     const s = stitches[sIdx]!;
+    const skip = consumedChains.has(sIdx);
     for (let k = 0; k < s.exposedSlots; k++) {
-      slotMap.push(sIdx);
+      const sp = thisSlotPos[posCursor];
+      if (!skip) {
+        slotMap.push(sIdx);
+        if (sp) filteredSlotPos.push(sp);
+      }
+      posCursor++;
     }
   }
   slotMapByRound.set(roundIdx, slotMap);
-  slotPosByRound.set(roundIdx, thisSlotPos);
+  slotPosByRound.set(roundIdx, filteredSlotPos);
 
   // 시작 마커: MAGIC, CHAIN, SLIP 제외한 첫 visible stitch
   const firstVisible = thisStitchIndices.find(
