@@ -93,17 +93,26 @@ describe('layoutCircular', () => {
     expect(result.bounds.width).toBeGreaterThan(0);
   });
 
-  it('standalone 사슬은 arc 미적용 — 각자 링 슬롯 각도에 위치', () => {
-    // mr, 6x / 3ch, 5f : chains 는 slots 0,1,2 각도에 그대로
+  it('standalone 사슬은 chain-as-parent 로 같은 단 다음 코의 부모가 됨', () => {
+    // mr, 6x / 3ch, 5f : 3ch 가 큐에 추가되고 5f 의 처음 3개가 chain 부모, 나머지 2개는 prev 부모.
     const res = layoutFromSources(['mr, 6x', '3ch, 5f']);
-    const chains = res.stitches.filter((s) => s.roundIndex === 2 && s.op.kind === 'CHAIN');
+    const r2 = res.stitches.filter((s) => s.roundIndex === 2);
+    const chains = r2.filter((s) => s.op.kind === 'CHAIN');
+    const fs = r2.filter((s) => s.op.kind === 'DC');
     expect(chains).toHaveLength(3);
+    expect(fs).toHaveLength(5);
     // 모두 같은 반지름 (링 슬롯)
     const radii = chains.map((c) => Math.hypot(c.position.x, c.position.y));
     for (const r of radii) expect(r).toBeCloseTo(radii[0]!, 1);
-    // 각도 차이 = 2π/8 (8 슬롯 중 처음 3개)
-    const angles = chains.map((c) => Math.atan2(c.position.y, c.position.x));
-    expect(Math.abs(angles[1]! - angles[0]!)).toBeCloseTo(2 * Math.PI / 8, 1);
+    // 첫 3개의 DC 는 chain 부모, 마지막 2개는 prev (R1 SC) 부모.
+    const chainIdxs = chains.map((c) => res.stitches.indexOf(c));
+    for (let i = 0; i < 3; i++) {
+      expect(fs[i]!.parentIndices).toEqual([chainIdxs[i]]);
+    }
+    for (let i = 3; i < 5; i++) {
+      const pi = fs[i]!.parentIndices[0]!;
+      expect(res.stitches[pi]!.roundIndex).toBe(1);
+    }
   });
 
   it('samehole 사슬은 arc 로 클러스터 — CHAIN_SPACING=9 인접', () => {

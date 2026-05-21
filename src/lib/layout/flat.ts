@@ -174,6 +174,15 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   // 3) 행 안 op 순서대로 x 단조 증가 보정 — cascade 충돌이나 slot 불일치로 인한 같은 자리 stitch 흩뿌림.
   enforceRowMonotonic(stitches);
 
+  // 3.5) 같은 단 부모 (chain-as-parent) 위에 stack 된 코는 enforce 후 부모 x 로 재동기화.
+  for (const s of stitches) {
+    if (s.parentIndices.length === 0) continue;
+    const p = stitches[s.parentIndices[0]!]!;
+    if (p.roundIndex !== s.roundIndex) continue;
+    if (s.position.y >= p.position.y) continue; // 위로 stack 된 경우만 (y 더 작음).
+    s.position = { x: p.position.x, y: s.position.y };
+  }
+
   // 4) vAlign 'even' — 각 코 y = 가장 위 부모 y - 부모/자기 halfH - gap.
   if (vAlign === 'even') applyEvenVAlign(stitches);
 
@@ -291,6 +300,11 @@ function placeRow(
   let parentCursor = 0;
   let slotCursor = 0;
   let lastGroupParents: number[] = [];
+  // 같은 단 내 standalone chain 들의 produce slot 큐 — 이후 op 가 prev 단보다 먼저 여기서 consume.
+  // `5ch, 5x` → 5x 가 chain 5개를 부모로 삼음. `5ch, skip(5), 5x` → skip 이 chain 들 consume (장식 처리).
+  const chainQueue: number[] = [];
+  // 같은 단 내에서 consume 된 chain stitch — 다음 단 slot map 에 노출되지 않음 (= 위 코로 가려짐).
+  const consumedChains = new Set<number>();
 
   for (let opIdx = 0; opIdx < round.ops.length; opIdx++) {
     const op = round.ops[opIdx]!;
@@ -306,16 +320,23 @@ function placeRow(
     }
 
     // 부모 결정 — samehole continuation 은 anchor 의 부모 재사용.
+    // 그 외에는 chainQueue 우선 (= 같은 단 내 chain 위에 코), 비면 prev 단 slot map.
     let parents: number[];
     if (op.sameHoleContinuation) {
       parents = lastGroupParents;
     } else {
       parents = [];
       for (let k = 0; k < op.consume; k++) {
-        const p = parentSlotMap[parentCursor + k];
-        if (p !== undefined) parents.push(p);
+        if (chainQueue.length > 0) {
+          const cIdx = chainQueue.shift()!;
+          parents.push(cIdx);
+          consumedChains.add(cIdx);
+        } else {
+          const p = parentSlotMap[parentCursor];
+          if (p !== undefined) parents.push(p);
+          parentCursor++;
+        }
       }
-      parentCursor += op.consume;
       lastGroupParents = parents;
     }
 
@@ -340,6 +361,14 @@ function placeRow(
       slotCursor += vSlots;
     }
 
+    // 같은 단 chain 을 부모로 가진 *실제 producing* op (= chain 위에 뜨는 코) — chain 위로 stack.
+    // SKIP / 장식은 stack 안 함 (제자리에서 chain 만 consume = 장식 처리).
+    const inRoundParents = parents.filter((p) => stitches[p]!.roundIndex === roundIdx);
+    if (inRoundParents.length > 0 && op.produce > 0 && op.kind !== 'SKIP') {
+      const parent = stitches[inRoundParents[0]!]!;
+      px = parent.position.x;
+      py = parent.position.y - cellH;
+    }
     const idx = stitches.length;
     stitches.push({
       op, roundIndex: roundIdx,
@@ -347,10 +376,21 @@ function placeRow(
       parentIndices: parents, exposedSlots: op.produce,
     });
     thisStitchIndices.push(idx);
+    // standalone CHAIN (samehole/turning chain 아님) 의 produce 를 chain queue 에 push.
+    // 같은 단 내 다음 op 들의 consume 우선 대상.
+    if (
+      op.kind === 'CHAIN' &&
+      !op.inSameHoleGroup &&
+      !op.turningChain &&
+      op.produce > 0
+    ) {
+      for (let k = 0; k < op.produce; k++) chainQueue.push(idx);
+    }
   }
 
   const slotMap: number[] = [];
   for (const sIdx of thisStitchIndices) {
+    if (consumedChains.has(sIdx)) continue; // 같은 단에서 위에 코가 떠져 다음 단으로 안 노출.
     const s = stitches[sIdx]!;
     for (let k = 0; k < s.exposedSlots; k++) slotMap.push(sIdx);
   }
@@ -479,13 +519,15 @@ function isSameholeArcChain(s: PositionedStitch | undefined): boolean {
  */
 function enforceRowMonotonic(stitches: PositionedStitch[]): void {
   const W = FLAT_CELL_WIDTH;
-  const byRound = new Map<number, number[]>();
+  // (roundIndex, y) 키별로 그룹화 — 같은 단이라도 chain 위 stack 처럼 다른 y 면 별개 행.
+  const byKey = new Map<string, number[]>();
   for (let i = 0; i < stitches.length; i++) {
-    const r = stitches[i]!.roundIndex;
-    if (!byRound.has(r)) byRound.set(r, []);
-    byRound.get(r)!.push(i);
+    const s = stitches[i]!;
+    const key = `${s.roundIndex}:${s.position.y}`;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(i);
   }
-  for (const indices of byRound.values()) {
+  for (const indices of byKey.values()) {
     let prevX = -Infinity;
     for (const idx of indices) {
       const s = stitches[idx]!;
