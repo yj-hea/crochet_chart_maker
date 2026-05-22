@@ -151,10 +151,12 @@
       insertRectHighlight(g); // fallback (매직링 등)
       return;
     }
-    const avgR = distances.reduce((a, b) => a + b, 0) / distances.length;
-    const band = 10;
-    const outerR = avgR + band;
-    const innerR = Math.max(0, avgR - band);
+    // 같은 단 내 chain-as-parent stack 으로 r 편차가 큼 → min/max 로 전체 코를 감싸는 도넛.
+    const minR = Math.min(...distances);
+    const maxR = Math.max(...distances);
+    const pad = 10;
+    const outerR = maxR + pad;
+    const innerR = Math.max(0, minR - pad);
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     // 도넛: 외원 시계방향 + 내원 반시계방향 (evenodd)
