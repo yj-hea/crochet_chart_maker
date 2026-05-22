@@ -42,9 +42,17 @@ function visualClaim(op: Op): number {
  *
  * cascade OFF 시 own visualClaim 그대로 반환 — 각 단이 자기 ops 너비로 배치.
  */
-function computeEffectiveClaims(rounds: ExpandedRound[], cascade: boolean): number[][] {
+interface ClaimResult {
+  /** 각 op 의 symbol own claim (V/A 전파 포함). row 에서 기호가 차지하는 cell 수. */
+  eff: number[][];
+  /** 각 op 뒤에 추가되는 빈 cell 수 — 자식 단 standalone chain 의 자리. 기호 위치 영향 X, slot 진행만. */
+  phantomAfter: number[][];
+}
+
+function computeEffectiveClaims(rounds: ExpandedRound[], cascade: boolean): ClaimResult {
   const own: number[][] = rounds.map((r) => r.ops.map(visualClaim));
-  if (!cascade) return own;
+  const phantomAfter: number[][] = rounds.map((r) => r.ops.map(() => 0));
+  if (!cascade) return { eff: own, phantomAfter };
 
   // op-level slot map: 각 round 의 produce 순서대로 op index 매핑.
   const slotMaps: number[][] = rounds.map((r) => {
@@ -57,25 +65,57 @@ function computeEffectiveClaims(rounds: ExpandedRound[], cascade: boolean): numb
   });
 
   // 각 op 의 *exclusive 자식* 리스트 — 자식이 단일 부모일 때만 추가.
+  // 동시에 같은 단 standalone chain (in-round chain queue) 를 직전 prev 부모의 phantomAfter 에 합산 —
+  // 부모 단이 chain 폭만큼 빈 칸을 확보해서 컬럼 정렬이 유지되도록.
   const exclusiveKids: number[][][] = rounds.map((r) => r.ops.map(() => []));
   for (let r = 1; r < rounds.length; r++) {
     const round = rounds[r]!;
     const prevSm = slotMaps[r - 1] ?? [];
     let parentCursor = 0;
     let lastGroupParentOps: number[] = [];
+    const chainQueue: number[] = [];
+    let lastPrevParent: number | undefined;
+    let pendingChainExtra = 0; // 첫 prev consumer 가 나오기 전 chain들 — 그 consumer 부모에 합산.
     for (let opIdx = 0; opIdx < round.ops.length; opIdx++) {
       const op = round.ops[opIdx]!;
       let parentOps: number[];
+      const isStandaloneChain = op.kind === 'CHAIN'
+        && !op.inSameHoleGroup
+        && !op.turningChain
+        && op.consume === 0
+        && op.produce > 0
+        && !op.sameHoleContinuation;
       if (op.sameHoleContinuation) {
         parentOps = lastGroupParentOps;
+      } else if (isStandaloneChain) {
+        chainQueue.push(opIdx);
+        if (lastPrevParent !== undefined) {
+          phantomAfter[r - 1]![lastPrevParent] = (phantomAfter[r - 1]![lastPrevParent] ?? 0) + 1;
+        } else {
+          pendingChainExtra += 1;
+        }
+        parentOps = [];
+        lastGroupParentOps = parentOps;
       } else {
         parentOps = [];
         for (let k = 0; k < op.consume; k++) {
-          const p = prevSm[parentCursor + k];
-          if (p !== undefined) parentOps.push(p);
+          if (chainQueue.length > 0) {
+            chainQueue.shift();
+          } else {
+            const p = prevSm[parentCursor];
+            if (p !== undefined) parentOps.push(p);
+            parentCursor++;
+          }
         }
-        parentCursor += op.consume;
         lastGroupParentOps = parentOps;
+        if (parentOps.length > 0) {
+          const newLast = parentOps[parentOps.length - 1]!;
+          if (pendingChainExtra > 0) {
+            phantomAfter[r - 1]![newLast] = (phantomAfter[r - 1]![newLast] ?? 0) + pendingChainExtra;
+            pendingChainExtra = 0;
+          }
+          lastPrevParent = newLast;
+        }
       }
       // 단일 부모 + produce>0 자식만 exclusive 로 인정.
       if (parentOps.length === 1 && op.produce > 0) {
@@ -84,19 +124,27 @@ function computeEffectiveClaims(rounds: ExpandedRound[], cascade: boolean): numb
     }
   }
 
-  // 높은 단부터 낮은 단으로 walk — effective = max(own, sum of exclusive kids).
+  // 높은 단부터 낮은 단으로 walk — effective = max(own, sum of exclusive kids footprint).
+  // 자식 phantomAfter 는 *내부* (자식이 마지막이 아닐 때) 면 부모 eff 에 합산,
+  // 마지막 자식이면 부모 phantomAfter 로 외부 전파 (다음 부모 op 와의 사이).
   const eff: number[][] = own.map((c) => [...c]);
   for (let r = rounds.length - 2; r >= 0; r--) {
     const ops = rounds[r]!.ops;
     for (let opIdx = 0; opIdx < ops.length; opIdx++) {
-      let sum = 0;
-      for (const k of exclusiveKids[r]![opIdx]!) {
-        sum += eff[r + 1]![k]!;
+      const kids = exclusiveKids[r]![opIdx]!;
+      if (kids.length === 0) continue;
+      let inner = 0;
+      for (let i = 0; i < kids.length - 1; i++) {
+        const k = kids[i]!;
+        inner += eff[r + 1]![k]! + phantomAfter[r + 1]![k]!;
       }
-      eff[r]![opIdx] = Math.max(eff[r]![opIdx]!, sum);
+      const lastK = kids[kids.length - 1]!;
+      inner += eff[r + 1]![lastK]!;
+      eff[r]![opIdx] = Math.max(eff[r]![opIdx]!, inner);
+      phantomAfter[r]![opIdx] = (phantomAfter[r]![opIdx] ?? 0) + phantomAfter[r + 1]![lastK]!;
     }
   }
-  return eff;
+  return { eff, phantomAfter };
 }
 
 function effectiveSymH(op: Op): number {
@@ -152,17 +200,38 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
   const cellH = Math.max(32, 2 * maxHalfH + Y_GAP);
 
   // op 별 effective claim — cascade ON 시 자식 claim 을 부모로 전파.
-  const effClaims = computeEffectiveClaims(rounds, cascade);
+  const { eff: effClaims, phantomAfter } = computeEffectiveClaims(rounds, cascade);
 
-  // chart 폭 = max 단 cell 수 — 모든 단이 동일 폭으로 spread (cascade ON).
+  // 같은 단 chain 위로 stack 되는 ops (in-round chain queue consumer) 는 row cell 0 으로 처리 —
+  // chain.x 위에 sub-row 로 그려지지 자기 row 의 자리를 차지하지 않는다.
+  // 안 그러면 정렬에 따라 row 에 stack 자리만큼 빈 칸이 생긴다 (L 정렬에서 특히).
+  for (let r = 0; r < rounds.length; r++) {
+    const stackOps = computeStackOps(rounds[r]!);
+    for (const opIdx of stackOps) effClaims[r]![opIdx] = 0;
+  }
+
+  // chart 폭 = max 단 cell 수 — phantomAfter 포함 (자식 chain 칸을 위해 확보).
   const maxSlots = Math.max(
     0,
-    ...effClaims.map((row) => row.reduce((s, c) => s + c, 0)),
+    ...effClaims.map((row, ri) => {
+      const ph = phantomAfter[ri]!;
+      let sum = 0;
+      for (let i = 0; i < row.length; i++) sum += row[i]! + ph[i]!;
+      return sum;
+    }),
   );
+
+  // 각 단의 baseY — chain-as-parent stack 이 있는 단은 다음 단을 cellH 한 칸 더 내림 (sub-row 겹침 방지).
+  const baseYs: number[] = [];
+  let cumY = 0;
+  for (let i = 0; i < rounds.length; i++) {
+    baseYs.push(cumY);
+    cumY -= cellH * (roundHasChainStack(rounds[i]!) ? 2 : 1);
+  }
 
   // 1) 각 round 를 max 폭 안에서 align 따라 uniform cell 배치.
   for (let i = 0; i < rounds.length; i++) {
-    placeRow(rounds[i]!, stitches, slotMapByRound, roundMarkers, maxSlots, align, effClaims[i]!, cellH);
+    placeRow(rounds[i]!, stitches, slotMapByRound, roundMarkers, maxSlots, align, effClaims[i]!, phantomAfter[i]!, cellH, baseYs[i]!);
   }
 
   // 2) cascade ON: 다중 부모 자식 (DEC, bridge anchor) 만 부모 L/R/C 위치로 align.
@@ -265,6 +334,38 @@ function applyEvenVAlign(stitches: PositionedStitch[]): void {
   }
 }
 
+/**
+ * 같은 단 standalone chain 의 produce 가 in-round 에서 consume 되면 (chain-as-parent),
+ * 그 consumer 들은 chain 위 sub-row (y - cellH) 에 stack 된다. 다음 단이 같은 y 에 놓이면
+ * 겹치므로, 그런 단 다음에는 cellH 한 칸 더 비워야 한다.
+ */
+function roundHasChainStack(round: ExpandedRound): boolean {
+  return computeStackOps(round).size > 0;
+}
+
+/**
+ * 같은 단 standalone chain 의 produce 를 in-round 에서 consume 하는 op 의 index 집합.
+ * 이 op 들은 row slot 을 차지하지 않고 부모 chain 위 sub-row 에 stack 된다.
+ */
+function computeStackOps(round: ExpandedRound): Set<number> {
+  const result = new Set<number>();
+  let queue = 0;
+  for (let i = 0; i < round.ops.length; i++) {
+    const op = round.ops[i]!;
+    if (op.sameHoleContinuation) continue;
+    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && op.produce > 0) {
+      queue += op.produce;
+      continue;
+    }
+    if (op.consume > 0 && queue > 0) {
+      const fromQueue = Math.min(queue, op.consume);
+      queue -= fromQueue;
+      if (fromQueue > 0) result.add(i);
+    }
+  }
+  return result;
+}
+
 function placeRow(
   round: ExpandedRound,
   stitches: PositionedStitch[],
@@ -273,12 +374,13 @@ function placeRow(
   maxSlots: number,
   align: 'L' | 'R' | 'C',
   rowClaims: number[],
+  phantomAfter: number[],
   cellH: number,
+  y: number,
 ): void {
   const { index: roundIdx } = round;
-  const rowSlots = rowClaims.reduce((s, c) => s + c, 0);
-
-  const y = -(roundIdx - 1) * cellH;
+  let rowSlots = 0;
+  for (let i = 0; i < rowClaims.length; i++) rowSlots += rowClaims[i]! + phantomAfter[i]!;
   const W = FLAT_CELL_WIDTH;
   // chart 좌측 끝 x (max 단 leftmost slot 의 중심) — L/R/C 정렬 기준점.
   const chartLeft = -((maxSlots - 1) * W) / 2;
@@ -360,11 +462,13 @@ function placeRow(
       else px = (startSlotX + endSlotX) / 2;
       slotCursor += vSlots;
     }
+    // phantomAfter: 자식 단 chain 의 빈 칸 — 기호 위치 영향 X, slot 만 진행.
+    slotCursor += phantomAfter[opIdx]!;
 
-    // 같은 단 chain 을 부모로 가진 *실제 producing* op (= chain 위에 뜨는 코) — chain 위로 stack.
-    // SKIP / 장식은 stack 안 함 (제자리에서 chain 만 consume = 장식 처리).
+    // 같은 단 chain 을 부모로 가진 코 (producing 또는 SKIP 장식) — chain 위 sub-row 에 stack.
+    // 원형 레이아웃과 일관: SKIP-on-chain 도 부모 chain 컬럼 위에 표기.
     const inRoundParents = parents.filter((p) => stitches[p]!.roundIndex === roundIdx);
-    if (inRoundParents.length > 0 && op.produce > 0 && op.kind !== 'SKIP') {
+    if (inRoundParents.length > 0) {
       const parent = stitches[inRoundParents[0]!]!;
       px = parent.position.x;
       py = parent.position.y - cellH;
@@ -453,12 +557,11 @@ function alignChildToParents(stitches: PositionedStitch[], align: 'L' | 'R' | 'C
     // 단일 부모
     const parentIdx = parents[0]!;
     const parentX = stitches[parentIdx]!.position.x;
-    const N = realKidsCount.get(parentIdx) ?? 0;
-    if (s.exposedSlots <= 0 || N <= 1) {
-      // 1:1 또는 장식 자식 (cont) — 부모 x 로 이동.
+    if (s.exposedSlots <= 0) {
+      // 장식 자식 (samehole/turning chain cont) — 부모 x 로 이동.
       s.position = { x: parentX, y: s.position.y };
     }
-    // V/[Nx] 확장 (N>1) 인 produce>0 자식은 cell-based 유지.
+    // 1:1 또는 V/[Nx] 확장 producing 자식은 cell-based 유지 — 각 row 가 자체 중앙/좌/우 정렬.
   }
 }
 
