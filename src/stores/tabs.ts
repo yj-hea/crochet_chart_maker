@@ -7,8 +7,6 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
-import { parseRound } from '$lib/parser/parser';
-import { expand } from '$lib/expand/expander';
 import type { ParsedRound } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
 import {
@@ -23,8 +21,10 @@ import {
   type SavedProgress,
 } from '$lib/persistence';
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
+import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
 
-export type ShapeKind = 'circular' | 'flat';
+/** 도형 id — 코바늘: circular/flat, 대바늘: round/flat */
+export type ShapeKind = 'circular' | 'flat' | 'round';
 
 /** 'forward' = 기본 방향 (원형 CCW, 평면 LTR) / 'reverse' = 반대 */
 export type RoundDirection = 'forward' | 'reverse';
@@ -54,6 +54,8 @@ export interface PatternRoundState {
 export interface Tab {
   id: string;
   name: string;
+  /** 이 탭의 기법. 탭 하나 = 크래프트 하나 (docs/architecture.md §10.5) */
+  craft: CraftId;
   shape: ShapeKind;
   rounds: PatternRoundState[];
   comments: Comment[];
@@ -76,17 +78,18 @@ function makeTabId(): string {
   return `tab${idCounter}_${Date.now().toString(36)}`;
 }
 
-function reparse(idx: number, source: string, direction?: RoundDirection) {
-  const parsed = parseRound(idx, source);
+function reparse(craftId: CraftId, idx: number, source: string, direction?: RoundDirection) {
+  const craft = getCraft(craftId);
+  const parsed = craft.parseRound(idx, source);
   const tree = parsed.body ?? parsed.lastValid;
-  const expanded = tree ? expand(tree, idx) : undefined;
+  const expanded = tree ? craft.expand(tree, idx) : undefined;
   if (expanded) expanded.direction = direction ?? 'forward';
   return { parsed, expanded };
 }
 
-function reparseAll(rounds: PatternRoundState[]): PatternRoundState[] {
+function reparseAll(rounds: PatternRoundState[], craftId: CraftId): PatternRoundState[] {
   return rounds.map((r, i) => {
-    const { parsed, expanded } = reparse(i + 1, r.source, r.direction);
+    const { parsed, expanded } = reparse(craftId, i + 1, r.source, r.direction);
     return { ...r, parsed, expanded };
   });
 }
@@ -96,12 +99,13 @@ function makeCommentId(): string {
   return `cm${idCounter}_${Date.now().toString(36)}`;
 }
 
-function defaultTab(name = '도안 1'): Tab {
+function defaultTab(name = '도안 1', craft: CraftId = DEFAULT_CRAFT): Tab {
   return {
     id: makeTabId(),
     name,
-    shape: 'circular',
-    rounds: reparseAll([{ id: makeRoundId(), source: '' }]),
+    craft,
+    shape: getCraft(craft).defaultShape as ShapeKind,
+    rounds: reparseAll([{ id: makeRoundId(), source: '' }], craft),
     comments: [],
   };
 }
@@ -113,11 +117,13 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     source: r.source,
     direction: r.direction,
   }));
+  const craft: CraftId = saved.craft ?? DEFAULT_CRAFT;
   return {
     id: saved.id,
     name: saved.name,
+    craft,
     shape: saved.shape,
-    rounds: reparseAll(rounds),
+    rounds: reparseAll(rounds, craft),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
     ...(saved.progress ? { progress: saved.progress } : {}),
   };
@@ -200,6 +206,7 @@ workspace.subscribe((ws) => {
     tabs: ws.tabs.map((t) => ({
       id: t.id,
       name: t.name,
+      craft: t.craft ?? DEFAULT_CRAFT,
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: { source: string; direction?: RoundDirection } = { source: r.source };
@@ -232,9 +239,9 @@ export function setTabProgress(id: string, progress: SavedProgress | undefined):
 export const pattern = derived(workspace, ($ws) => {
   const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
   if (active) {
-    return { shape: active.shape, rounds: active.rounds };
+    return { craft: active.craft ?? DEFAULT_CRAFT, shape: active.shape, rounds: active.rounds };
   }
-  return { shape: 'circular' as ShapeKind, rounds: [] as PatternRoundState[] };
+  return { craft: DEFAULT_CRAFT, shape: 'circular' as ShapeKind, rounds: [] as PatternRoundState[] };
 });
 
 export const activeTabId = derived(workspace, ($ws) => $ws.activeTabId);
@@ -250,14 +257,15 @@ export function switchTab(id: string): void {
   });
 }
 
-export function createTab(): string {
+export function createTab(craft: CraftId = DEFAULT_CRAFT): string {
   let newId = '';
   workspace.update((ws) => {
     const tab: Tab = {
       id: makeTabId(),
       name: nextTabName(ws.tabs),
-      shape: 'circular',
-      rounds: reparseAll([{ id: makeRoundId(), source: '' }]),
+      craft,
+      shape: getCraft(craft).defaultShape as ShapeKind,
+      rounds: reparseAll([{ id: makeRoundId(), source: '' }], craft),
       comments: [],
     };
     newId = tab.id;
@@ -304,7 +312,7 @@ export function updateRoundSource(id: string, source: string): void {
     const idx = t.rounds.findIndex((r) => r.id === id);
     if (idx < 0) return t;
     const current = t.rounds[idx]!;
-    const { parsed, expanded } = reparse(idx + 1, source, current.direction);
+    const { parsed, expanded } = reparse(t.craft, idx + 1, source, current.direction);
     const newRounds = [...t.rounds];
     newRounds[idx] = { ...current, source, parsed, expanded };
     return { ...t, rounds: newRounds };
@@ -318,7 +326,7 @@ export function addRoundAfter(id: string): string {
     newId = makeRoundId();
     const newRounds = [...t.rounds];
     newRounds.splice(idx + 1, 0, { id: newId, source: '' });
-    return { ...t, rounds: reparseAll(newRounds) };
+    return { ...t, rounds: reparseAll(newRounds, t.craft) };
   });
   return newId;
 }
@@ -328,7 +336,7 @@ export function addRoundAtEnd(): string {
   updateActiveTab((t) => {
     newId = makeRoundId();
     const newRounds = [...t.rounds, { id: newId, source: '' }];
-    return { ...t, rounds: reparseAll(newRounds) };
+    return { ...t, rounds: reparseAll(newRounds, t.craft) };
   });
   return newId;
 }
@@ -341,7 +349,7 @@ export function deleteRound(id: string): string {
     if (idx < 0) return t;
     prevId = idx > 0 ? t.rounds[idx - 1]!.id : '';
     const newRounds = t.rounds.filter((r) => r.id !== id);
-    return { ...t, rounds: reparseAll(newRounds) };
+    return { ...t, rounds: reparseAll(newRounds, t.craft) };
   });
   return prevId;
 }
@@ -402,6 +410,7 @@ export function exportToFile(): void {
   if (!active) return;
   downloadAsFile(
     {
+      craft: active.craft ?? DEFAULT_CRAFT,
       shape: active.shape,
       rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
       comments: active.comments,
@@ -466,16 +475,18 @@ export async function importFromFile(file: File): Promise<void> {
       .replace(/-\d{4}-\d{2}-\d{2}$/, ''); // 내보낼 때 붙인 날짜 suffix 제거
     const name = (explicitName || fallback || nextTabName(ws.tabs)).slice(0, 30);
     const newRoundIds: string[] = saved.rounds.map(() => makeRoundId());
+    const craft: CraftId = saved.craft ?? DEFAULT_CRAFT;
     const newRounds = reparseAll(saved.rounds.map((r, i) => ({
       id: newRoundIds[i]!,
       source: r.source,
       direction: r.direction,
-    })));
+    })), craft);
     const newComments = remapSavedComments(saved.comments ?? [], newRoundIds, true);
     const clampedProgress = clampProgress(saved.progress, newRounds);
     const newTab: Tab = {
       id: tabId,
       name,
+      craft,
       shape: saved.shape,
       rounds: newRounds,
       comments: newComments,
@@ -505,8 +516,8 @@ function clampProgress(
 export function resetPattern(): void {
   updateActiveTab((t) => ({
     ...t,
-    shape: 'circular',
-    rounds: reparseAll([{ id: makeRoundId(), source: '' }]),
+    shape: getCraft(t.craft).defaultShape as ShapeKind,
+    rounds: reparseAll([{ id: makeRoundId(), source: '' }], t.craft),
   }));
 }
 

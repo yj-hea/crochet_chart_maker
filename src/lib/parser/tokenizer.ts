@@ -5,7 +5,10 @@
  * 숫자, 구조 문자(`,`, `(`, `)`, `*`, `^`), 공백, 알 수 없는 문자를 분류.
  */
 
-import { ALIAS_MAP, ALIAS_KEYS_BY_LENGTH, type StitchKind, type ModifierKind } from '$lib/model/stitch';
+import type { StitchKind, ModifierKind } from '$lib/model/stitch-kind';
+// TODO(Phase 1): 별칭 테이블을 인자로 주입받도록 파라미터화 (대바늘 토크나이징).
+//                현재는 코바늘 테이블을 기본 바인딩으로 사용한다.
+import { ALIAS_MAP, ALIAS_KEYS_BY_LENGTH } from '$lib/crafts/crochet/stitch';
 import type { SourceRange } from '$lib/model/errors';
 
 export type TokenType =

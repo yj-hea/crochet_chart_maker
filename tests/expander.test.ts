@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRound } from '../src/lib/parser/parser';
+import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
 
 function expandFrom(source: string) {

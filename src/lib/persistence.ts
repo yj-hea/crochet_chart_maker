@@ -8,10 +8,13 @@
  */
 
 import type { ShapeKind } from '$stores/pattern';
+import type { CraftId } from '$lib/crafts';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
-export const FILE_VERSION = 1;
-export const WORKSPACE_VERSION = 2;
+/** v2: `craft` 필드 추가 (코바늘/대바늘). v1 파일은 코바늘로 마이그레이션. */
+export const FILE_VERSION = 2;
+/** v3: `craft` 필드 추가. v2 워크스페이스는 코바늘로 마이그레이션. */
+export const WORKSPACE_VERSION = 3;
 export const FILE_EXTENSION = '.crochet.json';
 
 export interface SavedRound {
@@ -42,8 +45,10 @@ export interface SavedComment {
 }
 
 export interface SavedPattern {
-  version: 1;
+  version: 2;
   savedAt: string;  // ISO 8601
+  /** 도안의 기법. 없으면(v1 파일) 코바늘 */
+  craft: CraftId;
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
@@ -51,6 +56,7 @@ export interface SavedPattern {
 }
 
 export interface SerializeInput {
+  craft?: CraftId;
   shape: ShapeKind;
   /** id 는 옵션 — 코멘트의 round 참조를 직렬화 시 index 로 정규화하는 데 사용 */
   rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
@@ -73,6 +79,7 @@ export function serialize(state: SerializeInput): SavedPattern {
   return {
     version: FILE_VERSION,
     savedAt: new Date().toISOString(),
+    craft: state.craft ?? 'crochet',
     shape: state.shape,
     rounds: state.rounds.map((r) => {
       const out: SavedRound = { source: r.source };
@@ -103,10 +110,11 @@ export function validate(data: unknown): SavedPattern {
     throw new Error('잘못된 파일 형식입니다 (객체가 아님)');
   }
   const d = data as Record<string, unknown>;
-  if (d.version !== 1) {
+  if (d.version !== 1 && d.version !== 2) {
     throw new Error(`지원하지 않는 파일 버전: ${String(d.version)}`);
   }
-  if (d.shape !== 'circular' && d.shape !== 'flat') {
+  const craft = validateCraft(d.craft);
+  if (!isKnownShape(d.shape)) {
     throw new Error(`알 수 없는 도형 값: ${String(d.shape)}`);
   }
   if (!Array.isArray(d.rounds)) {
@@ -126,13 +134,26 @@ export function validate(data: unknown): SavedPattern {
   const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
   const progress = validateProgress(d.progress);
   return {
-    version: 1,
+    version: 2,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : '',
+    craft,
     shape: d.shape,
     rounds,
     ...(comments ? { comments } : {}),
     ...(progress ? { progress } : {}),
   };
+}
+
+/** 알려진 도형 id — 코바늘(circular/flat) + 대바늘(round/flat) */
+const KNOWN_SHAPES = ['circular', 'flat', 'round'] as const;
+
+function isKnownShape(v: unknown): v is ShapeKind {
+  return typeof v === 'string' && (KNOWN_SHAPES as readonly string[]).includes(v);
+}
+
+/** craft 필드 검증. 누락(구버전)이면 코바늘로 마이그레이션. */
+function validateCraft(v: unknown): CraftId {
+  return v === 'knit' ? 'knit' : 'crochet';
 }
 
 function hasLocalStorage(): boolean {
@@ -202,6 +223,8 @@ export async function readFromFile(file: File): Promise<SavedPattern> {
 export interface SavedWorkspaceTab {
   id: string;
   name: string;
+  /** 이 탭의 기법. 탭 하나 = 크래프트 하나 */
+  craft: CraftId;
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
@@ -209,7 +232,7 @@ export interface SavedWorkspaceTab {
 }
 
 export interface SavedWorkspace {
-  version: 2;
+  version: 3;
   savedAt: string;
   tabs: SavedWorkspaceTab[];
   activeTabId: string;
@@ -224,6 +247,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
     tabs: ws.tabs.map((t) => ({
       id: t.id,
       name: t.name,
+      craft: t.craft ?? 'crochet',
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: SavedRound = { source: r.source };
@@ -240,18 +264,21 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
 export function validateWorkspace(data: unknown): SavedWorkspace {
   if (!data || typeof data !== 'object') throw new Error('잘못된 워크스페이스 형식');
   const d = data as Record<string, unknown>;
-  if (d.version !== 2) throw new Error(`지원하지 않는 워크스페이스 버전: ${String(d.version)}`);
+  if (d.version !== 2 && d.version !== 3) {
+    throw new Error(`지원하지 않는 워크스페이스 버전: ${String(d.version)}`);
+  }
   if (!Array.isArray(d.tabs)) throw new Error('tabs 배열이 없습니다');
   const tabs: SavedWorkspaceTab[] = d.tabs.map((t, i) => {
     if (!t || typeof t !== 'object') throw new Error(`tabs[${i}]: 객체가 아님`);
     const tt = t as Record<string, unknown>;
     if (typeof tt.id !== 'string') throw new Error(`tabs[${i}].id 문자열 필요`);
     if (typeof tt.name !== 'string') throw new Error(`tabs[${i}].name 문자열 필요`);
-    if (tt.shape !== 'circular' && tt.shape !== 'flat') throw new Error(`tabs[${i}].shape 잘못됨`);
+    if (!isKnownShape(tt.shape)) throw new Error(`tabs[${i}].shape 잘못됨`);
     if (!Array.isArray(tt.rounds)) throw new Error(`tabs[${i}].rounds 배열 필요`);
     return {
       id: tt.id,
       name: tt.name,
+      craft: validateCraft(tt.craft),
       shape: tt.shape,
       rounds: tt.rounds.map((r, j) => {
         if (!r || typeof (r as Record<string, unknown>).source !== 'string') {
@@ -269,7 +296,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
     };
   });
   const activeTabId = typeof d.activeTabId === 'string' ? d.activeTabId : (tabs[0]?.id ?? '');
-  return { version: 2, savedAt: String(d.savedAt ?? ''), tabs, activeTabId };
+  return { version: WORKSPACE_VERSION, savedAt: String(d.savedAt ?? ''), tabs, activeTabId };
 }
 
 export function saveWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId: string }): void {
@@ -290,9 +317,9 @@ export function loadWorkspace(): SavedWorkspace | null {
     if (legacy) {
       const tabId = `tab_${Date.now().toString(36)}`;
       return {
-        version: 2,
+        version: WORKSPACE_VERSION,
         savedAt: new Date().toISOString(),
-        tabs: [{ id: tabId, name: '도안 1', shape: legacy.shape, rounds: legacy.rounds }],
+        tabs: [{ id: tabId, name: '도안 1', craft: legacy.craft ?? 'crochet', shape: legacy.shape, rounds: legacy.rounds }],
         activeTabId: tabId,
       };
     }

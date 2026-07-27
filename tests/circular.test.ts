@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseRound } from '../src/lib/parser/parser';
+import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
-import { layoutCircular } from '../src/lib/layout/circular';
+import { layoutCircular } from '../src/lib/crafts/crochet/circular';
 
 function layoutFromSources(sources: string[]) {
   const expandedRounds = sources.map((src, i) => {

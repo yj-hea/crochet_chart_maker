@@ -10,9 +10,7 @@ import { derived } from 'svelte/store';
 import { pattern } from './tabs';
 import { showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
-import { layoutCircular } from '$lib/layout/circular';
-import { layoutFlat } from '$lib/layout/flat';
-import { renderSvg } from '$lib/render/svg';
+import { getCraft } from '$lib/crafts';
 
 export interface RenderedChart {
   svg: string;
@@ -30,16 +28,16 @@ export const renderedChart = derived(
       else break;
     }
     if (validRounds.length === 0) return null;
-    const layout = $pattern.shape === 'circular'
-      ? layoutCircular(validRounds, { vAlign: $flatVAlign, cascade: $flatCascade })
-      : layoutFlat(validRounds, {
-          flipVertical: $flatFlipVertical,
-          align: $flatAlign,
-          cascade: $flatCascade,
-          vAlign: $flatVAlign,
-        });
+    const craft = getCraft($pattern.craft);
+    const layout = craft.layout(validRounds, {
+      shape: $pattern.shape,
+      flipVertical: $flatFlipVertical,
+      align: $flatAlign,
+      cascade: $flatCascade,
+      vAlign: $flatVAlign,
+    });
     return {
-      svg: renderSvg({ layout, showGrid: $showGrid, showConnections: $showConnections }),
+      svg: craft.render(layout, { showGrid: $showGrid, showConnections: $showConnections }),
       width: layout.bounds.width,
       height: layout.bounds.height,
       totalRounds: validRounds.length,

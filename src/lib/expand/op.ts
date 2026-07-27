@@ -7,7 +7,7 @@
  * 예: `2V^3` → Op(INC, expansion=3) × 2
  */
 
-import type { StitchKind, ModifierKind } from '$lib/model/stitch';
+import type { StitchKind, ModifierKind } from '$lib/model/stitch-kind';
 import type { SourceRange } from '$lib/model/errors';
 
 export interface Op {

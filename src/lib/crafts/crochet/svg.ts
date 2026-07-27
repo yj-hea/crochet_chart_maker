@@ -20,7 +20,7 @@
 
 import type { LayoutResult, PositionedStitch, LayoutBounds, GridGuide } from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
-import { STITCH_META } from '$lib/model/stitch';
+import { STITCH_META } from '$lib/crafts/crochet/stitch';
 import {
   STITCH_COLOR,
   CONNECTION_COLOR,
@@ -28,7 +28,7 @@ import {
   CONNECTION_WIDTH,
   GRID_COLOR,
   GRID_AXIS_COLOR,
-} from './palette';
+} from '$lib/render/palette';
 
 export interface RenderOptions {
   layout: LayoutResult;

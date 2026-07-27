@@ -10,10 +10,10 @@
  */
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
-import type { PositionedStitch, Point, LayoutResult, RoundMarker } from './types';
-import { FLAT_CELL_WIDTH } from './constants';
-import { computeBounds, markerFarPoint } from './bounds';
-import { STITCH_META } from '$lib/model/stitch';
+import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/layout/types';
+import { FLAT_CELL_WIDTH } from '$lib/layout/constants';
+import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
+import { STITCH_META } from '$lib/crafts/crochet/stitch';
 
 const MARKER_SIDE_OFFSET = 16;
 

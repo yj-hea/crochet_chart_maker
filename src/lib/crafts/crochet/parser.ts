@@ -15,11 +15,11 @@
  *   (점진적 파싱에서 "그 뒤에 작성된 내용은 미리보기에 반영하지 않음" 동작과 일치)
  */
 
-import { tokenize, type Token } from './tokenizer';
+import { tokenize, type Token } from '$lib/parser/tokenizer';
 import type { ParseError, ParseErrorKind, SourceRange } from '$lib/model/errors';
-import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode, ElementNode, ParsedRound } from './ast';
-import type { StitchKind, ModifierKind } from '$lib/model/stitch';
-import { STITCH_META } from '$lib/model/stitch';
+import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode, ElementNode, ParsedRound } from '$lib/parser/ast';
+import type { StitchKind, ModifierKind } from '$lib/crafts/crochet/stitch';
+import { STITCH_META } from '$lib/crafts/crochet/stitch';
 import { resolveColorValue } from '$lib/model/colors';
 
 export interface ParseResult {

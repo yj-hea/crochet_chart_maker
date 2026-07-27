@@ -6,11 +6,11 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import { parseRound } from '../src/lib/parser/parser.ts';
+import { parseRound } from '../src/lib/crafts/crochet/parser.ts';
 import { expand } from '../src/lib/expand/expander.ts';
-import { layoutCircular } from '../src/lib/layout/circular.ts';
-import { layoutFlat } from '../src/lib/layout/flat.ts';
-import { renderSvg } from '../src/lib/render/svg.ts';
+import { layoutCircular } from '../src/lib/crafts/crochet/circular.ts';
+import { layoutFlat } from '../src/lib/crafts/crochet/flat.ts';
+import { renderSvg } from '../src/lib/crafts/crochet/svg.ts';
 
 function expandAll(sources) {
   return sources.map((src, i) => {

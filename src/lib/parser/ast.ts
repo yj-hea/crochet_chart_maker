@@ -11,7 +11,7 @@
  *   expansion   ::= "^" NUMBER                    (V/A에만)
  */
 
-import type { StitchKind, ModifierKind } from '$lib/model/stitch';
+import type { StitchKind, ModifierKind } from '$lib/model/stitch-kind';
 import type { ParseError, SourceRange } from '$lib/model/errors';
 
 export type AstNode = StitchNode | RepeatNode | SameHoleGroupNode | SkipNode | TcNode | SequenceNode;

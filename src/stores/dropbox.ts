@@ -18,7 +18,7 @@ import { pickFile, fetchPickedFile } from '$lib/dropbox/chooser';
 import { uploadFile, getFileRev, DropboxApiError } from '$lib/dropbox/api';
 import { workspace } from './tabs';
 import { serialize, FILE_EXTENSION } from '$lib/persistence';
-import { parseRound } from '$lib/parser/parser';
+import { parseRound } from '$lib/crafts/crochet/parser';
 import { expand } from '$lib/expand/expander';
 
 /** 연결 상태. 초기값은 localStorage 토큰 존재 여부. */
@@ -92,6 +92,7 @@ export function serializeActiveTab(): { name: string; content: string } | null {
   const active = ws.tabs.find((t) => t.id === ws.activeTabId);
   if (!active) return null;
   const data = serialize({
+    craft: active.craft ?? 'crochet',
     shape: active.shape,
     rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
     comments: active.comments,

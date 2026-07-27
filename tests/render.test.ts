@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseRound } from '../src/lib/parser/parser';
+import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
-import { layoutCircular } from '../src/lib/layout/circular';
-import { layoutFlat } from '../src/lib/layout/flat';
-import { renderSvg } from '../src/lib/render/svg';
+import { layoutCircular } from '../src/lib/crafts/crochet/circular';
+import { layoutFlat } from '../src/lib/crafts/crochet/flat';
+import { renderSvg } from '../src/lib/crafts/crochet/svg';
 
 function render(sources: string[], shape: 'circular' | 'flat' = 'circular') {
   const rounds = sources.map((src, i) => {

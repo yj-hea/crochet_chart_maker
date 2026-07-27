@@ -42,7 +42,18 @@ describe('validate', () => {
   });
 
   it('버전 불일치 → 에러', () => {
-    expect(() => validate({ version: 2, shape: 'circular', rounds: [] })).toThrow(/버전/);
+    expect(() => validate({ version: 99, shape: 'circular', rounds: [] })).toThrow(/버전/);
+  });
+
+  it('v1 파일 → craft 는 코바늘로 마이그레이션', () => {
+    const out = validate({ version: 1, shape: 'circular', rounds: [{ source: '@, 6X' }] });
+    expect(out.craft).toBe('crochet');
+    expect(out.version).toBe(2);
+  });
+
+  it('v2 파일의 craft 유지', () => {
+    const out = validate({ version: 2, craft: 'knit', shape: 'flat', rounds: [{ source: 'k6' }] });
+    expect(out.craft).toBe('knit');
   });
 
   it('알 수 없는 shape → 에러', () => {

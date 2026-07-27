@@ -10,10 +10,10 @@
  */
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
-import type { PositionedStitch, Point, LayoutResult, RoundMarker } from './types';
-import { FIRST_RING_RADIUS } from './constants';
-import { STITCH_META } from '$lib/model/stitch';
-import { computeBounds, markerFarPoint } from './bounds';
+import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/layout/types';
+import { FIRST_RING_RADIUS } from '$lib/layout/constants';
+import { STITCH_META } from '$lib/crafts/crochet/stitch';
+import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
 
 const MARKER_SIDE_OFFSET = 11;
 const START_ANGLE = -Math.PI / 2; // 12시 방향

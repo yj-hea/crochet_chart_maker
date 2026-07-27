@@ -8,7 +8,7 @@
  * A(DEC)는 꼭짓점이 위, 두 팔이 아래로 벌어진 역V 형태. V와 수직 대칭.
  */
 
-import type { StitchKind } from '$lib/model/stitch';
+import type { StitchKind } from '$lib/model/stitch-kind';
 
 /**
  * <defs> 내용에 들어갈 SVG 기호 정의들.

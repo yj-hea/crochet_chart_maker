@@ -1,21 +1,20 @@
 <script lang="ts">
   import { pattern, setShape, type ShapeKind } from '$stores/pattern';
+  import { getCraft } from '$lib/crafts';
 
-  const options: Array<{ value: ShapeKind; label: string; iconClass: string }> = [
-    { value: 'circular', label: '원형', iconClass: 'fa-regular fa-circle' },
-    { value: 'flat',     label: '평면', iconClass: 'fa-regular fa-square' },
-  ];
+  // 도형 선택지는 크래프트가 정의한다 (코바늘: 원형/평면, 대바늘: 원통/평면)
+  const options = $derived(getCraft($pattern.craft).shapes);
 </script>
 
 <div class="shape-selector" role="radiogroup" aria-label="도형 선택">
-  {#each options as opt (opt.value)}
+  {#each options as opt (opt.id)}
     <button
       type="button"
       class="seg-btn"
-      class:active={$pattern.shape === opt.value}
+      class:active={$pattern.shape === opt.id}
       role="radio"
-      aria-checked={$pattern.shape === opt.value}
-      onclick={() => setShape(opt.value)}
+      aria-checked={$pattern.shape === opt.id}
+      onclick={() => setShape(opt.id as ShapeKind)}
     ><i class={opt.iconClass}></i> {opt.label}</button>
   {/each}
 </div>

@@ -432,21 +432,43 @@ export const CRAFTS: Record<CraftId, CraftDefinition>;
 - `Op.span?: number` — 대바늘 케이블처럼 여러 칸을 가로지르는 기호 (span = consume = produce)
 - `PositionedStitch.cell?: { row: number; col: number; span: number }` — 격자 레이아웃 전용
 
-### 디렉터리
+### 디렉터리 (Phase 0 완료 기준)
 
 ```
 src/lib/
-├── crafts/
-│   ├── types.ts          ── CraftDefinition, CRAFTS 레지스트리
-│   ├── crochet/          ── 기존 stitch/parser/layout(circular,flat)/symbols 이동
-│   └── knit/
-│       ├── stitch.ts     ── K/P/O/AR/AL/... 메타 + 별칭
-│       ├── flip.ts       ── 안면(WS) 단 기호·순서 반전 규칙
-│       ├── grid.ts       ── 균일 격자 레이아웃 (+ no-stitch 채움)
-│       └── symbols.ts    ── 대바늘 SVG 심볼셋
+├── model/
+│   ├── stitch-kind.ts    ── 공용 코 타입 (StitchKind 합집합, StitchMeta, AliasTable)
+│   └── errors.ts, colors.ts, round.ts    ── 공용
+├── parser/
+│   ├── tokenizer.ts      ── 공용 (longest-match). 별칭 테이블 주입은 Phase 1
+│   └── ast.ts            ── 공용 AST 타입
+├── expand/               ── 공용 (Op, expander)
+├── layout/
+│   └── types.ts, bounds.ts, constants.ts ── 공용
+├── render/palette.ts     ── 공용
+└── crafts/
+    ├── types.ts          ── CraftDefinition, CraftLayoutOptions
+    ├── index.ts          ── CRAFTS 레지스트리, getCraft()
+    ├── crochet/
+    │   ├── stitch.ts     ── 코바늘 메타/별칭 테이블
+    │   ├── parser.ts     ── 코바늘 문법 (`[...]`, `tc()`, `skip()`, `^N`)
+    │   ├── circular.ts   ── 원형 레이아웃
+    │   ├── flat.ts       ── 평면 레이아웃
+    │   ├── symbols.ts    ── 코바늘 SVG 심볼셋
+    │   ├── svg.ts        ── 코바늘 렌더러 (fan/케이블 없음, 연결선)
+    │   └── index.ts      ── CraftDefinition 조립
+    └── knit/             ── Phase 1
+        ├── stitch.ts     ── k/p/yo/k2tog/ssk/... 메타 + 별칭
+        ├── parser.ts     ── postfix 반복수, 케이블 토큰
+        ├── flip.ts       ── 안면(WS) 단 기호·순서 반전 규칙
+        ├── grid.ts       ── 균일 격자 레이아웃 (+ no-stitch 채움)
+        ├── symbols.ts    ── 대바늘 SVG 심볼셋
+        └── svg.ts        ── 격자 렌더러 (칸 테두리, 단 번호 좌/우)
 ```
 
-파서/토크나이저 골격은 코바늘 것을 공유하고 별칭 테이블만 주입한다.
+**공유 vs 분리 판단**: 토크나이저·AST·Op·레이아웃 타입·bounds 는 공유하고,
+문법 세부(코바늘 `[...]` vs 대바늘 postfix/케이블)와 레이아웃·심볼·렌더러는 크래프트별로 분리한다.
+코바늘 렌더러는 INC/DEC fan·사슬 호 등 코바늘 전용 로직이 많아 대바늘과 공유하지 않는다.
 
 ### 저장 포맷
 

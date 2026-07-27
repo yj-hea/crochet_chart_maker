@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRound } from '../src/lib/parser/parser';
+import { parseRound } from '../src/lib/crafts/crochet/parser';
 
 describe('parseRound', () => {
   it('단일 코', () => {

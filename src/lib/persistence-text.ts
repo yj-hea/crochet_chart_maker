@@ -181,8 +181,10 @@ export function parseTextFormat(text: string): TextImportResult {
   });
 
   const saved: SavedPattern = {
-    version: 1,
+    version: 2,
     savedAt: '',
+    // 텍스트 포맷은 코바늘 전용 (대바늘은 Phase 1 에서 별도 검토)
+    craft: 'crochet',
     shape,
     rounds: rounds.map((r) => ({ source: r.source })),
     ...(comments.length > 0 ? { comments } : {}),

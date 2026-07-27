@@ -1,44 +1,28 @@
 /**
- * Stitch domain model.
+ * 코바늘 Stitch domain model.
  *
  * 기호 체계는 docs/symbol_system.md 참조.
+ * 크래프트 공용 타입(StitchKind 합집합, StitchMeta 등)은 `$lib/model/stitch-kind` 에 있다.
  */
 
-export type StitchKind =
-  | 'MAGIC'    // @ 매직링
-  | 'CHAIN'    // O 사슬뜨기
-  | 'SLIP'     // S 빼뜨기
-  | 'SC'       // X 짧은뜨기
-  | 'HDC'      // T 긴뜨기 (half double crochet)
-  | 'DC'       // F 한길긴뜨기 (double crochet)
-  | 'TR'       // E 두길긴뜨기 (treble crochet)
-  | 'DTR'      // dtr 세길긴뜨기 (double treble crochet)
-  | 'INC'      // V 늘림
-  | 'DEC'      // A 줄임
-  | 'POPCORN'  // P 팝콘뜨기
-  | 'BUBBLE'   // B 버블뜨기 (bobble)
-  | 'SKIP'     // skip(N) 바늘 비우기 (N개 부모 건너뛰기)
-  | 'TC';      // tc(...) 기둥코 마커 — 파서 토큰 전용 (Op 에는 나타나지 않음)
+import type {
+  CrochetStitchKind,
+  StitchKind,
+  ModifierKind,
+  StitchMeta,
+  AliasTable,
+} from '$lib/model/stitch-kind';
 
-export type ModifierKind = 'BLO'; // blo 뒤이랑뜨기 (future: FLO 앞이랑뜨기)
+// 기존 import 경로 호환 — 이 모듈에서 타입을 그대로 재수출한다.
+export type { StitchKind, ModifierKind, StitchMeta, CrochetStitchKind };
+export { isStitchKind, isModifierKind } from '$lib/model/stitch-kind';
 
 /**
- * 각 코의 기본 consume/produce.
- * V(INC), A(DEC)는 expansion 값에 의해 실제 consume/produce가 결정된다.
+ * 코바늘 코 메타 테이블.
+ * 리터럴은 `CrochetStitchKind` 로 완전성 검사를 받고,
+ * 조회는 공용 `StitchKind` 로 하도록 넓혀서 노출한다 (Op.kind 가 합집합 타입이므로).
  */
-export interface StitchMeta {
-  kind: StitchKind;
-  canonical: string;     // 정식 단일 문자 (또는 기호) 입력 코드
-  korean: string;
-  english: string;
-  baseConsume: number;
-  baseProduce: number;
-  expandable: boolean;   // V/A만 true
-  /** SVG 심볼의 중심에서 끝까지 거리 (px). 레이아웃에서 기호 하단 정렬에 사용 */
-  symbolHalfHeight: number;
-}
-
-export const STITCH_META: Record<StitchKind, StitchMeta> = {
+const CROCHET_STITCH_META: Record<CrochetStitchKind, StitchMeta> = {
   MAGIC: { kind: 'MAGIC', canonical: '@', korean: '매직링',     english: 'magic ring',          baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 7   },
   CHAIN: { kind: 'CHAIN', canonical: 'O', korean: '사슬뜨기',   english: 'chain (ch)',          baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: 3.5 },
   SLIP:  { kind: 'SLIP',  canonical: 'sl', korean: '빼뜨기',    english: 'slip stitch (sl)',    baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 2.2 },
@@ -54,6 +38,9 @@ export const STITCH_META: Record<StitchKind, StitchMeta> = {
   SKIP:  { kind: 'SKIP',  canonical: 'skip', korean: '바늘 비우기', english: 'skip',             baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 4   },
   TC:    { kind: 'TC',    canonical: 'tc',   korean: '기둥코',      english: 'turning chain',    baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 0   },
 };
+
+/** 조회용 — Op.kind (크래프트 합집합 타입) 로 접근할 수 있게 넓힌 뷰. */
+export const STITCH_META = CROCHET_STITCH_META as Record<StitchKind, StitchMeta>;
 
 /**
  * V^N / A^N 적용 시 실제 consume/produce 계산.
@@ -83,7 +70,7 @@ export function resolveStitchFootprint(
  * 주의: 단일 소문자 `s`는 의도적으로 제외됨 (가독성 — `sc`와의 혼동 회피).
  * `sl`, `_`, 대문자 `S`만 SLIP으로 인식.
  */
-export const ALIAS_MAP: Readonly<Record<string, StitchKind | ModifierKind>> = Object.freeze({
+export const ALIAS_MAP: AliasTable = Object.freeze({
   // MAGIC
   '@':   'MAGIC',
   'mr':  'MAGIC',
@@ -199,11 +186,3 @@ export const ALIAS_MAP: Readonly<Record<string, StitchKind | ModifierKind>> = Ob
 export const ALIAS_KEYS_BY_LENGTH: readonly string[] = Object.freeze(
   [...Object.keys(ALIAS_MAP)].sort((a, b) => b.length - a.length)
 );
-
-export function isStitchKind(v: StitchKind | ModifierKind): v is StitchKind {
-  return v !== 'BLO';
-}
-
-export function isModifierKind(v: StitchKind | ModifierKind): v is ModifierKind {
-  return v === 'BLO';
-}

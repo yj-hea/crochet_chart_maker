@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { SYMBOL_DEFS } from '../lib/render/symbols';
+  import { SYMBOL_DEFS } from '../lib/crafts/crochet/symbols';
 
   interface Props { onClose: () => void; }
   let { onClose }: Props = $props();

@@ -6,7 +6,7 @@
  */
 
 import type { SequenceNode, StitchNode, ParsedRound, ElementNode } from './parser/ast';
-import { STITCH_META } from './model/stitch';
+import { STITCH_META } from '$lib/crafts/crochet/stitch';
 
 export interface NarrativeResult {
   html: string;

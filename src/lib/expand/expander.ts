@@ -12,7 +12,7 @@
 
 import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode } from '$lib/parser/ast';
 import type { Op, ExpandedRound } from './op';
-import { resolveStitchFootprint } from '$lib/model/stitch';
+import { resolveStitchFootprint } from '$lib/crafts/crochet/stitch';
 
 export function expand(body: SequenceNode, index: number): ExpandedRound {
   const ops: Op[] = [];

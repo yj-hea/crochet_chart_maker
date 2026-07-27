@@ -102,6 +102,7 @@ async function runSync(): Promise<void> {
     const tabs: SavedWorkspaceTab[] = ws.tabs.map((t) => ({
       id: t.id,
       name: t.name,
+      craft: t.craft ?? 'crochet',
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: { source: string; direction?: 'forward' | 'reverse' } = { source: r.source };
@@ -219,6 +220,7 @@ export async function createWorkspace(opts: {
     tabs = ws.tabs.map((t) => ({
       id: t.id,
       name: t.name,
+      craft: t.craft ?? 'crochet',
       shape: t.shape,
       rounds: t.rounds.map((r) => ({
         source: r.source,
@@ -229,7 +231,7 @@ export async function createWorkspace(opts: {
     activeTabId = ws.activeTabId;
   } else {
     const tabId = `tab_${Date.now().toString(36)}`;
-    tabs = [{ id: tabId, name: '도안', shape: 'circular', rounds: [{ source: '' }] }];
+    tabs = [{ id: tabId, name: '도안', craft: 'crochet', shape: 'circular', rounds: [{ source: '' }] }];
     activeTabId = tabId;
   }
   const named: NamedWorkspace = {
