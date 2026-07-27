@@ -380,6 +380,79 @@ export const currentRound = writable<number>(1);  // Read 모드 진행 추적
 - Workspace 포맷 v3로 승격 (Tab.rounds → Tab.pieces[].rounds)
 - v2 → v3 마이그레이션: 기존 rounds를 단일 piece "본체"로 래핑
 
+## 10.5 멀티 크래프트 (코바늘 + 대바늘)
+
+대바늘(knitting) 도안을 같은 앱에서 지원한다. 기호 체계는
+[`knit_symbol_system.md`](./knit_symbol_system.md) 참조.
+
+**원칙**: **탭 하나 = 크래프트 하나**. 한 도안 안에서 코바늘·대바늘을 섞지 않는다.
+혼합 작품(대바늘 본체 + 코바늘 테두리)은 같은 워크스페이스의 별도 탭으로 관리한다.
+
+### 크래프트 레지스트리
+
+`Op` / `PositionedStitch` / `LayoutResult` / 탭·저장·동기화·모드 UI 는 **공용**이고,
+크래프트마다 다른 4개 축만 주입한다.
+
+```ts
+// src/lib/crafts/types.ts
+export interface CraftDefinition {
+  id: CraftId;                                  // 'crochet' | 'knit'
+  label: string;
+  shapes: Array<{ id: string; label: string }>; // crochet: 원형/평면, knit: 원통/평면
+  countPosition: 'prefix' | 'postfix';          // crochet: 3X / knit: k3
+  stitchMeta: Record<string, StitchMeta>;
+  aliasMap: Record<string, string>;
+  parseRound(index: number, src: string): ParsedRound;
+  expand(tree: ParsedRound, index: number): ExpandedRound;
+  layout(rounds: ExpandedRound[], opts: LayoutOptions): LayoutResult;
+  symbolDefs: string;                           // <defs> 내용
+  symbolId(op: Op): string;
+}
+export const CRAFTS: Record<CraftId, CraftDefinition>;
+```
+
+**주입 지점은 3곳뿐**:
+- `stores/tabs.ts` `reparse()` → `CRAFTS[tab.craft].parseRound / expand`
+- `stores/rendered.ts` → `CRAFTS[craft].layout`, `renderSvg({ symbolDefs, symbolId })`
+- `render/svg.ts` → 하드코딩된 `SYMBOL_DEFS` / `stitchSymbolId` 를 파라미터화
+
+### 도형(shape) 축의 의미가 크래프트마다 다름
+
+| 크래프트 | 도형 | 레이아웃 |
+|---|---|---|
+| 코바늘 | 원형 / 평면 | **레이아웃 엔진이 바뀜** — `circular.ts`(방사형) ↔ `flat.ts`(가변폭) |
+| 대바늘 | **원통 / 평면** | **엔진 하나(`grid.ts`)**, 도형은 각 단의 겉면/안면과 읽는 방향만 결정 |
+
+따라서 `ShapeSelector` 는 `CraftDefinition.shapes` 의 라벨을 그대로 렌더하고,
+레이아웃 선택은 `CraftDefinition.layout(rounds, { shape, ... })` 안에서 크래프트가 결정한다
+(`rendered.ts` 가 shape 로 분기하지 않는다).
+
+### 공용 타입 확장
+
+- `Op.span?: number` — 대바늘 케이블처럼 여러 칸을 가로지르는 기호 (span = consume = produce)
+- `PositionedStitch.cell?: { row: number; col: number; span: number }` — 격자 레이아웃 전용
+
+### 디렉터리
+
+```
+src/lib/
+├── crafts/
+│   ├── types.ts          ── CraftDefinition, CRAFTS 레지스트리
+│   ├── crochet/          ── 기존 stitch/parser/layout(circular,flat)/symbols 이동
+│   └── knit/
+│       ├── stitch.ts     ── K/P/O/AR/AL/... 메타 + 별칭
+│       ├── flip.ts       ── 안면(WS) 단 기호·순서 반전 규칙
+│       ├── grid.ts       ── 균일 격자 레이아웃 (+ no-stitch 채움)
+│       └── symbols.ts    ── 대바늘 SVG 심볼셋
+```
+
+파서/토크나이저 골격은 코바늘 것을 공유하고 별칭 테이블만 주입한다.
+
+### 저장 포맷
+
+`Tab.craft: CraftId` 추가 → 워크스페이스 **v3**.
+v2 → v3 마이그레이션은 `craft` 누락 시 `'crochet'` 로 채운다.
+
 ## 11. 결정 사항 로그
 
 - **2026-04-15**: TypeScript + Svelte 5 + Vite 스택 확정
@@ -396,3 +469,9 @@ export const currentRound = writable<number>(1);  // Read 모드 진행 추적
 - **2026-04-15**: V(INC)/A(DEC) 기호를 꼬리 없는 수직 대칭 V/역V로 변경 (Y자로 보이던 문제 해결)
 - **2026-04-15**: 평면 짝수 단 기호 회전(angle=π) 제거 — 작업 방향은 시작 마커로만 표현, 기호는 항상 위 향함
 - **2026-04-15**: `[...]` 한 코 그룹 문법 추가. Op에 `sameHoleContinuation` 플래그, 레이아웃은 이 플래그가 true인 op의 부모를 직전 그룹과 공유
+- **2026-07-27**: 대바늘 도안 지원 결정 — 별도 앱이 아닌 같은 SPA 에 크래프트 레지스트리로 주입 (10.5)
+- **2026-07-27**: 탭 하나 = 크래프트 하나. 한 도안 안에서 코바늘·대바늘 혼합 없음
+- **2026-07-27**: 워크스페이스 포맷 v3 (`Tab.craft` 추가), v2 는 `'crochet'` 로 마이그레이션
+- **2026-07-27**: `Op.span` 필드 추가 (대바늘 케이블 등 다중 칸 기호)
+- **2026-07-27**: 도형(shape) 축은 크래프트별 정의 — 코바늘 원형/평면(엔진 교체), 대바늘 원통/평면(같은 격자, 방향 규칙만 변경). 레이아웃 분기는 `rendered.ts` 가 아니라 `CraftDefinition.layout` 내부에서 처리
+- **2026-07-27**: 대바늘 기호는 표준 약어(`k`, `k2tog`, `ssk`) 사용, 반복수는 postfix (`k3`) — `CraftDefinition.countPosition` 으로 파서에 주입
