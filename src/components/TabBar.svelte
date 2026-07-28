@@ -2,20 +2,32 @@
   import { tick } from 'svelte';
   import { workspace, switchTab, createTab, closeTab, renameTab } from '$stores/tabs';
   import { CRAFT_LIST, getCraft } from '$lib/crafts';
+  import { placeDropdown } from '$lib/dropdown-place';
 
   // 탭 하나 = 크래프트 하나 → 새 탭을 만들 때 기법을 고른다 (이후 변경 불가)
   let addMenuOpen = $state(false);
+  let addBtnEl: HTMLButtonElement | undefined = $state();
+  let addMenuEl: HTMLDivElement | undefined = $state();
 
   function addTab(craft: 'crochet' | 'knit') {
     addMenuOpen = false;
     createTab(craft);
   }
 
+  // .tab-bar 가 overflow 로 잘라내므로 메뉴는 position:fixed 로 띄우고 뷰포트에 clamp
   $effect(() => {
     if (!addMenuOpen) return;
+    queueMicrotask(() => placeDropdown(addBtnEl, addMenuEl, 'left'));
+    const reflow = () => placeDropdown(addBtnEl, addMenuEl, 'left');
     const close = () => { addMenuOpen = false; };
     window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
+    window.addEventListener('resize', reflow);
+    window.addEventListener('scroll', reflow, true);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('resize', reflow);
+      window.removeEventListener('scroll', reflow, true);
+    };
   });
 
   let editingId = $state<string | null>(null);
@@ -98,6 +110,7 @@
     <button
       type="button"
       class="tab-add"
+      bind:this={addBtnEl}
       onclick={(e) => { e.stopPropagation(); addMenuOpen = !addMenuOpen; }}
       title="새 도안 추가"
       aria-label="새 도안 추가"
@@ -105,7 +118,14 @@
       aria-expanded={addMenuOpen}
     >+</button>
     {#if addMenuOpen}
-      <div class="add-menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') addMenuOpen = false; }}>
+      <div
+        class="add-menu"
+        role="menu"
+        tabindex="-1"
+        bind:this={addMenuEl}
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => { if (e.key === 'Escape') addMenuOpen = false; }}
+      >
         {#each CRAFT_LIST as craft (craft.id)}
           <button type="button" class="add-menu-item" role="menuitem" onclick={() => addTab(craft.id)}>
             <span class="add-menu-icon">{craft.icon}</span>
@@ -128,11 +148,9 @@
     display: inline-flex;
   }
   .add-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    z-index: 40;
-    margin-top: 4px;
+    /* placeDropdown 이 fixed 좌표를 지정 — .tab-bar 의 overflow 클리핑 회피 */
+    position: fixed;
+    z-index: 200;
     min-width: 150px;
     padding: 4px;
     background: #fff;
