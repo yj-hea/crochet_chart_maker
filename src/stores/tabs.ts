@@ -370,11 +370,16 @@ export function deleteRound(id: string): string {
   return prevId;
 }
 
-/** 활성 탭의 게이지 설정. undefined 면 해제(기본 비율 사용). */
+/**
+ * 활성 탭의 게이지 설정.
+ *  - `undefined` → 해제 (기본 비율 사용)
+ *  - 범위를 벗어난 값 → 무시 (기존 값 유지)
+ */
 export function setGauge(gauge: Gauge | undefined): void {
+  const valid = normalizeGauge(gauge);
+  if (gauge !== undefined && !valid) return;
   updateActiveTab((t) => {
     const next = { ...t };
-    const valid = normalizeGauge(gauge);
     if (valid) next.gauge = valid;
     else delete next.gauge;
     return next;
