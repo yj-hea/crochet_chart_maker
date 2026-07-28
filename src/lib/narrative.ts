@@ -6,48 +6,66 @@
  */
 
 import type { SequenceNode, StitchNode, ParsedRound, ElementNode } from './parser/ast';
-import { STITCH_META } from '$lib/crafts/crochet/stitch';
+import { getCraft, lookupStitchMeta, type CraftId } from '$lib/crafts';
 
 export interface NarrativeResult {
   html: string;
   comments: string[];
 }
 
-export function renderNarrative(parsed: ParsedRound | undefined, source: string): NarrativeResult {
+export function renderNarrative(
+  parsed: ParsedRound | undefined,
+  source: string,
+  craft: CraftId = 'crochet',
+): NarrativeResult {
   const body = parsed?.body ?? parsed?.lastValid;
   if (!body) return { html: escapeHtml(source || ''), comments: [] };
   const comments: string[] = [];
-  const html = renderSequence(body, comments);
+  const def = getCraft(craft);
+  const postfixCount = def.countPosition === 'postfix';
+  const html = renderSequence(body, comments, postfixCount, def.canonicalFor?.bind(def));
   return { html, comments };
 }
 
-function renderSequence(seq: SequenceNode, comments: string[]): string {
-  return seq.elements.map((el) => renderElement(el, comments)).join(', ');
+type CanonicalFor = ((kind: StitchNode['kind'], expansion?: number) => string | undefined) | undefined;
+
+function renderSequence(
+  seq: SequenceNode, comments: string[], postfixCount: boolean, canonicalFor: CanonicalFor,
+): string {
+  return seq.elements.map((el) => renderElement(el, comments, postfixCount, canonicalFor)).join(', ');
 }
 
-function renderElement(el: ElementNode, comments: string[]): string {
-  if (el.type === 'stitch') return renderStitch(el, comments);
+function renderElement(
+  el: ElementNode, comments: string[], postfixCount: boolean, canonicalFor: CanonicalFor,
+): string {
+  if (el.type === 'stitch') return renderStitch(el, comments, postfixCount, canonicalFor);
   if (el.type === 'repeat') {
-    return `(${renderSequence(el.body, comments)}) * ${el.count}`;
+    return `(${renderSequence(el.body, comments, postfixCount, canonicalFor)}) * ${el.count}`;
   }
   if (el.type === 'skip') {
     return `<span class="stitch-token">skip(${el.count})</span>`;
   }
   if (el.type === 'tc') {
-    return `<span class="stitch-token">tc</span>(${renderSequence(el.body, comments)})`;
+    return `<span class="stitch-token">tc</span>(${renderSequence(el.body, comments, postfixCount, canonicalFor)})`;
   }
   const prefix = el.count > 1 ? String(el.count) : '';
-  return `${prefix}[${renderSequence(el.body, comments)}]`;
+  return `${prefix}[${renderSequence(el.body, comments, postfixCount, canonicalFor)}]`;
 }
 
-function renderStitch(s: StitchNode, comments: string[]): string {
-  const meta = STITCH_META[s.kind];
+function renderStitch(
+  s: StitchNode, comments: string[], postfixCount: boolean, canonicalFor: CanonicalFor,
+): string {
+  // 크래프트가 확장수를 표기에 녹여 쓰면(`k3tog`) `^N` 을 따로 붙이지 않는다.
+  const merged = canonicalFor?.(s.kind, s.expansion);
+  const canonical = merged ?? lookupStitchMeta(s.kind)?.canonical ?? String(s.kind);
   let text = '';
   if (s.modifier) text += s.modifier.toLowerCase() + ' ';
-  if (s.count > 1) text += String(s.count);
-  text += meta.canonical;
-  if (s.baseKind) text += STITCH_META[s.baseKind].canonical;
-  if (s.expansion !== undefined) text += '^' + s.expansion;
+  // 코바늘은 반복수가 앞(`3X`), 대바늘은 뒤(`k3`)
+  if (!postfixCount && s.count > 1) text += String(s.count);
+  text += canonical;
+  if (postfixCount && s.count > 1) text += String(s.count);
+  if (s.baseKind) text += lookupStitchMeta(s.baseKind)?.canonical ?? '';
+  if (merged === undefined && s.expansion !== undefined) text += '^' + s.expansion;
   if (s.yarnOverCount !== undefined) text += `(${s.yarnOverCount})`;
 
   let marker = '';

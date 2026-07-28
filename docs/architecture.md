@@ -497,3 +497,6 @@ v2 → v3 마이그레이션은 `craft` 누락 시 `'crochet'` 로 채운다.
 - **2026-07-27**: `Op.span` 필드 추가 (대바늘 케이블 등 다중 칸 기호)
 - **2026-07-27**: 도형(shape) 축은 크래프트별 정의 — 코바늘 원형/평면(엔진 교체), 대바늘 원통/평면(같은 격자, 방향 규칙만 변경). 레이아웃 분기는 `rendered.ts` 가 아니라 `CraftDefinition.layout` 내부에서 처리
 - **2026-07-27**: 대바늘 기호는 표준 약어(`k`, `k2tog`, `ssk`) 사용, 반복수는 postfix (`k3`) — `CraftDefinition.countPosition` 으로 파서에 주입
+- **2026-07-28**: Phase 1 — 대바늘 크래프트 등록. 토크나이저는 `TokenizerConfig` 로 별칭 주입, 파서·확장기·레이아웃·렌더러는 대바늘 전용 구현
+- **2026-07-28**: 크래프트별 UI 분기 지점 확정 — 탭 생성 메뉴(기법 선택), 탭 아이콘, `ShapeSelector`, `HelpModal`, 서술형 변환(`narrative`), 방향 토글 라벨, 균등 증감(코바늘 전용)
+- **2026-07-28**: `LayoutResult` 에 `cellSize` / `fillerCells` 추가 (격자 전용). no-stitch 칸은 `stitches` 에 넣지 않아 진행 하이라이트 인덱스를 보존

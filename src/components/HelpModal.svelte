@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { SYMBOL_DEFS } from '../lib/crafts/crochet/symbols';
+  import { KNIT_SYMBOL_DEFS } from '../lib/crafts/knit/symbols';
+  import { pattern } from '$stores/pattern';
+
+  // 도움말 내용은 현재 탭의 기법을 따른다 (탭 하나 = 크래프트 하나)
+  const isKnit = $derived($pattern.craft === 'knit');
 
   interface Props { onClose: () => void; }
   let { onClose }: Props = $props();
@@ -22,6 +27,25 @@
     { id: 'sym-SKIP',    aliases: 'skip(N)',            korean: '바늘 비우기',  english: 'skip' },
   ];
 
+  const KNIT_STITCHES: Row[] = [
+    { id: 'knit-KNIT',      aliases: 'k',            korean: '겉뜨기',        english: 'knit' },
+    { id: 'knit-PURL',      aliases: 'p',            korean: '안뜨기',        english: 'purl' },
+    { id: 'knit-YO',        aliases: 'yo',           korean: '바늘비우기',    english: 'yarn over' },
+    { id: 'knit-KTBL',      aliases: 'ktbl, tw',     korean: '꼬아 겉뜨기',   english: 'knit tbl' },
+    { id: 'knit-PTBL',      aliases: 'ptbl',         korean: '꼬아 안뜨기',   english: 'purl tbl' },
+    { id: 'knit-SLIP_ST',   aliases: 'sl',           korean: '걸러뜨기',      english: 'slip' },
+    { id: 'knit-KFB',       aliases: 'kfb, inc',     korean: '코늘리기',      english: 'kfb' },
+    { id: 'knit-M1L',       aliases: 'm1l',          korean: '왼코 늘리기',   english: 'make 1 left' },
+    { id: 'knit-M1R',       aliases: 'm1r',          korean: '오른코 늘리기', english: 'make 1 right' },
+    { id: 'knit-M1P',       aliases: 'm1p',          korean: '안뜨기 늘리기', english: 'make 1 purl' },
+    { id: 'knit-K2TOG',     aliases: 'k2tog, k3tog', korean: '왼코겹치기',    english: 'k2tog' },
+    { id: 'knit-SSK',       aliases: 'ssk, sssk',    korean: '오른코겹치기',  english: 'ssk' },
+    { id: 'knit-CDD',       aliases: 'cdd, s2kp',    korean: '중심 3코 모아', english: 'centered dbl dec' },
+    { id: 'knit-P2TOG',     aliases: 'p2tog',        korean: '안뜨기 왼코겹치기', english: 'p2tog' },
+    { id: 'knit-SSP',       aliases: 'ssp',          korean: '안뜨기 오른코겹치기', english: 'ssp' },
+    { id: 'knit-NO_STITCH', aliases: 'ns',           korean: '코 없음',       english: 'no stitch' },
+  ];
+
   function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
   onMount(() => {
     window.addEventListener('keydown', onKey);
@@ -31,7 +55,7 @@
 
 <!-- 공유 기호 defs (모달 내 모든 <use> 가 참조) -->
 <svg class="defs-host" width="0" height="0" aria-hidden="true">
-  <defs>{@html SYMBOL_DEFS}</defs>
+  <defs>{@html isKnit ? KNIT_SYMBOL_DEFS : SYMBOL_DEFS}</defs>
 </svg>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -44,6 +68,66 @@
     </header>
 
     <div class="modal-body">
+      {#if isKnit}
+      <section>
+        <h3>기본 문법</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>kN</code></td><td>같은 코 N번. 반복수는 <b>코 뒤</b>에. 예: <code>k6</code> = 겉뜨기 6코</td></tr>
+            <tr><td><code>(...)·*N</code></td><td>반복. 예: <code>(k2, p2)*10</code></td></tr>
+            <tr><td><code>,</code></td><td>코 구분자 (필수)</td></tr>
+            <tr><td><code>k2tog</code></td><td>코 이름에 숫자가 들어가도 하나로 인식 (<code>k</code>+<code>2</code> 로 쪼개지지 않음)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>겉면 / 안면</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td>원통</td><td>모든 단이 <b>겉면</b>. 항상 오른쪽 → 왼쪽으로 읽음. 기호 반전 없음</td></tr>
+            <tr><td>평면</td><td>홀수단 겉면(오→왼) / 짝수단 <b>안면</b>(왼→오). 안면 단은 겉면에서 본 모습으로 자동 반전</td></tr>
+            <tr><td>반전 규칙</td><td>안면의 <code>p</code> → 차트엔 겉뜨기, <code>p2tog</code> → <code>ssk</code> 모양, <code>m1l</code> ↔ <code>m1r</code>. <code>yo</code>·<code>sl</code> 은 불변</td></tr>
+            <tr><td>단 번호</td><td>겉면 단은 격자 <b>오른쪽</b>, 안면 단은 <b>왼쪽</b>에 표기 → 번호 위치로 방향을 알 수 있음</td></tr>
+            <tr><td>면 뒤집기</td><td>단 번호 옆 <i class="fa-regular fa-eye"></i> 버튼으로 그 단의 면을 수동 지정 (짧은 단 등)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>코 기호</h3>
+        <table class="symbol-table">
+          <thead>
+            <tr><th>기호</th><th>입력 (별칭)</th><th>한글</th><th>영문</th></tr>
+          </thead>
+          <tbody>
+            {#each KNIT_STITCHES as row (row.id)}
+              <tr>
+                <td class="sym-cell">
+                  <svg viewBox="-11 -8 22 16" width="28" height="20" aria-hidden="true">
+                    <use href="#{row.id}"/>
+                  </svg>
+                </td>
+                <td><code>{row.aliases}</code></td>
+                <td>{row.korean}</td>
+                <td class="en">{row.english}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>격자 규칙</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td>1코 = 1칸</td><td>한 단의 칸 수 = 그 단이 만든 코 수. 1단이 맨 아래</td></tr>
+            <tr><td>코 없음</td><td>단마다 코 수가 다르면 빈 칸을 회색으로 채움 (기본 가운데 정렬)</td></tr>
+            <tr><td><code>k3tog</code>·<code>sssk</code></td><td>3코 이상 모아뜨기. <code>k2tog^4</code> 처럼 <code>^N</code> 으로도 지정 가능</td></tr>
+          </tbody>
+        </table>
+      </section>
+      {:else}
       <section>
         <h3>기본 문법</h3>
         <table class="syntax-table">
@@ -98,6 +182,8 @@
         </table>
       </section>
 
+      {/if}
+
       <section>
         <h3>주석</h3>
         <table class="syntax-table">
@@ -105,7 +191,9 @@
             <tr><td><code>:색</code></td><td>색상 (배색 도안). <code>#</code> 있/없음 hex 또는 키워드. 예: <code>x:#ff6a6a</code>, <code>x:ff6a6a</code>, <code>x:efd</code>, <code>x:red</code></td></tr>
             <tr><td>키워드</td><td><code>red, orange, yellow, green, teal, cyan, blue, indigo, purple, pink, brown, black, white, gray, silver, navy</code></td></tr>
             <tr><td><code>"..."</code></td><td>인라인 코멘트 — 서술 도안에 각주 <code>*1, *2…</code> 로 표시. 같은 텍스트는 같은 번호를 공유. <code>:색</code> 과 순서 무관. 예: <code>x"조심":red</code> = <code>x:red"조심"</code></td></tr>
-            <tr><td><code>blo</code></td><td>뒤이랑뜨기 수식자. 예: <code>blo 6x</code></td></tr>
+            {#if !isKnit}
+              <tr><td><code>blo</code></td><td>뒤이랑뜨기 수식자. 예: <code>blo 6x</code></td></tr>
+            {/if}
           </tbody>
         </table>
       </section>
@@ -115,7 +203,9 @@
         <table class="syntax-table">
           <tbody>
             <tr><td>더블클릭 확대</td><td>미리보기 영역을 더블클릭하면 확대 모달이 열림</td></tr>
-            <tr><td>균등 증감 계산기</td><td>편집기 하단 <i class="fa-solid fa-calculator"></i> 버튼 — 현재 단 코 수 → 목표 코 수 패턴 자동 생성</td></tr>
+            {#if !isKnit}
+              <tr><td>균등 증감 계산기</td><td>편집기 하단 <i class="fa-solid fa-calculator"></i> 버튼 — 현재 단 코 수 → 목표 코 수 패턴 자동 생성</td></tr>
+            {/if}
             <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>
             <tr><td>도안 메모</td><td>편집기 상단 "메모" 버튼 — 도안 전체에 대한 메모. 마크다운·이미지 지원</td></tr>
             <tr><td>평면 1단 방향</td><td>평면 도안 미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>

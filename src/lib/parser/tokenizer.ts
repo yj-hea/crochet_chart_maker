@@ -5,9 +5,8 @@
  * 숫자, 구조 문자(`,`, `(`, `)`, `*`, `^`), 공백, 알 수 없는 문자를 분류.
  */
 
-import type { StitchKind, ModifierKind } from '$lib/model/stitch-kind';
-// TODO(Phase 1): 별칭 테이블을 인자로 주입받도록 파라미터화 (대바늘 토크나이징).
-//                현재는 코바늘 테이블을 기본 바인딩으로 사용한다.
+import type { StitchKind, ModifierKind, AliasTable } from '$lib/model/stitch-kind';
+// 기본 바인딩은 코바늘 테이블. 대바늘 등 다른 크래프트는 config 로 자기 별칭을 주입한다.
 import { ALIAS_MAP, ALIAS_KEYS_BY_LENGTH } from '$lib/crafts/crochet/stitch';
 import type { SourceRange } from '$lib/model/errors';
 
@@ -41,12 +40,24 @@ export interface Token {
 const DIGIT = /[0-9]/;
 const WHITESPACE = /[ \t\r\n]/;
 
+/** 크래프트별 토크나이저 설정 — 별칭 테이블 주입용. */
+export interface TokenizerConfig {
+  aliasMap: AliasTable;
+  /** 길이 내림차순 정렬된 별칭 키 (longest-match 용) */
+  aliasKeys: readonly string[];
+}
+
+const CROCHET_CONFIG: TokenizerConfig = {
+  aliasMap: ALIAS_MAP,
+  aliasKeys: ALIAS_KEYS_BY_LENGTH,
+};
+
 /**
  * 입력 문자열을 토큰 배열로 변환.
  * 공백은 토큰에 포함되지 않음 (스킵).
  * 인식 불가 문자는 `UNKNOWN` 토큰으로 남겨 파서가 에러 처리.
  */
-export function tokenize(input: string): Token[] {
+export function tokenize(input: string, config: TokenizerConfig = CROCHET_CONFIG): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   // 직전 토큰이 COLON 이면 다음 읽기를 color 값으로 간주 (키워드 / hex / #hex)
@@ -148,7 +159,7 @@ export function tokenize(input: string): Token[] {
     }
 
     // 3.5) 키워드: tog, in (다음 문자가 알파벳이 아닐 때만 매칭 — `inc`, `together` 등과 구분)
-    const kwMatch = tryKeywordMatch(input, i);
+    const kwMatch = config === CROCHET_CONFIG ? tryKeywordMatch(input, i) : undefined;
     if (kwMatch) {
       tokens.push({ type: kwMatch.type, range: { start: i, end: i + kwMatch.length }, text: kwMatch.text });
       i += kwMatch.length;
@@ -156,7 +167,7 @@ export function tokenize(input: string): Token[] {
     }
 
     // 4) 별칭 longest-match
-    const aliasMatch = tryAliasMatch(input, i);
+    const aliasMatch = tryAliasMatch(input, i, config);
     if (aliasMatch) {
       const { key, kind, length } = aliasMatch;
       const type: TokenType = kind === 'BLO' ? 'MODIFIER' : 'STITCH';
@@ -227,8 +238,8 @@ interface AliasMatch {
  * 입력의 현재 위치에서 가장 긴 별칭 매칭을 시도.
  * ALIAS_KEYS_BY_LENGTH는 길이 내림차순 정렬되어 있으므로 첫 매칭이 곧 longest.
  */
-function tryAliasMatch(input: string, start: number): AliasMatch | undefined {
-  for (const key of ALIAS_KEYS_BY_LENGTH) {
+function tryAliasMatch(input: string, start: number, config: TokenizerConfig): AliasMatch | undefined {
+  for (const key of config.aliasKeys) {
     if (input.startsWith(key, start)) {
       // 다자 식별자 별칭(sc, hdc, blo 등)의 경우 뒤 문자가 또다른 알파벳이면
       // 부분 일치일 가능성이 있음 → 매칭 거부. 단일 문자 별칭(V, A, X, T, F, E 등)은
@@ -238,7 +249,7 @@ function tryAliasMatch(input: string, start: number): AliasMatch | undefined {
         const next = input[start + key.length];
         if (next !== undefined && /[A-Za-z]/.test(next)) continue;
       }
-      const kind = ALIAS_MAP[key];
+      const kind = config.aliasMap[key];
       if (!kind) continue;
       return { key, kind, length: key.length };
     }

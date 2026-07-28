@@ -44,6 +44,8 @@ export interface CraftDefinition {
   id: CraftId;
   /** UI 표시용 이름 (예: '코바늘') */
   label: string;
+  /** 탭·메뉴에 표시할 이모지 아이콘 */
+  icon: string;
   /** 이 크래프트가 지원하는 도형과 그 라벨 */
   shapes: ShapeOption[];
   defaultShape: string;
@@ -57,4 +59,11 @@ export interface CraftDefinition {
 
   /** 코 메타 조회 (서술형 변환·도움말 등에서 사용). 모르는 코면 undefined */
   stitchMeta(kind: StitchKind): StitchMeta | undefined;
+
+  /**
+   * 확장수를 포함한 정식 표기 (서술형 변환용).
+   * 예: 대바늘 K2TOG + expansion 3 → `k3tog`.
+   * 값을 돌려주면 `^N` 을 따로 붙이지 않는다. 미구현이면 `stitchMeta().canonical` + `^N`.
+   */
+  canonicalFor?(kind: StitchKind, expansion?: number): string | undefined;
 }

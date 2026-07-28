@@ -18,8 +18,6 @@ import { pickFile, fetchPickedFile } from '$lib/dropbox/chooser';
 import { uploadFile, getFileRev, DropboxApiError } from '$lib/dropbox/api';
 import { workspace } from './tabs';
 import { serialize, FILE_EXTENSION } from '$lib/persistence';
-import { parseRound } from '$lib/crafts/crochet/parser';
-import { expand } from '$lib/expand/expander';
 
 /** 연결 상태. 초기값은 localStorage 토큰 존재 여부. */
 export const dropboxConnected = writable<boolean>(false);
@@ -149,7 +147,3 @@ function errMsg(err: unknown): string {
   if (err instanceof DropboxApiError) return `${err.status} ${err.detail}`;
   return err instanceof Error ? err.message : String(err);
 }
-
-// expander/parser 는 importFromFile 내부 reparseAll 에서 사용되므로 import 보장용
-void parseRound;
-void expand;

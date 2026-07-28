@@ -132,13 +132,19 @@
     addComment({ kind: 'pattern' }, '');
   }
 
-  // 도형별 방향 아이콘/라벨
-  const dirIcon = $derived($pattern.shape === 'circular'
-    ? { forward: 'fa-solid fa-rotate-left', reverse: 'fa-solid fa-rotate-right' }
-    : { forward: 'fa-solid fa-arrow-right', reverse: 'fa-solid fa-arrow-left' });
-  const dirLabel = $derived($pattern.shape === 'circular'
-    ? { forward: '반시계 방향 (클릭하여 시계 방향으로)', reverse: '시계 방향 (클릭하여 반시계 방향으로)' }
-    : { forward: '왼→오 (클릭하여 오→왼으로)', reverse: '오→왼 (클릭하여 왼→오로)' });
+  // 크래프트·도형별 방향 아이콘/라벨.
+  // 대바늘에서 direction 은 겉면(RS)/안면(WS) 의 수동 오버라이드다.
+  const isKnit = $derived($pattern.craft === 'knit');
+  const dirIcon = $derived(isKnit
+    ? { forward: 'fa-regular fa-eye', reverse: 'fa-regular fa-eye-slash' }
+    : $pattern.shape === 'circular'
+      ? { forward: 'fa-solid fa-rotate-left', reverse: 'fa-solid fa-rotate-right' }
+      : { forward: 'fa-solid fa-arrow-right', reverse: 'fa-solid fa-arrow-left' });
+  const dirLabel = $derived(isKnit
+    ? { forward: '기본 면 (클릭하여 반대 면으로)', reverse: '반대 면 (클릭하여 기본 면으로)' }
+    : $pattern.shape === 'circular'
+      ? { forward: '반시계 방향 (클릭하여 시계 방향으로)', reverse: '시계 방향 (클릭하여 반시계 방향으로)' }
+      : { forward: '왼→오 (클릭하여 오→왼으로)', reverse: '오→왼 (클릭하여 왼→오로)' });
 </script>
 
 <div class="pattern-editor">
@@ -184,14 +190,17 @@
     <button type="button" class="append-btn" onclick={handleAppend}>
       + 단 추가
     </button>
-    <button
-      type="button"
-      class="calc-btn"
-      onclick={() => (evenIncOpen = true)}
-      title="균등 증감 계산"
-    >
-      <i class="fa-solid fa-calculator"></i> 균등 증감
-    </button>
+    {#if !isKnit}
+      <!-- 균등 증감 계산기는 코바늘 전용 (V/A 기반) -->
+      <button
+        type="button"
+        class="calc-btn"
+        onclick={() => (evenIncOpen = true)}
+        title="균등 증감 계산"
+      >
+        <i class="fa-solid fa-calculator"></i> 균등 증감
+      </button>
+    {/if}
   </div>
 </div>
 

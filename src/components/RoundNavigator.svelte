@@ -22,7 +22,7 @@
   const currentStitchTotal = $derived(stitchCountByRound[$currentRound - 1] ?? 0);
   const narrative = $derived.by(() => {
     if (!currentRoundData) return { html: '', comments: [] as string[] };
-    return renderNarrative(currentRoundData.parsed, currentRoundData.source);
+    return renderNarrative(currentRoundData.parsed, currentRoundData.source, activeTab?.craft);
   });
   const currentRoundComment = $derived.by<Comment | undefined>(() => {
     if (!activeTab || !currentRoundData) return undefined;

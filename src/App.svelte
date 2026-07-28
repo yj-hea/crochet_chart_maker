@@ -369,7 +369,7 @@
         {#if exportMenuOpen}
           <div class="dropdown" role="menu" bind:this={exportMenuEl}>
             <button type="button" class="item" onclick={chooseExportJson} role="menuitem">
-              <i class="fa-solid fa-file-code"></i> 크로셰 JSON (.crochet.json)
+              <i class="fa-solid fa-file-code"></i> 도안 JSON (.crochet.json)
             </button>
             <button type="button" class="item" onclick={chooseExportText} role="menuitem">
               <i class="fa-solid fa-file-lines"></i> 텍스트 (.txt)
@@ -450,7 +450,7 @@
 
       <ol class="source-list">
         {#each $pattern.rounds as round (round.id)}
-          {@const narr = renderNarrative(round.parsed, round.source)}
+          {@const narr = renderNarrative(round.parsed, round.source, $pattern.craft)}
           {@const rc = roundCommentMap.get(round.id)}
           <li class:empty={!round.source}>
             {#if !round.source}

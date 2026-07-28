@@ -1,6 +1,22 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { workspace, switchTab, createTab, closeTab, renameTab } from '$stores/tabs';
+  import { CRAFT_LIST, getCraft } from '$lib/crafts';
+
+  // 탭 하나 = 크래프트 하나 → 새 탭을 만들 때 기법을 고른다 (이후 변경 불가)
+  let addMenuOpen = $state(false);
+
+  function addTab(craft: 'crochet' | 'knit') {
+    addMenuOpen = false;
+    createTab(craft);
+  }
+
+  $effect(() => {
+    if (!addMenuOpen) return;
+    const close = () => { addMenuOpen = false; };
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  });
 
   let editingId = $state<string | null>(null);
   let editingValue = $state('');
@@ -64,6 +80,7 @@
           onclick={(e) => e.stopPropagation()}
         />
       {:else}
+        <span class="tab-craft" title={getCraft(tab.craft).label}>{getCraft(tab.craft).icon}</span>
         <span class="tab-name" title="더블클릭하여 이름 변경">{tab.name}</span>
         {#if canClose}
           <button
@@ -77,16 +94,72 @@
       {/if}
     </div>
   {/each}
-  <button
-    type="button"
-    class="tab-add"
-    onclick={() => createTab()}
-    title="새 탭 추가"
-    aria-label="새 탭 추가"
-  >+</button>
+  <div class="tab-add-wrap">
+    <button
+      type="button"
+      class="tab-add"
+      onclick={(e) => { e.stopPropagation(); addMenuOpen = !addMenuOpen; }}
+      title="새 도안 추가"
+      aria-label="새 도안 추가"
+      aria-haspopup="menu"
+      aria-expanded={addMenuOpen}
+    >+</button>
+    {#if addMenuOpen}
+      <div class="add-menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') addMenuOpen = false; }}>
+        {#each CRAFT_LIST as craft (craft.id)}
+          <button type="button" class="add-menu-item" role="menuitem" onclick={() => addTab(craft.id)}>
+            <span class="add-menu-icon">{craft.icon}</span>
+            <span>{craft.label} 도안</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
+  .tab-craft {
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.85;
+  }
+  .tab-add-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .add-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 40;
+    margin-top: 4px;
+    min-width: 150px;
+    padding: 4px;
+    background: #fff;
+    border: 1px solid var(--border, #e2e2e2);
+    border-radius: var(--radius-sm, 5px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  }
+  .add-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    color: var(--text, #202124);
+  }
+  .add-menu-item:hover {
+    background: var(--bg-hover, #f1f3f4);
+  }
+  .add-menu-icon {
+    font-size: 14px;
+  }
   .tab-bar {
     display: flex;
     align-items: flex-end;

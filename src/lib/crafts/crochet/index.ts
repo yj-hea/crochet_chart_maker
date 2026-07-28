@@ -19,6 +19,7 @@ import { STITCH_META } from './stitch';
 export const crochet: CraftDefinition = {
   id: 'crochet',
   label: '코바늘',
+  icon: '🧶',
   shapes: [
     { id: 'circular', label: '원형', iconClass: 'fa-regular fa-circle' },
     { id: 'flat', label: '평면', iconClass: 'fa-regular fa-square' },
