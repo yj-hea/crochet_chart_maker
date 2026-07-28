@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseKnitRound } from '../src/lib/crafts/knit/parser';
 import { expandKnit } from '../src/lib/crafts/knit/expander';
-import { layoutKnitGrid, KNIT_CELL_WIDTH } from '../src/lib/crafts/knit/grid';
+import { layoutKnitGrid, KNIT_CELL_WIDTH, KNIT_CELL_HEIGHT } from '../src/lib/crafts/knit/grid';
 import { isRightSide, flipOp, toDisplayOrder } from '../src/lib/crafts/knit/flip';
 import { renderKnitSvg } from '../src/lib/crafts/knit/svg';
 import type { ExpandedRound } from '../src/lib/expand/op';
@@ -303,5 +303,45 @@ describe('knit cascade — 늘림/줄임에 맞춘 칸 폭', () => {
     expect(rowSpan(layout, 3)).toBe(5);
     expect(layout.fillerCells).toHaveLength(1);
     expect(layout.fillerCells![0]!.y).toBeGreaterThan(0);
+  });
+});
+
+describe('knit 게이지', () => {
+  it('미입력이면 기본 셀 비율 1:0.7', () => {
+    const layout = layoutKnitGrid([parseExpand(1, 'k4')], { shape: 'round' });
+    expect(layout.cellSize).toEqual({ width: KNIT_CELL_WIDTH, height: KNIT_CELL_HEIGHT });
+  });
+
+  it('셀 세로가 코수/단수 비율로 조정된다', () => {
+    // 22코 30단 → 22/30 = 0.733… → 20 × 14.67
+    const layout = layoutKnitGrid([parseExpand(1, 'k4')], {
+      shape: 'round',
+      gauge: { stitches: 22, rows: 30 },
+    });
+    expect(layout.cellSize!.width).toBe(KNIT_CELL_WIDTH);
+    expect(layout.cellSize!.height).toBeCloseTo(20 * (22 / 30), 5);
+  });
+
+  it('가로 폭은 게이지와 무관하게 유지된다', () => {
+    const rounds = [parseExpand(1, 'k6')];
+    const base = layoutKnitGrid(rounds, { shape: 'round' });
+    const gauged = layoutKnitGrid(rounds, { shape: 'round', gauge: { stitches: 28, rows: 36 } });
+    expect(gauged.bounds.width).toBe(base.bounds.width);
+    expect(gauged.stitches.map((s) => s.position.x)).toEqual(base.stitches.map((s) => s.position.x));
+  });
+
+  it('단 수가 많아지면 세로 길이가 게이지 비율대로 늘어난다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k4'), parseExpand(3, 'k4')];
+    const g = { stitches: 20, rows: 40 }; // 비율 0.5 → 셀 높이 10
+    const layout = layoutKnitGrid(rounds, { shape: 'round', gauge: g });
+    expect(layout.bounds.height).toBeCloseTo(3 * 10, 5);
+  });
+
+  it('잘못된 게이지는 기본 비율로 폴백', () => {
+    const layout = layoutKnitGrid([parseExpand(1, 'k4')], {
+      shape: 'round',
+      gauge: { stitches: 0, rows: -5 },
+    });
+    expect(layout.cellSize!.height).toBe(KNIT_CELL_HEIGHT);
   });
 });

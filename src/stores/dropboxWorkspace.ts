@@ -103,6 +103,7 @@ async function runSync(): Promise<void> {
       id: t.id,
       name: t.name,
       craft: t.craft ?? 'crochet',
+      ...(t.gauge ? { gauge: t.gauge } : {}),
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: { source: string; direction?: 'forward' | 'reverse' } = { source: r.source };
@@ -221,6 +222,7 @@ export async function createWorkspace(opts: {
       id: t.id,
       name: t.name,
       craft: t.craft ?? 'crochet',
+      ...(t.gauge ? { gauge: t.gauge } : {}),
       shape: t.shape,
       rounds: t.rounds.map((r) => ({
         source: r.source,

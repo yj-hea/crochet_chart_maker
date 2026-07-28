@@ -35,6 +35,7 @@ export const knit: CraftDefinition = {
       align: opts.align,
       flipVertical: opts.flipVertical,
       cascade: opts.cascade,
+      gauge: opts.gauge,
     });
   },
 

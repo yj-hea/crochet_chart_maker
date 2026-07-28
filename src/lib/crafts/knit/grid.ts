@@ -19,9 +19,15 @@
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { LayoutResult, PositionedStitch, RoundMarker } from '$lib/layout/types';
 import { isRightSide, toDisplayOrder } from './flip';
+import { cellRatio, type Gauge } from '$lib/model/gauge';
 
-/** 셀 크기 — 실제 뜨개 코 비율(가로:세로 ≈ 1:0.7) */
+/**
+ * 셀 크기.
+ * 가로는 고정하고 세로만 게이지(코수/단수) 비율로 조정한다 —
+ * 게이지를 바꿔도 차트 가로 폭이 출렁이지 않도록.
+ */
 export const KNIT_CELL_WIDTH = 20;
+/** 게이지 미입력 시 세로 (가로:세로 = 1:0.7) */
 export const KNIT_CELL_HEIGHT = 14;
 
 /** 단 번호를 적을 좌우 여백 */
@@ -41,6 +47,8 @@ export interface KnitGridOptions {
   flipVertical?: boolean;
   /** 부모-자식 폭 맞춤 (기본 true) */
   cascade?: boolean;
+  /** 게이지 (10cm 당 코수/단수). 셀 세로 길이에 반영. 미입력이면 기본 비율 */
+  gauge?: Gauge;
 }
 
 /** 표시용 한 칸. op 이 없으면 no-stitch (자동 채움) 칸. */
@@ -208,6 +216,7 @@ export function layoutKnitGrid(
   const flipSymbols = opts.flipSymbols ?? true;
   const flipVertical = opts.flipVertical ?? false;
   const cascade = opts.cascade ?? true;
+  const cellHeight = KNIT_CELL_WIDTH * cellRatio(opts.gauge);
 
   // 1) 단별 표시 ops (좌→우)
   const meta = rounds.map((round) => {
@@ -233,7 +242,7 @@ export function layoutKnitGrid(
     const cells = cellRows[r]!;
     // 1단이 아래 (y 는 아래로 증가하므로 뒤집어 배치)
     const rowFromTop = flipVertical ? r : rowCount - 1 - r;
-    const yCenter = rowFromTop * KNIT_CELL_HEIGHT + KNIT_CELL_HEIGHT / 2;
+    const yCenter = rowFromTop * cellHeight + cellHeight / 2;
 
     const pad = chartSpan - rowSpans[r]!;
     const leftPad = align === 'L' ? 0 : align === 'R' ? pad : Math.floor(pad / 2);
@@ -273,7 +282,7 @@ export function layoutKnitGrid(
   }
 
   const width = chartSpan * KNIT_CELL_WIDTH;
-  const height = rowCount * KNIT_CELL_HEIGHT;
+  const height = rowCount * cellHeight;
   const minX = -NUMBER_GUTTER;
   const maxX = width + NUMBER_GUTTER;
 
@@ -283,12 +292,12 @@ export function layoutKnitGrid(
     gridGuide: {
       type: 'rect',
       cellWidth: KNIT_CELL_WIDTH,
-      cellHeight: KNIT_CELL_HEIGHT,
+      cellHeight,
       xOffset: 0,
       yOffset: 0,
     },
     roundMarkers,
-    cellSize: { width: KNIT_CELL_WIDTH, height: KNIT_CELL_HEIGHT },
+    cellSize: { width: KNIT_CELL_WIDTH, height: cellHeight },
     fillerCells,
   };
 }

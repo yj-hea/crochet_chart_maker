@@ -12,6 +12,7 @@ import type { ParsedRound, SequenceNode } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
 import type { LayoutResult } from '$lib/layout/types';
 import type { StitchKind, StitchMeta } from '$lib/model/stitch-kind';
+import type { Gauge } from '$lib/model/gauge';
 
 export type CraftId = 'crochet' | 'knit';
 
@@ -29,6 +30,8 @@ export interface ShapeOption {
  */
 export interface CraftLayoutOptions {
   shape: string;
+  /** 게이지 (10cm 당 코수/단수). 격자 크래프트만 사용 */
+  gauge?: Gauge;
   flipVertical?: boolean;
   align?: 'L' | 'R' | 'C';
   cascade?: boolean;

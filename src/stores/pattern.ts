@@ -12,6 +12,7 @@ export {
   addRoundAtEnd,
   deleteRound,
   setShape,
+  setGauge,
   exportToFile,
   exportAsTextFile,
   importFromFile,

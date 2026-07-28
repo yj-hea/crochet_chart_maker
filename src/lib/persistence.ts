@@ -9,6 +9,7 @@
 
 import type { ShapeKind } from '$stores/pattern';
 import type { CraftId } from '$lib/crafts';
+import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
 /** v2: `craft` 필드 추가 (코바늘/대바늘). v1 파일은 코바늘로 마이그레이션. */
@@ -49,6 +50,8 @@ export interface SavedPattern {
   savedAt: string;  // ISO 8601
   /** 도안의 기법. 없으면(v1 파일) 코바늘 */
   craft: CraftId;
+  /** 게이지 (10cm 당 코수/단수). 대바늘 전용 */
+  gauge?: Gauge;
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
@@ -57,6 +60,7 @@ export interface SavedPattern {
 
 export interface SerializeInput {
   craft?: CraftId;
+  gauge?: Gauge;
   shape: ShapeKind;
   /** id 는 옵션 — 코멘트의 round 참조를 직렬화 시 index 로 정규화하는 데 사용 */
   rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
@@ -80,6 +84,7 @@ export function serialize(state: SerializeInput): SavedPattern {
     version: FILE_VERSION,
     savedAt: new Date().toISOString(),
     craft: state.craft ?? 'crochet',
+    ...(state.gauge ? { gauge: state.gauge } : {}),
     shape: state.shape,
     rounds: state.rounds.map((r) => {
       const out: SavedRound = { source: r.source };
@@ -133,10 +138,12 @@ export function validate(data: unknown): SavedPattern {
   });
   const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
   const progress = validateProgress(d.progress);
+  const gauge = normalizeGauge(d.gauge);
   return {
     version: 2,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : '',
     craft,
+    ...(gauge ? { gauge } : {}),
     shape: d.shape,
     rounds,
     ...(comments ? { comments } : {}),
@@ -225,6 +232,8 @@ export interface SavedWorkspaceTab {
   name: string;
   /** 이 탭의 기법. 탭 하나 = 크래프트 하나 */
   craft: CraftId;
+  /** 게이지 (10cm 당 코수/단수). 대바늘 전용 */
+  gauge?: Gauge;
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
@@ -248,6 +257,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
       id: t.id,
       name: t.name,
       craft: t.craft ?? 'crochet',
+      ...(t.gauge ? { gauge: t.gauge } : {}),
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: SavedRound = { source: r.source };
@@ -279,6 +289,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
       id: tt.id,
       name: tt.name,
       craft: validateCraft(tt.craft),
+      ...(normalizeGauge(tt.gauge) ? { gauge: normalizeGauge(tt.gauge)! } : {}),
       shape: tt.shape,
       rounds: tt.rounds.map((r, j) => {
         if (!r || typeof (r as Record<string, unknown>).source !== 'string') {

@@ -13,6 +13,7 @@
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
   import EvenIncModal from './EvenIncModal.svelte';
+  import GaugeInput from './GaugeInput.svelte';
 
   let focusRequests = $state<Record<string, FocusRequest>>({});
   // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
@@ -150,6 +151,9 @@
 <div class="pattern-editor">
   <div class="editor-header">
     <ShapeSelector />
+    {#if isKnit}
+      <GaugeInput />
+    {/if}
     <div class="header-spacer"></div>
     {#if patternComment}
       <CommentPin comment={patternComment} />

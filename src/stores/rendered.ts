@@ -33,6 +33,7 @@ export const renderedChart = derived(
     const craft = getCraft($pattern.craft);
     const layout = craft.layout(validRounds, {
       shape: $pattern.shape,
+      gauge: $pattern.gauge,
       flipVertical: $flatFlipVertical,
       align: $flatAlign,
       cascade: $flatCascade,

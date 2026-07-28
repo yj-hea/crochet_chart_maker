@@ -22,6 +22,7 @@ import {
 } from '$lib/persistence';
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
+import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 
 /** 도형 id — 코바늘: circular/flat, 대바늘: round/flat */
 export type ShapeKind = 'circular' | 'flat' | 'round';
@@ -56,6 +57,8 @@ export interface Tab {
   name: string;
   /** 이 탭의 기법. 탭 하나 = 크래프트 하나 (docs/architecture.md §10.5) */
   craft: CraftId;
+  /** 게이지 (10cm 당 코수/단수). 대바늘 전용 — 셀 종횡비·실측 치수에 사용 */
+  gauge?: Gauge;
   shape: ShapeKind;
   rounds: PatternRoundState[];
   comments: Comment[];
@@ -118,10 +121,12 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     direction: r.direction,
   }));
   const craft: CraftId = saved.craft ?? DEFAULT_CRAFT;
+  const gauge = normalizeGauge(saved.gauge);
   return {
     id: saved.id,
     name: saved.name,
     craft,
+    ...(gauge ? { gauge } : {}),
     shape: saved.shape,
     rounds: reparseAll(rounds, craft),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
@@ -207,6 +212,7 @@ workspace.subscribe((ws) => {
       id: t.id,
       name: t.name,
       craft: t.craft ?? DEFAULT_CRAFT,
+      ...(t.gauge ? { gauge: t.gauge } : {}),
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: { source: string; direction?: RoundDirection } = { source: r.source };
@@ -239,9 +245,19 @@ export function setTabProgress(id: string, progress: SavedProgress | undefined):
 export const pattern = derived(workspace, ($ws) => {
   const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
   if (active) {
-    return { craft: active.craft ?? DEFAULT_CRAFT, shape: active.shape, rounds: active.rounds };
+    return {
+      craft: active.craft ?? DEFAULT_CRAFT,
+      gauge: active.gauge,
+      shape: active.shape,
+      rounds: active.rounds,
+    };
   }
-  return { craft: DEFAULT_CRAFT, shape: 'circular' as ShapeKind, rounds: [] as PatternRoundState[] };
+  return {
+    craft: DEFAULT_CRAFT,
+    gauge: undefined as Gauge | undefined,
+    shape: 'circular' as ShapeKind,
+    rounds: [] as PatternRoundState[],
+  };
 });
 
 export const activeTabId = derived(workspace, ($ws) => $ws.activeTabId);
@@ -354,6 +370,17 @@ export function deleteRound(id: string): string {
   return prevId;
 }
 
+/** 활성 탭의 게이지 설정. undefined 면 해제(기본 비율 사용). */
+export function setGauge(gauge: Gauge | undefined): void {
+  updateActiveTab((t) => {
+    const next = { ...t };
+    const valid = normalizeGauge(gauge);
+    if (valid) next.gauge = valid;
+    else delete next.gauge;
+    return next;
+  });
+}
+
 export function setShape(shape: ShapeKind): void {
   updateActiveTab((t) => ({ ...t, shape }));
 }
@@ -411,6 +438,7 @@ export function exportToFile(): void {
   downloadAsFile(
     {
       craft: active.craft ?? DEFAULT_CRAFT,
+      ...(active.gauge ? { gauge: active.gauge } : {}),
       shape: active.shape,
       rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
       comments: active.comments,

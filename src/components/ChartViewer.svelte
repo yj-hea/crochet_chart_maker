@@ -3,11 +3,36 @@
   import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
+  import { isValidGauge, stitchesToCm, rowsToCm } from '$lib/model/gauge';
 
   // 대바늘은 격자 도안이라 코바늘 전용 토글(연결선·세로 정렬)이 의미가 없다.
   const isKnit = $derived($pattern.craft === 'knit');
   // 대바늘은 원통/평면 모두 격자 → 정렬·상하 반전 토글을 항상 노출
   const showFlatTools = $derived(isKnit || $pattern.shape === 'flat');
+
+  /**
+   * 게이지 기반 실측 치수 — 가장 넓은 단의 코 수와 단 수로 완성 크기를 어림한다.
+   * (늘림·줄임으로 단마다 코 수가 다르면 최대 폭 기준)
+   */
+  const physicalSize = $derived.by(() => {
+    const g = $pattern.gauge;
+    if (!isKnit || !isValidGauge(g)) return null;
+    let maxStitches = 0;
+    let rows = 0;
+    for (const r of $pattern.rounds) {
+      const total = r.expanded?.totalProduce ?? 0;
+      if (total === 0) continue;
+      rows++;
+      if (total > maxStitches) maxStitches = total;
+    }
+    if (rows === 0 || maxStitches === 0) return null;
+    return {
+      stitches: maxStitches,
+      rows,
+      widthCm: stitchesToCm(maxStitches, g),
+      heightCm: rowsToCm(rows, g),
+    };
+  });
 
   let modalOpen = $state(false);
   let modalSvg = $state('');
@@ -277,6 +302,13 @@
       <p class="empty">도안 입력을 시작하세요</p>
     {/if}
   </div>
+  {#if physicalSize}
+    <div class="size-bar" title="게이지 기준 완성 크기 (가장 넓은 단 기준)">
+      <i class="fa-solid fa-ruler-combined"></i>
+      가로 {physicalSize.stitches}코 ≈ {physicalSize.widthCm.toFixed(1)}cm
+      · 세로 {physicalSize.rows}단 ≈ {physicalSize.heightCm.toFixed(1)}cm
+    </div>
+  {/if}
 </div>
 
 {#if modalOpen && rendered}
@@ -374,6 +406,16 @@
     width: 100%;
     height: 100%;
     display: block;
+  }
+  .size-bar {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-top: 1px solid var(--border, #e2e2e2);
+    font-size: 11px;
+    color: var(--text-secondary, #666);
+    text-align: right;
+    white-space: nowrap;
+    overflow-x: auto;
   }
   .empty {
     color: #999;
