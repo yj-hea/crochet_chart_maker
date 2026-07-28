@@ -24,8 +24,10 @@ export const renderedChart = derived(
   ([$pattern, $showGrid, $showConnections, $flatFlipVertical, $flatAlign, $flatCascade, $flatVAlign]): RenderedChart | null => {
     const validRounds: ExpandedRound[] = [];
     for (const r of $pattern.rounds) {
-      if (r.expanded) validRounds.push(r.expanded);
-      else break;
+      if (!r.expanded) break;
+      // 빈 단(코가 하나도 없는 단)은 그리지 않는다 — 도안 전체가 비면 안내 문구를 띄운다
+      if (r.expanded.ops.length === 0) continue;
+      validRounds.push(r.expanded);
     }
     if (validRounds.length === 0) return null;
     const craft = getCraft($pattern.craft);
