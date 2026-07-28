@@ -8,7 +8,7 @@
  *  - 코 없음(no stitch) 칸은 회색으로 채운다.
  */
 
-import type { LayoutResult, PositionedStitch, RoundMarker, Point } from '$lib/layout/types';
+import type { LayoutResult, PositionedStitch, RoundMarker } from '$lib/layout/types';
 import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 
@@ -40,42 +40,37 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
 }
 
 /** 코 없음 칸 — 회색 채움 */
-function renderFillers(cells: Point[], cell: { width: number; height: number }): string {
+function renderFillers(
+  cells: ReadonlyArray<{ x: number; y: number; span: number }>,
+  cell: { width: number; height: number },
+): string {
   if (cells.length === 0) return '';
-  const rects = cells.map((c) =>
-    `<rect x="${fmt(c.x - cell.width / 2)}" y="${fmt(c.y - cell.height / 2)}" ` +
-    `width="${fmt(cell.width)}" height="${fmt(cell.height)}" fill="${NO_STITCH_FILL}"/>`
-  );
+  const rects = cells.map((c) => {
+    const w = c.span * cell.width;
+    return `<rect x="${fmt(c.x - w / 2)}" y="${fmt(c.y - cell.height / 2)}" ` +
+      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${NO_STITCH_FILL}"/>`;
+  });
   return `<g class="no-stitch">${rects.join('')}</g>`;
 }
 
-/** 칸 테두리 — 코가 놓인 격자 영역 전체 */
+/**
+ * 칸 테두리 — 칸마다 사각형을 그린다.
+ * cascade 로 칸 폭이 달라질 수 있어 균일 격자선 대신 셀 단위로 그린다.
+ */
 function renderCellBorders(layout: LayoutResult, cell: { width: number; height: number }): string {
-  const { bounds } = layout;
-  const left = 0;
-  const right = gridRightEdge(layout, cell);
-  if (right <= left) return '';
-
-  const lines: string[] = [];
-  for (let x = left; x <= right + 0.001; x += cell.width) {
-    lines.push(`<line x1="${fmt(x)}" y1="${fmt(bounds.minY)}" x2="${fmt(x)}" y2="${fmt(bounds.maxY)}" stroke="${GRID_COLOR}" stroke-width="0.6"/>`);
-  }
-  for (let y = bounds.minY; y <= bounds.maxY + 0.001; y += cell.height) {
-    lines.push(`<line x1="${fmt(left)}" y1="${fmt(y)}" x2="${fmt(right)}" y2="${fmt(y)}" stroke="${GRID_COLOR}" stroke-width="0.6"/>`);
-  }
-  return `<g class="grid">${lines.join('')}</g>`;
-}
-
-/** 격자 오른쪽 끝 — 코/채움 칸 중 가장 오른쪽 칸의 오른쪽 경계 */
-function gridRightEdge(layout: LayoutResult, cell: { width: number; height: number }): number {
-  let maxCenter = 0;
-  for (const s of layout.stitches) {
-    const span = s.cell?.span ?? 1;
-    maxCenter = Math.max(maxCenter, s.position.x + (span - 1) * cell.width);
-  }
-  for (const f of layout.fillerCells ?? []) maxCenter = Math.max(maxCenter, f.x);
-  if (maxCenter === 0) return 0;
-  return maxCenter + cell.width / 2;
+  const rects: string[] = [];
+  const push = (cx: number, cy: number, span: number) => {
+    const w = span * cell.width;
+    rects.push(
+      `<rect x="${fmt(cx - w / 2)}" y="${fmt(cy - cell.height / 2)}" ` +
+      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="none" ` +
+      `stroke="${GRID_COLOR}" stroke-width="0.6"/>`
+    );
+  };
+  for (const s of layout.stitches) push(s.position.x, s.position.y, s.cell?.span ?? 1);
+  for (const f of layout.fillerCells ?? []) push(f.x, f.y, f.span);
+  if (rects.length === 0) return '';
+  return `<g class="grid">${rects.join('')}</g>`;
 }
 
 function renderRoundGroups(stitches: PositionedStitch[]): string {
@@ -95,11 +90,8 @@ function renderRoundGroups(stitches: PositionedStitch[]): string {
 
 function renderStitchUse(s: PositionedStitch): string {
   const colorStyle = s.op.color ? ` style="color: ${escapeAttr(s.op.color)}"` : '';
-  // 여러 칸을 차지하는 코(kfb 등)는 차지한 칸들의 가운데에 기호를 놓는다
-  const span = s.cell?.span ?? 1;
-  const cellW = 20;
-  const x = s.position.x + ((span - 1) * cellW) / 2;
-  return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
+  // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
+  return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
 }
 
 /** 단 번호 — 겉면 단은 격자 오른쪽, 안면 단은 왼쪽 */

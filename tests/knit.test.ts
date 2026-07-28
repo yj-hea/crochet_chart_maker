@@ -241,3 +241,67 @@ describe('knit 렌더러', () => {
     expect(svg).not.toContain('class="connections"');
   });
 });
+
+describe('knit cascade — 늘림/줄임에 맞춘 칸 폭', () => {
+  function rowSpan(layout: ReturnType<typeof layoutKnitGrid>, roundIndex: number): number {
+    const stitches = layout.stitches.filter((s) => s.roundIndex === roundIndex);
+    return stitches.reduce((sum, s) => sum + (s.cell?.span ?? 1), 0);
+  }
+
+  it('kfb 의 부모 칸이 2칸으로 넓어진다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    const row1 = layout.stitches.filter((s) => s.roundIndex === 1);
+    // 2단의 kfb 가 소비하는 부모(표시 순서 2번째)가 2칸
+    const widened = row1.filter((s) => (s.cell?.span ?? 1) === 2);
+    expect(widened).toHaveLength(1);
+    // 두 단의 총 폭이 같아진다 → no-stitch 채움 불필요
+    expect(rowSpan(layout, 1)).toBe(5);
+    expect(rowSpan(layout, 2)).toBe(5);
+    expect(layout.fillerCells).toHaveLength(0);
+  });
+
+  it('kfb 자식과 부모의 칸이 같은 x 범위를 덮는다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    const parent = layout.stitches.find((s) => s.roundIndex === 1 && s.cell?.span === 2)!;
+    const kfb = layout.stitches.find((s) => s.op.kind === 'KFB')!;
+    expect(kfb.position.x).toBeCloseTo(parent.position.x);
+  });
+
+  it('cascade OFF 면 모든 부모 칸이 1칸 (부족분은 no-stitch)', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
+    const row1 = layout.stitches.filter((s) => s.roundIndex === 1);
+    expect(row1.every((s) => (s.cell?.span ?? 1) === 1)).toBe(true);
+    expect(layout.fillerCells!.length).toBeGreaterThan(0);
+  });
+
+  it('k2tog 는 부모 둘의 폭만큼 넓어진다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, k2tog, k1')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    const dec = layout.stitches.find((s) => s.op.kind === 'K2TOG')!;
+    expect(dec.cell!.span).toBe(2);
+    expect(rowSpan(layout, 1)).toBe(4);
+    expect(rowSpan(layout, 2)).toBe(4);
+  });
+
+  it('부모 없는 yo 아래에는 빈 칸(no stitch)이 생긴다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, yo, k3')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    expect(rowSpan(layout, 2)).toBe(5);
+    // 1단은 4코 + yo 자리 빈 칸 1 → 총 폭 5, 채움 칸 1개
+    expect(layout.fillerCells).toHaveLength(1);
+    const yo = layout.stitches.find((s) => s.op.kind === 'YO')!;
+    expect(layout.fillerCells![0]!.x).toBeCloseTo(yo.position.x);
+  });
+
+  it('빈 칸은 더 아래 단으로도 전파된다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, yo, k3'), parseExpand(3, 'k5')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    // 3단 5코 / 2단 5칸 / 1단 4코 + 빈칸 1
+    expect(rowSpan(layout, 3)).toBe(5);
+    expect(layout.fillerCells).toHaveLength(1);
+    expect(layout.fillerCells![0]!.y).toBeGreaterThan(0);
+  });
+});

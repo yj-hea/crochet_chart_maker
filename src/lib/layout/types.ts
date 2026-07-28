@@ -37,7 +37,7 @@ export interface PositionedStitch {
   /**
    * 격자 레이아웃(대바늘) 전용 — 이 코가 놓인 칸.
    *  - row: 위에서부터 0-based 행
-   *  - col: 왼쪽부터 0-based 열
+   *  - col: 왼쪽부터 0-based 열 (cascade 로 폭이 달라지면 누적 단위 위치)
    *  - span: 차지하는 칸 수 (kfb 처럼 여러 코를 만드는 경우 > 1)
    */
   cell?: { row: number; col: number; span: number };
@@ -98,8 +98,9 @@ export interface LayoutResult {
    */
   cellSize?: { width: number; height: number };
   /**
-   * 격자 레이아웃(대바늘) 전용 — 코 없음(no stitch) 채움 칸의 중심 좌표.
-   * 실제 코가 아니므로 `stitches` 에 넣지 않는다 (진행 하이라이트 인덱스 보존).
+   * 격자 레이아웃(대바늘) 전용 — 코 없음(no stitch) 채움 칸.
+   * 중심 좌표 + 폭(단위 칸 수). 실제 코가 아니므로 `stitches` 에 넣지 않는다
+   * (진행 하이라이트 인덱스 보존).
    */
-  fillerCells?: Point[];
+  fillerCells?: Array<{ x: number; y: number; span: number }>;
 }

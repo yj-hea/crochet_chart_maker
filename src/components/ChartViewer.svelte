@@ -4,6 +4,11 @@
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
 
+  // 대바늘은 격자 도안이라 코바늘 전용 토글(연결선·세로 정렬)이 의미가 없다.
+  const isKnit = $derived($pattern.craft === 'knit');
+  // 대바늘은 원통/평면 모두 격자 → 정렬·상하 반전 토글을 항상 노출
+  const showFlatTools = $derived(isKnit || $pattern.shape === 'flat');
+
   let modalOpen = $state(false);
   let modalSvg = $state('');
 
@@ -190,15 +195,17 @@
         aria-pressed={$showGrid}
         title={$showGrid ? '그리드 숨기기' : '그리드 표시'}
       ><span class="grid-dot" class:on={$showGrid}></span> Grid {$showGrid ? 'On' : 'Off'}</button>
-      <button
-        type="button"
-        class="tool-btn toggle-btn"
-        class:active={$showConnections}
-        onclick={() => showConnections.update((v) => !v)}
-        aria-pressed={$showConnections}
-        title={$showConnections ? '연결선 숨기기' : '연결선 표시'}
-      ><span class="grid-dot" class:on={$showConnections}></span> Lines {$showConnections ? 'On' : 'Off'}</button>
-      {#if $pattern.shape === 'flat'}
+      {#if !isKnit}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          class:active={$showConnections}
+          onclick={() => showConnections.update((v) => !v)}
+          aria-pressed={$showConnections}
+          title={$showConnections ? '연결선 숨기기' : '연결선 표시'}
+        ><span class="grid-dot" class:on={$showConnections}></span> Lines {$showConnections ? 'On' : 'Off'}</button>
+      {/if}
+      {#if showFlatTools}
         <button
           type="button"
           class="tool-btn toggle-btn"
@@ -212,7 +219,7 @@
       {/if}
     </div>
     <div class="btn-group">
-      {#if $pattern.shape === 'flat'}
+      {#if showFlatTools}
         <button
           type="button"
           class="tool-btn toggle-btn"
@@ -233,23 +240,27 @@
         class:active={$flatCascade}
         onclick={() => flatCascade.update((v) => !v)}
         aria-pressed={$flatCascade}
-        title={$flatCascade ? 'Cascade 켜짐 (부모 위치로 정렬). 클릭: 끄기' : 'Cascade 꺼짐 (균등 간격). 클릭: 켜기'}
+        title={isKnit
+          ? ($flatCascade ? 'Cascade 켜짐 — 늘림/줄임에 맞춰 부모 칸 폭 조정. 클릭: 끄기' : 'Cascade 꺼짐 — 모든 칸 균등 폭. 클릭: 켜기')
+          : ($flatCascade ? 'Cascade 켜짐 (부모 위치로 정렬). 클릭: 끄기' : 'Cascade 꺼짐 (균등 간격). 클릭: 켜기')}
       >
         <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
       </button>
-      <button
-        type="button"
-        class="tool-btn toggle-btn"
-        onclick={() => flatVAlign.update((v) => v === 'same' ? 'even' : 'same')}
-        title={
-          $flatVAlign === 'same'
-            ? '같은 단 동일 위치 (기본). 클릭: 균등 간격 (부모로부터 일정 거리)'
-            : '균등 간격 — 각 코가 부모 위치 + 자기 높이로 배치. 클릭: 동일 위치'
-        }
-      >
-        <i class="fa-solid fa-{$flatVAlign === 'same' ? 'grip-lines' : 'arrows-up-to-line'}"></i>
-        {$flatVAlign === 'same' ? '동일 위치' : '균등 간격'}
-      </button>
+      {#if !isKnit}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          onclick={() => flatVAlign.update((v) => v === 'same' ? 'even' : 'same')}
+          title={
+            $flatVAlign === 'same'
+              ? '같은 단 동일 위치 (기본). 클릭: 균등 간격 (부모로부터 일정 거리)'
+              : '균등 간격 — 각 코가 부모 위치 + 자기 높이로 배치. 클릭: 동일 위치'
+          }
+        >
+          <i class="fa-solid fa-{$flatVAlign === 'same' ? 'grip-lines' : 'arrows-up-to-line'}"></i>
+          {$flatVAlign === 'same' ? '동일 위치' : '균등 간격'}
+        </button>
+      {/if}
     </div>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
