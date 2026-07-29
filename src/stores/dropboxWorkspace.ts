@@ -79,6 +79,16 @@ function workspacePath(id: string): string {
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPush = false;
+/**
+ * 원격을 한 번 받아오기 전에는 절대 push 하지 않는다.
+ *
+ * `workspace.subscribe` 는 구독 즉시 현재 값으로 한 번 호출된다.
+ * 이 때 push 를 예약하면 **부팅하자마자 그 기기의 (오래된) 로컬 워크스페이스가
+ * 원격을 덮어써서**, 다른 기기에서 새로 만든 탭이 사라진다.
+ */
+let watchReady = false;
+/** 원격 적용으로 인한 store 변경은 다시 push 하지 않는다 (에코 방지) */
+let applyingRemote = false;
 
 /** 활성 워크스페이스 변경 시 debounced upload 예약. */
 function scheduleSync(): void {
@@ -140,10 +150,14 @@ async function runSync(): Promise<void> {
 let workspaceUnsub: (() => void) | null = null;
 function startWorkspaceWatch(): void {
   if (workspaceUnsub) return;
-  workspaceUnsub = workspace.subscribe(() => { scheduleSync(); });
+  workspaceUnsub = workspace.subscribe(() => {
+    if (!watchReady || applyingRemote) return;
+    scheduleSync();
+  });
 }
 function stopWorkspaceWatch(): void {
   if (workspaceUnsub) { workspaceUnsub(); workspaceUnsub = null; }
+  watchReady = false;
 }
 
 // ============================================================
@@ -187,16 +201,25 @@ export async function switchWorkspace(id: string): Promise<void> {
   if (!isConnected()) throw new Error('Dropbox 로그인 필요');
   syncStatus.set('syncing');
   try {
-    // 현재 활성 워크스페이스 즉시 push (debounce 우회).
+    // 이 세션에서 실제로 변경한 내용이 있으면 전환 전에 push (debounce 우회).
+    // 아직 원격을 받아오지 않았다면(부팅 중) push 하지 않는다 — 오래된 로컬로 덮어쓰지 않도록.
     if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
-    if (pendingPush) await runSync();
+    if (watchReady && pendingPush) await runSync();
+    else pendingPush = false;
 
     const f = await downloadFile(workspacePath(id));
     if (!f) throw new Error('워크스페이스 파일이 없습니다');
     const data = JSON.parse(f.content) as NamedWorkspace;
     const validated = validateWorkspace(data);
     const { applyWorkspace } = await import('./tabs');
-    applyWorkspace(validated);
+    applyingRemote = true;
+    try {
+      applyWorkspace(validated);
+    } finally {
+      applyingRemote = false;
+    }
+    // 원격을 받아온 뒤부터 로컬 변경을 push 한다
+    watchReady = true;
     activeWorkspaceId.set(id);
     saveActiveId(id);
     syncStatus.set('idle');
@@ -251,8 +274,10 @@ export async function createWorkspace(opts: {
   if (opts.source === 'empty') {
     await switchWorkspace(id);
   } else {
+    // 현재 작업을 그대로 새 워크스페이스로 올렸으므로 이후 변경부터 push
     activeWorkspaceId.set(id);
     saveActiveId(id);
+    watchReady = true;
   }
   return id;
 }
@@ -302,10 +327,14 @@ export async function initializeWorkspaceSync(): Promise<{
     syncStatus.set('offline');
     return { status: 'no-active' };
   }
+  // 원격을 받아오기 전까지는 push 금지 (아래 switchWorkspace 성공 시 해제)
+  watchReady = false;
   startWorkspaceWatch();
   await refreshWorkspaceList();
   const id = get(activeWorkspaceId);
   if (!id) {
+    // 붙일 원격 워크스페이스가 없다 — 이후 사용자가 만들면 그 때부터 push
+    watchReady = true;
     syncStatus.set('idle');
     return { status: 'no-active' };
   }
@@ -314,6 +343,7 @@ export async function initializeWorkspaceSync(): Promise<{
   if (!list.find((w) => w.id === id)) {
     activeWorkspaceId.set(null);
     saveActiveId(null);
+    watchReady = true;
     syncStatus.set('idle');
     return { status: 'no-active' };
   }
