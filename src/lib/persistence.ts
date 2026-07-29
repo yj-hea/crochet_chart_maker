@@ -248,6 +248,8 @@ export interface SavedWorkspace {
 }
 
 const WORKSPACE_KEY = 'crochet-chart:workspace';
+/** 읽기에 실패한 워크스페이스 원본 보관 — 자동 저장이 덮어쓰기 전에 남겨 둔다 */
+const WORKSPACE_BACKUP_KEY = 'crochet-chart:workspace.broken';
 
 export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId: string }): SavedWorkspace {
   return {
@@ -271,43 +273,55 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
   };
 }
 
+/**
+ * 워크스페이스 검증 — **관대하게** 읽는다.
+ *
+ * 필드 하나가 이상하다고 전체 워크스페이스를 버리면 사용자의 모든 도안이 사라진다.
+ * (예: 구버전 번들이 만든 데이터, 새 도형 id 를 모르는 클라이언트가 쓴 값)
+ * 따라서 고칠 수 있는 값은 기본값으로 대체하고, 복구 불가능한 탭만 건너뛴다.
+ * 하드 실패는 최상위 구조가 워크스페이스가 아닐 때뿐이다.
+ */
 export function validateWorkspace(data: unknown): SavedWorkspace {
   if (!data || typeof data !== 'object') throw new Error('잘못된 워크스페이스 형식');
   const d = data as Record<string, unknown>;
-  if (d.version !== 2 && d.version !== 3) {
-    throw new Error(`지원하지 않는 워크스페이스 버전: ${String(d.version)}`);
-  }
   if (!Array.isArray(d.tabs)) throw new Error('tabs 배열이 없습니다');
-  const tabs: SavedWorkspaceTab[] = d.tabs.map((t, i) => {
-    if (!t || typeof t !== 'object') throw new Error(`tabs[${i}]: 객체가 아님`);
+
+  const tabs: SavedWorkspaceTab[] = [];
+  d.tabs.forEach((t, i) => {
+    if (!t || typeof t !== 'object') return;
     const tt = t as Record<string, unknown>;
-    if (typeof tt.id !== 'string') throw new Error(`tabs[${i}].id 문자열 필요`);
-    if (typeof tt.name !== 'string') throw new Error(`tabs[${i}].name 문자열 필요`);
-    if (!isKnownShape(tt.shape)) throw new Error(`tabs[${i}].shape 잘못됨`);
-    if (!Array.isArray(tt.rounds)) throw new Error(`tabs[${i}].rounds 배열 필요`);
-    return {
-      id: tt.id,
-      name: tt.name,
-      craft: validateCraft(tt.craft),
-      ...(normalizeGauge(tt.gauge) ? { gauge: normalizeGauge(tt.gauge)! } : {}),
-      shape: tt.shape,
-      rounds: tt.rounds.map((r, j) => {
-        if (!r || typeof (r as Record<string, unknown>).source !== 'string') {
-          throw new Error(`tabs[${i}].rounds[${j}].source 필요`);
-        }
-        const rr = r as Record<string, unknown>;
-        const out: SavedRound = { source: rr.source as string };
-        if (rr.direction === 'forward' || rr.direction === 'reverse') {
-          out.direction = rr.direction;
-        }
-        return out;
-      }),
+    const rawRounds = Array.isArray(tt.rounds) ? tt.rounds : [];
+    const rounds: SavedRound[] = [];
+    for (const r of rawRounds) {
+      const rr = r as Record<string, unknown> | null;
+      if (!rr || typeof rr.source !== 'string') continue;
+      const out: SavedRound = { source: rr.source };
+      if (rr.direction === 'forward' || rr.direction === 'reverse') out.direction = rr.direction;
+      rounds.push(out);
+    }
+    const craft = validateCraft(tt.craft);
+    const gauge = normalizeGauge(tt.gauge);
+    tabs.push({
+      id: typeof tt.id === 'string' && tt.id ? tt.id : `tab_restored_${i}`,
+      name: typeof tt.name === 'string' && tt.name ? tt.name : `도안 ${i + 1}`,
+      craft,
+      ...(gauge ? { gauge } : {}),
+      // 모르는 도형 id 는 크래프트 기본값으로 — 탭을 통째로 버리지 않는다
+      shape: isKnownShape(tt.shape) ? tt.shape : defaultShapeFor(craft),
+      rounds: rounds.length > 0 ? rounds : [{ source: '' }],
       ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
       ...(validateProgress(tt.progress) ? { progress: validateProgress(tt.progress) as SavedProgress } : {}),
-    };
+    });
   });
-  const activeTabId = typeof d.activeTabId === 'string' ? d.activeTabId : (tabs[0]?.id ?? '');
+
+  const activeTabId = typeof d.activeTabId === 'string' && tabs.some((t) => t.id === d.activeTabId)
+    ? d.activeTabId
+    : (tabs[0]?.id ?? '');
   return { version: WORKSPACE_VERSION, savedAt: String(d.savedAt ?? ''), tabs, activeTabId };
+}
+
+function defaultShapeFor(craft: CraftId): ShapeKind {
+  return craft === 'knit' ? 'flat' : 'circular';
 }
 
 export function saveWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId: string }): void {
@@ -337,6 +351,22 @@ export function loadWorkspace(): SavedWorkspace | null {
     return null;
   } catch (e) {
     console.warn('워크스페이스 복원 실패:', e);
+    // 복원에 실패하면 곧바로 빈 워크스페이스가 자동 저장되어 원본이 사라진다.
+    // 덮어쓰기 전에 원본을 백업 키로 옮겨 둔다 (수동 복구 가능).
+    try {
+      const raw = globalThis.localStorage.getItem(WORKSPACE_KEY);
+      if (raw) globalThis.localStorage.setItem(WORKSPACE_BACKUP_KEY, raw);
+    } catch { /* ignore */ }
+    return null;
+  }
+}
+
+/** 복원 실패로 보관해 둔 원본 (있으면 반환). 개발자 도구에서 확인·복구용. */
+export function loadBrokenWorkspaceBackup(): string | null {
+  if (!hasLocalStorage()) return null;
+  try {
+    return globalThis.localStorage.getItem(WORKSPACE_BACKUP_KEY);
+  } catch {
     return null;
   }
 }
