@@ -64,7 +64,8 @@ function renderCellBorders(layout: LayoutResult, cell: { width: number; height: 
     rects.push(
       `<rect x="${fmt(cx - w / 2)}" y="${fmt(cy - cell.height / 2)}" ` +
       `width="${fmt(w)}" height="${fmt(cell.height)}" fill="none" ` +
-      `stroke="${GRID_COLOR}" stroke-width="0.6"/>`
+      // vector-effect: 축소해도 격자선이 sub-pixel 로 사라지지 않도록 화면 기준 두께 유지
+      `stroke="${GRID_COLOR}" stroke-width="0.8" vector-effect="non-scaling-stroke"/>`
     );
   };
   for (const s of layout.stitches) push(s.position.x, s.position.y, s.cell?.span ?? 1);

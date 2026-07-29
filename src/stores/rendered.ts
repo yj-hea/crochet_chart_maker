@@ -17,6 +17,9 @@ export interface RenderedChart {
   width: number;
   height: number;
   totalRounds: number;
+  /** 격자 크래프트(대바늘) 의 칸 크기. 최소 가독 크기 계산에 사용 */
+  cellWidth?: number;
+  cellHeight?: number;
 }
 
 export const renderedChart = derived(
@@ -44,6 +47,9 @@ export const renderedChart = derived(
       width: layout.bounds.width,
       height: layout.bounds.height,
       totalRounds: validRounds.length,
+      ...(layout.cellSize
+        ? { cellWidth: layout.cellSize.width, cellHeight: layout.cellSize.height }
+        : {}),
     };
   },
 );
