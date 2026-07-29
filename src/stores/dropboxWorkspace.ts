@@ -44,9 +44,25 @@ export interface WorkspaceListItem {
 
 export const workspaceList = writable<WorkspaceListItem[]>([]);
 export const activeWorkspaceId = writable<string | null>(loadActiveId());
-export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
+export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline' | 'conflict';
 export const syncStatus = writable<SyncStatus>('offline');
 export const lastSyncAt = writable<Date | null>(null);
+
+/** 충돌한 버전의 요약 — 사용자가 어느 쪽을 남길지 고를 때 보여준다 */
+export interface ConflictSide {
+  savedAt: string;
+  tabNames: string[];
+}
+export interface SyncConflict {
+  workspaceId: string;
+  workspaceName: string;
+  /** 이 기기의 변경 */
+  local: ConflictSide;
+  /** Dropbox 에 이미 올라와 있는 다른 기기의 변경 */
+  remote: ConflictSide;
+}
+/** null 이 아니면 충돌 미해결 — 해결 전까지 자동 업로드를 멈춘다 */
+export const syncConflict = writable<SyncConflict | null>(null);
 
 function loadActiveId(): string | null {
   try {
@@ -87,12 +103,18 @@ let pendingPush = false;
  * 원격을 덮어써서**, 다른 기기에서 새로 만든 탭이 사라진다.
  */
 let watchReady = false;
+/** 마지막으로 확인한 원격 파일 rev — 이 값으로 조건부 업로드해 충돌을 감지한다 */
+let lastKnownRev: string | null = null;
+/** 충돌 시 보류된 로컬 스냅샷 (사용자가 "내 것 유지"를 고르면 이 내용을 올린다) */
+let pendingLocal: NamedWorkspace | null = null;
 /** 원격 적용으로 인한 store 변경은 다시 push 하지 않는다 (에코 방지) */
 let applyingRemote = false;
 
 /** 활성 워크스페이스 변경 시 debounced upload 예약. */
 function scheduleSync(): void {
   if (!isConnected()) return;
+  // 충돌이 해결될 때까지 자동 업로드 중단 — 사용자가 고른 뒤 재개
+  if (get(syncConflict)) return;
   const id = get(activeWorkspaceId);
   if (!id) return;
   pendingPush = true;
@@ -129,11 +151,21 @@ async function runSync(): Promise<void> {
       workspaceId: id,
       workspaceName: meta?.name ?? id,
     };
-    await uploadFile({
-      path: workspacePath(id),
-      content: JSON.stringify(named, null, 2),
-      mode: 'overwrite',
-    });
+    try {
+      const up = await uploadFile({
+        path: workspacePath(id),
+        content: JSON.stringify(named, null, 2),
+        // 마지막으로 본 rev 기준 조건부 업로드 — 그 사이 다른 기기가 올렸으면 실패한다
+        mode: lastKnownRev ? { update: lastKnownRev } : 'overwrite',
+      });
+      lastKnownRev = up.rev;
+    } catch (err) {
+      if (isConflictError(err)) {
+        await enterConflict(id, named);
+        return;
+      }
+      throw err;
+    }
     lastSyncAt.set(new Date());
     syncStatus.set('idle');
     // 워크스페이스 list 의 updatedAt 갱신.
@@ -143,6 +175,107 @@ async function runSync(): Promise<void> {
   } catch (err) {
     console.error('Dropbox sync 실패', err);
     syncStatus.set('error');
+  }
+}
+
+/** update 모드 업로드가 rev 불일치로 거부됐는지 */
+function isConflictError(err: unknown): boolean {
+  if (!(err instanceof DropboxApiError)) return false;
+  return err.status === 409 && err.detail.includes('conflict');
+}
+
+function summarize(ws: SavedWorkspace): ConflictSide {
+  return {
+    savedAt: ws.savedAt,
+    tabNames: ws.tabs.map((t) => t.name),
+  };
+}
+
+/**
+ * 충돌 진입 — 원격 내용을 받아 두 버전을 요약해 사용자에게 선택을 요청한다.
+ * 해결 전까지 자동 업로드는 멈춘다 (`scheduleSync` 가 conflict 를 확인).
+ */
+async function enterConflict(id: string, local: NamedWorkspace): Promise<void> {
+  pendingLocal = local;
+  let remote: NamedWorkspace | null = null;
+  try {
+    const f = await downloadFile(workspacePath(id));
+    if (f) {
+      remote = JSON.parse(f.content) as NamedWorkspace;
+      lastKnownRev = f.rev;
+    }
+  } catch (err) {
+    console.error('충돌 원격 조회 실패', err);
+  }
+  syncConflict.set({
+    workspaceId: id,
+    workspaceName: local.workspaceName,
+    local: summarize(local),
+    remote: remote
+      ? summarize(validateWorkspace(remote))
+      : { savedAt: '', tabNames: [] },
+  });
+  syncStatus.set('conflict');
+}
+
+/**
+ * 충돌 해결.
+ *  - `local`     : 이 기기 내용으로 원격을 덮어쓴다
+ *  - `remote`    : 원격을 받아와 이 기기에 적용한다 (이 기기의 변경은 버림)
+ *  - `keep-both` : 원격은 그대로 두고, 이 기기 내용을 **새 워크스페이스**로 저장한다
+ */
+export async function resolveConflict(choice: 'local' | 'remote' | 'keep-both'): Promise<void> {
+  const conflict = get(syncConflict);
+  if (!conflict) return;
+  const id = conflict.workspaceId;
+  syncStatus.set('syncing');
+  try {
+    if (choice === 'local') {
+      if (!pendingLocal) throw new Error('보류된 로컬 내용이 없습니다');
+      const up = await uploadFile({
+        path: workspacePath(id),
+        content: JSON.stringify(pendingLocal, null, 2),
+        mode: 'overwrite',
+      });
+      lastKnownRev = up.rev;
+      syncConflict.set(null);
+      pendingLocal = null;
+      lastSyncAt.set(new Date());
+      syncStatus.set('idle');
+      return;
+    }
+
+    if (choice === 'remote') {
+      syncConflict.set(null);
+      pendingLocal = null;
+      await switchWorkspace(id);
+      return;
+    }
+
+    // keep-both — 이 기기 내용을 새 파일로. 원격은 건드리지 않는다.
+    if (!pendingLocal) throw new Error('보류된 로컬 내용이 없습니다');
+    const newId = generateWorkspaceId();
+    const copy: NamedWorkspace = {
+      ...pendingLocal,
+      workspaceId: newId,
+      workspaceName: `${conflict.workspaceName} (사본)`,
+    };
+    const up = await uploadFile({
+      path: workspacePath(newId),
+      content: JSON.stringify(copy, null, 2),
+      mode: 'add',
+    });
+    lastKnownRev = up.rev;
+    activeWorkspaceId.set(newId);
+    saveActiveId(newId);
+    syncConflict.set(null);
+    pendingLocal = null;
+    await refreshWorkspaceList();
+    lastSyncAt.set(new Date());
+    syncStatus.set('idle');
+  } catch (err) {
+    syncStatus.set('error');
+    throw err;
   }
 }
 
@@ -209,6 +342,7 @@ export async function switchWorkspace(id: string): Promise<void> {
 
     const f = await downloadFile(workspacePath(id));
     if (!f) throw new Error('워크스페이스 파일이 없습니다');
+    lastKnownRev = f.rev;
     const data = JSON.parse(f.content) as NamedWorkspace;
     const validated = validateWorkspace(data);
     const { applyWorkspace } = await import('./tabs');
@@ -264,11 +398,12 @@ export async function createWorkspace(opts: {
     workspaceId: id,
     workspaceName: opts.name.trim() || id,
   };
-  await uploadFile({
+  const created = await uploadFile({
     path: workspacePath(id),
     content: JSON.stringify(named, null, 2),
     mode: 'add',
   });
+  lastKnownRev = created.rev;
   await refreshWorkspaceList();
   // empty 면 자동 전환, current 면 그대로 활성.
   if (opts.source === 'empty') {
@@ -361,6 +496,9 @@ export function disposeWorkspaceSync(): void {
   stopWorkspaceWatch();
   if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
   pendingPush = false;
+  pendingLocal = null;
+  lastKnownRev = null;
+  syncConflict.set(null);
   workspaceList.set([]);
   syncStatus.set('offline');
 }

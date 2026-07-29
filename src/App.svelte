@@ -6,6 +6,7 @@
   import RoundNavigator from './components/RoundNavigator.svelte';
   import TabBar from './components/TabBar.svelte';
   import HelpModal from './components/HelpModal.svelte';
+  import ConflictModal from './components/ConflictModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
   import WorkspaceMenu from './components/WorkspaceMenu.svelte';
   import { initializeDropbox, lastDropboxAction, dropboxConnected } from './stores/dropbox';
@@ -397,6 +398,9 @@
 </header>
 
 <TabBar />
+
+<!-- Dropbox 동기화 충돌 — 어느 버전을 남길지 사용자가 결정 -->
+<ConflictModal />
 
 {#if helpOpen}
   <HelpModal onClose={() => (helpOpen = false)} />
