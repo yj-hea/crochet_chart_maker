@@ -37,6 +37,8 @@ export type KnitStitchKind =
   | 'KTBL'     // ktbl 꼬아 겉뜨기
   | 'PTBL'     // ptbl 꼬아 안뜨기
   | 'SLIP_ST'  // sl 걸러뜨기 (코바늘 SLIP 과 구분)
+  | 'CAST_ON'  // co 코잡기 (작품 시작 — 부모 없이 코를 만든다)
+  | 'BIND_OFF' // bo 코막음 (코를 없앤다)
   | 'NO_STITCH'// ns 코 없음 (격자 채움용)
   | 'KFB'      // kfb 한 코에 여러 코
   | 'M1L'      // m1l 왼코 늘리기

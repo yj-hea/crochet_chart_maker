@@ -44,6 +44,8 @@
     { id: 'knit-P2TOG',     aliases: 'p2tog',        korean: '안뜨기 왼코겹치기', english: 'p2tog' },
     { id: 'knit-SSP',       aliases: 'ssp',          korean: '안뜨기 오른코겹치기', english: 'ssp' },
     { id: 'knit-NO_STITCH', aliases: 'ns',           korean: '코 없음',       english: 'no stitch' },
+    { id: 'knit-CAST_ON',   aliases: 'co',           korean: '코잡기',        english: 'cast on' },
+    { id: 'knit-BIND_OFF',  aliases: 'bo',           korean: '코막음',        english: 'bind off' },
   ];
 
   function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
@@ -124,6 +126,8 @@
             <tr><td>1코 = 1칸</td><td>한 단의 칸 수 = 그 단이 만든 코 수. 1단이 맨 아래</td></tr>
             <tr><td>코 없음</td><td>단마다 코 수가 다르면 빈 칸을 회색으로 채움 (기본 가운데 정렬)</td></tr>
             <tr><td><code>k3tog</code>·<code>sssk</code></td><td>3코 이상 모아뜨기. <code>k2tog^4</code> 처럼 <code>^N</code> 으로도 지정 가능</td></tr>
+            <tr><td><code>co40</code></td><td>코잡기 40코 — 부모 단 없이 시작. 보통 1단에 쓴다</td></tr>
+            <tr><td><code>bo40</code></td><td>코막음 40코 — 코를 없애며 마무리</td></tr>
           </tbody>
         </table>
       </section>

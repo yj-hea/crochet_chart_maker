@@ -345,3 +345,42 @@ describe('knit 게이지', () => {
     expect(layout.cellSize!.height).toBe(KNIT_CELL_HEIGHT);
   });
 });
+
+describe('코잡기 / 코막음', () => {
+  it('co40 은 부모 없이 40코를 만든다', () => {
+    const r = parseExpand(1, 'co40');
+    expect(r.ops).toHaveLength(40);
+    expect(r.ops[0]!.kind).toBe('CAST_ON');
+    expect(r.totalConsume).toBe(0);
+    expect(r.totalProduce).toBe(40);
+  });
+
+  it('코잡기 단 위에 일반 단이 정확히 얹힌다', () => {
+    const rounds = [parseExpand(1, 'co6'), parseExpand(2, 'k6')];
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    // 두 단 모두 6칸, 채움 없음
+    expect(layout.stitches.filter((s) => s.roundIndex === 1)).toHaveLength(6);
+    expect(layout.fillerCells).toHaveLength(0);
+  });
+
+  it('bo 는 코를 없앤다', () => {
+    const r = parseExpand(3, 'bo6');
+    expect(r.ops[0]!.kind).toBe('BIND_OFF');
+    expect(r.totalConsume).toBe(6);
+    expect(r.totalProduce).toBe(0);
+  });
+
+  it('코막음 칸도 격자에 그려진다', () => {
+    const rounds = [parseExpand(1, 'co4'), parseExpand(2, 'k4'), parseExpand(3, 'bo4')];
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    expect(layout.stitches.filter((s) => s.roundIndex === 3)).toHaveLength(4);
+    const svg = renderKnitSvg({ layout });
+    expect(svg).toContain('#knit-BIND_OFF');
+    expect(svg).toContain('#knit-CAST_ON');
+  });
+
+  it('별칭 cast-on / bind-off 도 인식', () => {
+    expect(parseExpand(1, 'cast-on4').ops[0]!.kind).toBe('CAST_ON');
+    expect(parseExpand(1, 'bind-off4').ops[0]!.kind).toBe('BIND_OFF');
+  });
+});

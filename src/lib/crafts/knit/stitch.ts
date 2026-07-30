@@ -29,6 +29,8 @@ const KNIT_META: Record<KnitStitchKind, StitchMeta> = {
   KTBL:      { kind: 'KTBL',      canonical: 'ktbl',  korean: '꼬아 겉뜨기',   english: 'knit tbl',        baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   PTBL:      { kind: 'PTBL',      canonical: 'ptbl',  korean: '꼬아 안뜨기',   english: 'purl tbl',        baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   SLIP_ST:   { kind: 'SLIP_ST',   canonical: 'sl',    korean: '걸러뜨기',      english: 'slip',            baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  CAST_ON:   { kind: 'CAST_ON',   canonical: 'co',    korean: '코잡기',        english: 'cast on',         baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  BIND_OFF:  { kind: 'BIND_OFF',  canonical: 'bo',    korean: '코막음',        english: 'bind off',        baseConsume: 1, baseProduce: 0, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   NO_STITCH: { kind: 'NO_STITCH', canonical: 'ns',    korean: '코 없음',       english: 'no stitch',       baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   KFB:       { kind: 'KFB',       canonical: 'kfb',   korean: '코늘리기',      english: 'kfb',             baseConsume: 1, baseProduce: 2, expandable: true,  symbolHalfHeight: CELL_HALF_HEIGHT },
   M1L:       { kind: 'M1L',       canonical: 'm1l',   korean: '왼코 늘리기',   english: 'make 1 left',     baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
@@ -88,6 +90,9 @@ const RAW_ALIASES: Record<string, KnitStitchKind> = {
   sl: 'SLIP_ST', slip: 'SLIP_ST', slwyif: 'SLIP_ST', 'sl-wyif': 'SLIP_ST',
   // 코 없음
   ns: 'NO_STITCH',
+  // 코잡기 / 코막음
+  co: 'CAST_ON', caston: 'CAST_ON', 'cast-on': 'CAST_ON',
+  bo: 'BIND_OFF', bindoff: 'BIND_OFF', 'bind-off': 'BIND_OFF',
   // 늘림
   kfb: 'KFB', inc: 'KFB', kfbf: 'KFB',
   m1l: 'M1L', m1r: 'M1R', m1p: 'M1P', m1: 'M1L',

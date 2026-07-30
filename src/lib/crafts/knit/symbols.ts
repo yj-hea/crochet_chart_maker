@@ -38,6 +38,12 @@ export const KNIT_SYMBOL_DEFS = `
   <line x1="-6" y1="-4" x2="6" y2="4" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"/>
   <line x1="-6" y1="4" x2="6" y2="-4" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"/>
 </g>
+<g id="knit-CAST_ON">
+  <ellipse cx="0" cy="0" rx="5" ry="3.2" fill="none" stroke="currentColor" stroke-width="${SW}"/>
+</g>
+<g id="knit-BIND_OFF">
+  <line x1="-7" y1="0" x2="7" y2="0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+</g>
 <g id="knit-KFB">
   <line x1="0" y1="-5" x2="0" y2="5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
   <path d="M -4,-5 L 0,-1 L 4,-5" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round" stroke-linejoin="round"/>
