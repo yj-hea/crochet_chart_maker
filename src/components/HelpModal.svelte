@@ -137,6 +137,18 @@
       </section>
 
       <section>
+        <h3>배색 도안</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>k5:red</code></td><td>그 코들을 지정한 색으로 — <b>칸 배경</b>이 칠해진다</td></tr>
+            <tr><td>기호 색</td><td>배경 밝기에 따라 자동으로 흰색/검정 전환 (어두운 실 위에서도 기호가 보이도록)</td></tr>
+            <tr><td>범례</td><td>차트 아래에 쓰인 색과 코 수를 자동 표시</td></tr>
+            <tr><td>예</td><td><code>3: k2:navy, (k2:cream, k2:navy)*5</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
         <h3>되돌아뜨기 (short row)</h3>
         <table class="syntax-table">
           <tbody>

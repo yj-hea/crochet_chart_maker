@@ -41,3 +41,25 @@ describe('미리보기 표시 배율', () => {
     expect(computeDisplayFit({ chartWidth: 100, chartHeight: 100, availWidth: 0, availHeight: 100 })).toBeNull();
   });
 });
+
+describe('대비색', () => {
+  it('밝은 배경엔 어두운 기호', async () => {
+    const { contrastInk, luminance } = await import('../src/lib/render/contrast');
+    expect(contrastInk('#ffffff')).toBe('#3a3632');
+    expect(contrastInk('#ffe08a')).toBe('#3a3632');
+    expect(luminance('#000000')).toBe(0);
+  });
+
+  it('어두운 배경엔 흰 기호', async () => {
+    const { contrastInk } = await import('../src/lib/render/contrast');
+    expect(contrastInk('#000000')).toBe('#ffffff');
+    expect(contrastInk('#1a237e')).toBe('#ffffff');
+  });
+
+  it('3자리 hex 와 # 없는 값도 인식', async () => {
+    const { parseHex } = await import('../src/lib/render/contrast');
+    expect(parseHex('#fff')).toEqual([255, 255, 255]);
+    expect(parseHex('1e88e5')).toEqual([30, 136, 229]);
+    expect(parseHex('nope')).toBeUndefined();
+  });
+});

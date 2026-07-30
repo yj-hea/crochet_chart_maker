@@ -92,87 +92,37 @@ function computeParents(rows: Op[][]): number[][][] {
 }
 
 /**
- * 인접 두 단의 연결 그룹.
- * 부모 범위 [pStart, pEnd] 와 그에 걸린 자식들. 예)
- *  - 1:1        → 부모 1, 자식 1
- *  - 늘림(kfb)  → 부모 1, 자식 1 (자식이 여러 칸)
- *  - 줄임(k2tog)→ 부모 2, 자식 1
- */
-interface LinkGroup {
-  pStart: number;
-  pEnd: number;
-  children: number[];
-}
-
-function buildGroups(parentsOfRow: number[][]): LinkGroup[] {
-  const groups: LinkGroup[] = [];
-  let cur: LinkGroup | undefined;
-  parentsOfRow.forEach((ps, childIdx) => {
-    if (ps.length === 0) return; // 부모 없는 코(yo, m1l)는 아래 단에 빈 칸으로 처리
-    const lo = Math.min(...ps);
-    const hi = Math.max(...ps);
-    if (cur && lo <= cur.pEnd) {
-      cur.pEnd = Math.max(cur.pEnd, hi);
-      cur.children.push(childIdx);
-    } else {
-      if (cur) groups.push(cur);
-      cur = { pStart: lo, pEnd: hi, children: [childIdx] };
-    }
-  });
-  if (cur) groups.push(cur);
-  return groups;
-}
-
-/**
- * 각 코의 폭(단위 칸 수)을 계산.
+ * 칸 계획 — 인접 두 단의 **순 증감분만큼만** 좁은 쪽을 넓힌다.
  *
- * cascade ON 이면 인접 두 단의 연결 그룹마다
- * "부모들의 폭 합 == 자식들의 폭 합" 이 되도록 좁은 쪽을 넓힌다.
- *  - 늘림: 자식이 더 넓음 → 부모 칸이 넓어진다 (요청 동작)
- *  - 줄임: 부모가 더 넓음 → 자식 칸이 넓어진다
- * 아래 단이 넓어지면 그 아래 단에도 영향을 주므로 수렴할 때까지 반복한다.
+ * 코 수가 변하지 않는 단(레이스의 `yo`+`ssk` 처럼 늘림과 줄임이 상쇄되는 경우)은
+ * 아무것도 건드리지 않아 격자가 직사각형으로 유지된다 — 실제 차트 관행.
+ * 코 수가 변하는 단만 그 차이만큼 조정한다:
+ *
+ * | 상황 | 조정 |
+ * |---|---|
+ * | 자식 단이 좁음 (줄임) | 줄임 칸을 부모들 폭까지 넓힘 → 남으면 자식 없는 부모 위에 빈 칸 |
+ * | 부모 단이 좁음 (늘림) | 늘림 부모 칸을 자식들 폭까지 넓힘 → 남으면 부모 없는 코 아래에 빈 칸 |
+ *
+ * cascade OFF 면 칸을 넓히지 않고 빈 칸으로만 맞춘다 (구조 위치는 동일).
  */
-function computeSpans(rows: Op[][], parents: number[][][], cascade: boolean): number[][] {
-  const spans = rows.map((ops) => ops.map(ownSpan));
-  if (!cascade) return spans;
-
-  const groupsByRow = rows.map((_, r) => (r === 0 ? [] : buildGroups(parents[r]!)));
-
-  for (let pass = 0; pass < WIDTH_PASSES; pass++) {
-    let changed = false;
-    for (let r = rows.length - 1; r >= 1; r--) {
-      for (const g of groupsByRow[r]!) {
-        let pSum = 0;
-        for (let p = g.pStart; p <= g.pEnd; p++) pSum += spans[r - 1]![p]!;
-        const cSum = g.children.reduce((acc, c) => acc + spans[r]![c]!, 0);
-        const width = Math.max(pSum, cSum);
-        // 좁은 쪽의 첫 칸이 차이를 흡수한다
-        if (pSum < width) { spans[r - 1]![g.pStart]! += width - pSum; changed = true; }
-        if (cSum < width) { spans[r]![g.children[0]!]! += width - cSum; changed = true; }
-      }
-    }
-    if (!changed) break;
-  }
-  return spans;
+interface RowPlan {
+  /** op 별 칸 폭 */
+  spans: number[];
+  /** op 앞에 끼워 넣을 빈 칸들의 폭 (index = op 인덱스, 마지막은 ops.length = 행 끝) */
+  gapsBefore: Map<number, number[]>;
 }
 
-/**
- * 표시용 칸 배열을 만든다. cascade ON 이면 위 단부터 내려오며
- * 부모 없는 코(`yo`, `m1l`) 아래에 같은 폭의 no-stitch 칸을 끼워 넣는다.
- * (그 칸 자체도 부모가 없으므로 더 아래 단으로 계속 전파된다.)
- */
-function buildCellRows(
-  rows: Op[][],
-  parents: number[][][],
-  spans: number[][],
-  cascade: boolean,
-): Cell[][] {
-  const cellRows: Cell[][] = rows.map((ops, r) =>
-    ops.map((op, i) => ({ op, span: spans[r]![i]! })),
-  );
-  if (!cascade) return cellRows;
+function sum(ns: readonly number[]): number {
+  return ns.reduce((a, b) => a + b, 0);
+}
 
-  // 자식 목록 — 아래→위 전파(중간 코막음 등)에 사용
+function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPlan[] {
+  const plans: RowPlan[] = rows.map((ops) => ({
+    spans: ops.map(ownSpan),
+    gapsBefore: new Map<number, number[]>(),
+  }));
+
+  // 자식 목록
   const children: number[][][] = rows.map((ops) => ops.map(() => []));
   for (let r = 1; r < rows.length; r++) {
     parents[r]!.forEach((ps, childIdx) => {
@@ -180,71 +130,114 @@ function buildCellRows(
     });
   }
 
-  // 1) 위 → 아래: 부모 없는 코(yo, m1l, 단 중간 co) 아래에 빈 칸
-  for (let r = rows.length - 2; r >= 0; r--) {
-    const above = cellRows[r + 1]!;
-    const ops = rows[r]!;
-    const out: Cell[] = [];
-    let emitted = 0;       // 다음에 내보낼 이 단의 op 인덱스
-    let aboveOpIdx = 0;    // above 에서 실제 op 인 칸의 인덱스
+  const addGap = (plan: RowPlan, at: number, span: number) => {
+    const list = plan.gapsBefore.get(at) ?? [];
+    list.push(span);
+    plan.gapsBefore.set(at, list);
+  };
+  const gapUnits = (plan: RowPlan): number =>
+    [...plan.gapsBefore.values()].reduce((acc, l) => acc + sum(l), 0);
+  const rowUnits = (r: number): number => sum(plans[r]!.spans) + gapUnits(plans[r]!);
 
-    for (const cell of above) {
-      if (!cell.op) {
-        // 위 단의 no-stitch 칸 → 아래로도 그대로 전파
-        out.push({ span: cell.span });
-        continue;
-      }
-      const ps = parents[r + 1]![aboveOpIdx++]!;
-      if (ps.length === 0) {
-        // 부모 없는 코 (yo, m1l, 감아코 …) → 아래 단에 빈 칸
-        out.push({ span: cell.span });
-        continue;
-      }
-      const lastParent = Math.max(...ps);
-      while (emitted <= lastParent && emitted < ops.length) {
-        out.push({ op: ops[emitted]!, span: spans[r]![emitted]! });
-        emitted++;
+  for (let pass = 0; pass < WIDTH_PASSES; pass++) {
+    let changed = false;
+
+    for (let r = 1; r < rows.length; r++) {
+      const parentPlan = plans[r - 1]!;
+      const childPlan = plans[r]!;
+      let diff = rowUnits(r - 1) - rowUnits(r);
+
+      if (diff > 0) {
+        // 자식 단이 좁다 — 줄임 칸을 부모 폭까지 넓힌 뒤, 남으면 자식 없는 부모 위에 빈 칸
+        if (cascade) {
+          for (let i = 0; i < rows[r]!.length && diff > 0; i++) {
+            const ps = parents[r]![i]!;
+            if (ps.length === 0) continue;
+            const target = sum(ps.map((p) => parentPlan.spans[p]!));
+            const extra = Math.min(diff, target - childPlan.spans[i]!);
+            if (extra > 0) { childPlan.spans[i]! += extra; diff -= extra; changed = true; }
+          }
+        }
+        for (let p = 0; p < rows[r - 1]!.length && diff > 0; p++) {
+          if (children[r - 1]![p]!.length > 0) continue;
+          // 이 부모는 이 단이 소비하지 않았다 (코막음·남은 코) → 바로 위에 빈 칸
+          const at = firstChildIndexAfter(parents[r]!, p);
+          const span = Math.min(diff, parentPlan.spans[p]!);
+          addGap(childPlan, at, span);
+          diff -= span;
+          changed = true;
+        }
+        // 그래도 남으면 줄임 코 옆에 빈 칸 (cascade OFF 에서 칸을 못 넓힐 때)
+        for (let i = 0; i < rows[r]!.length && diff > 0; i++) {
+          const ps = parents[r]![i]!;
+          if (ps.length <= 1) continue;
+          const room = sum(ps.map((p) => parentPlan.spans[p]!)) - childPlan.spans[i]!;
+          const span = Math.min(diff, room);
+          if (span > 0) { addGap(childPlan, i, span); diff -= span; changed = true; }
+        }
+      } else if (diff < 0) {
+        // 부모 단이 좁다 — 늘림 부모 칸을 자식 폭까지 넓힌 뒤, 남으면 부모 없는 코 아래 빈 칸
+        let need = -diff;
+        if (cascade) {
+          for (let p = 0; p < rows[r - 1]!.length && need > 0; p++) {
+            const kids = children[r - 1]![p]!;
+            if (kids.length === 0) continue;
+            const target = sum(kids.map((c) => childPlan.spans[c]!));
+            const extra = Math.min(need, target - parentPlan.spans[p]!);
+            if (extra > 0) { parentPlan.spans[p]! += extra; need -= extra; changed = true; }
+          }
+        }
+        for (let i = 0; i < rows[r]!.length && need > 0; i++) {
+          if (parents[r]![i]!.length > 0) continue;
+          // 부모 없는 코 (yo, m1, 감아코) → 바로 아래에 빈 칸
+          const at = lastParentIndexBefore(parents[r]!, i) + 1;
+          const span = Math.min(need, childPlan.spans[i]!);
+          addGap(parentPlan, at, span);
+          need -= span;
+          changed = true;
+        }
+        // 그래도 남으면 늘림 부모 옆에 빈 칸 (cascade OFF 에서 칸을 못 넓힐 때)
+        for (let p = 0; p < rows[r - 1]!.length && need > 0; p++) {
+          const kids = children[r - 1]![p]!;
+          if (kids.length === 0) continue;
+          const room = sum(kids.map((c) => childPlan.spans[c]!)) - parentPlan.spans[p]!;
+          const span = Math.min(need, room);
+          if (span > 0) { addGap(parentPlan, p + 1, span); need -= span; changed = true; }
+        }
       }
     }
-    // 위 단이 소비하지 않은 나머지 코
-    while (emitted < ops.length) {
-      out.push({ op: ops[emitted]!, span: spans[r]![emitted]! });
-      emitted++;
-    }
-    cellRows[r] = out;
+    if (!changed) break;
   }
+  return plans;
+}
 
-  // 2) 아래 → 위: 자식 없는 코(단 중간 코막음 등) 위에 빈 칸.
-  //    그 빈 칸도 자식이 없으므로 더 위 단으로 계속 전파된다.
-  for (let r = 1; r < rows.length; r++) {
-    const below = cellRows[r - 1]!;
-    const cur = cellRows[r]!;
-    const out: Cell[] = [];
-    let cursor = 0;        // cur 에서 다음에 내보낼 칸
-    let belowOpIdx = 0;    // below 에서 실제 op 인 칸의 인덱스
-
-    for (const cell of below) {
-      if (!cell.op) {
-        // 아래 단의 빈 칸 = 이 단에 부모 없는 코가 있던 자리 → 그 코를 그대로 내보냄
-        if (cursor < cur.length) out.push(cur[cursor++]!);
-        continue;
-      }
-      const kids = children[r - 1]![belowOpIdx++]!;
-      if (kids.length === 0) {
-        // 이 단이 소비하지 않은 코 (코막음·남은 코) → 위 단에 빈 칸
-        out.push({ span: cell.span });
-        continue;
-      }
-      // 이 부모의 자식들을 내보낸다 (이미 내보낸 칸은 건너뜀)
-      for (let k = 0; k < kids.length && cursor < cur.length; k++) {
-        out.push(cur[cursor++]!);
-      }
-    }
-    while (cursor < cur.length) out.push(cur[cursor++]!);
-    cellRows[r] = out;
+/** 부모 인덱스 p 바로 위 위치 — p 이후를 처음 소비하는 자식의 인덱스 */
+function firstChildIndexAfter(parentsOfRow: number[][], p: number): number {
+  for (let i = 0; i < parentsOfRow.length; i++) {
+    const ps = parentsOfRow[i]!;
+    if (ps.length > 0 && Math.max(...ps) > p) return i;
   }
+  return parentsOfRow.length;
+}
 
-  return cellRows;
+/** 자식 인덱스 i 바로 아래 위치 — i 이전 자식들이 소비한 마지막 부모 */
+function lastParentIndexBefore(parentsOfRow: number[][], i: number): number {
+  let last = -1;
+  for (let k = 0; k < i; k++) {
+    const ps = parentsOfRow[k]!;
+    if (ps.length > 0) last = Math.max(last, Math.max(...ps));
+  }
+  return last;
+}
+
+/** 계획을 실제 칸 배열로 펼친다 */
+function toCells(ops: Op[], plan: RowPlan): Cell[] {
+  const out: Cell[] = [];
+  for (let i = 0; i <= ops.length; i++) {
+    for (const span of plan.gapsBefore.get(i) ?? []) out.push({ span });
+    if (i < ops.length) out.push({ op: ops[i]!, span: plan.spans[i]! });
+  }
+  return out;
 }
 
 export function layoutKnitGrid(
@@ -265,10 +258,10 @@ export function layoutKnitGrid(
   });
   const opRows = meta.map((m) => m.ops);
 
-  // 2) 부모 연결 → 폭 전파 → 표시 칸 배열
+  // 2) 부모 연결 → 칸 계획(순 증감분만 조정) → 표시 칸 배열
   const parents = computeParents(opRows);
-  const spans = computeSpans(opRows, parents, cascade);
-  const cellRows = buildCellRows(opRows, parents, spans, cascade);
+  const plans = planRows(opRows, parents, cascade);
+  const cellRows = opRows.map((ops, r) => toCells(ops, plans[r]!));
 
   const rowSpans = cellRows.map((cells) => cells.reduce((sum, c) => sum + c.span, 0));
   const chartSpan = rowSpans.reduce((max, s) => Math.max(max, s), 0);

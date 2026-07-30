@@ -11,6 +11,7 @@
 import type { LayoutResult, PositionedStitch, RoundMarker } from '$lib/layout/types';
 import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
+import { contrastInk } from '$lib/render/contrast';
 
 const NO_STITCH_FILL = '#e8e5e0';
 
@@ -18,15 +19,28 @@ export interface KnitRenderOptions {
   layout: LayoutResult;
   /** 대바늘은 격자가 도안의 일부라 기본 true. false 면 테두리를 숨긴다. */
   showGrid?: boolean;
+  /** 배색 범례 표시 (기본 true — 색이 쓰인 경우에만 그려짐) */
+  showLegend?: boolean;
 }
+
+const LEGEND_ROW_HEIGHT = 13;
+const LEGEND_GAP = 8;
+const LEGEND_SWATCH = 9;
 
 export function renderKnitSvg(opts: KnitRenderOptions): string {
   const { layout } = opts;
   const showGrid = opts.showGrid ?? true;
   const { bounds } = layout;
   const pad = 4;
-  const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ${bounds.width + pad * 2} ${bounds.height + pad * 2}`;
   const cell = layout.cellSize ?? { width: 20, height: 14 };
+
+  // 배색 범례 — 쓰인 색과 코 수. 색이 없으면 그리지 않는다.
+  const legend = (opts.showLegend ?? true) ? collectColors(layout) : [];
+  const legendHeight = legend.length > 0
+    ? LEGEND_GAP + legend.length * LEGEND_ROW_HEIGHT
+    : 0;
+  const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ` +
+    `${bounds.width + pad * 2} ${bounds.height + legendHeight + pad * 2}`;
 
   // 미작업 코(unw) 는 실제 코지만 되돌아뜨기로 뜨지 않은 자리라 회색으로 채운다
   const greyCells = [
@@ -40,9 +54,11 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
     renderFillers(greyCells, cell),
+    renderColorCells(layout.stitches, cell),
     showGrid ? renderCellBorders(layout, cell) : '',
     renderRoundGroups(layout.stitches),
     renderRoundNumbers(layout.roundMarkers),
+    renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
     `</svg>`,
   ].join('');
 }
@@ -98,9 +114,60 @@ function renderRoundGroups(stitches: PositionedStitch[]): string {
 }
 
 function renderStitchUse(s: PositionedStitch): string {
-  const colorStyle = s.op.color ? ` style="color: ${escapeAttr(s.op.color)}"` : '';
+  // 배색 도안: 색은 **칸 배경**으로 칠하고 기호는 대비색으로 그린다
+  const colorStyle = s.op.color ? ` style="color: ${escapeAttr(contrastInk(s.op.color))}"` : '';
   // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
   return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
+}
+
+/** 색이 지정된 칸의 배경 채움 */
+function renderColorCells(
+  stitches: PositionedStitch[],
+  cell: { width: number; height: number },
+): string {
+  const rects: string[] = [];
+  for (const s of stitches) {
+    if (!s.op.color) continue;
+    const w = (s.cell?.span ?? 1) * cell.width;
+    rects.push(
+      `<rect x="${fmt(s.position.x - w / 2)}" y="${fmt(s.position.y - cell.height / 2)}" ` +
+      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${escapeAttr(s.op.color)}"/>`
+    );
+  }
+  if (rects.length === 0) return '';
+  return `<g class="colorwork">${rects.join('')}</g>`;
+}
+
+/** 도안에 쓰인 색과 코 수 (많이 쓰인 순) */
+function collectColors(layout: LayoutResult): Array<{ color: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const s of layout.stitches) {
+    if (!s.op.color) continue;
+    counts.set(s.op.color, (counts.get(s.op.color) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([color, count]) => ({ color, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/** 배색 범례 — 색 견본 + 코 수 */
+function renderLegend(
+  entries: Array<{ color: string; count: number }>,
+  x: number,
+  y: number,
+): string {
+  if (entries.length === 0) return '';
+  const rows = entries.map((e, i) => {
+    const ry = y + i * LEGEND_ROW_HEIGHT;
+    return (
+      `<rect x="${fmt(x)}" y="${fmt(ry)}" width="${LEGEND_SWATCH}" height="${LEGEND_SWATCH}" ` +
+      `fill="${escapeAttr(e.color)}" stroke="${GRID_COLOR}" stroke-width="0.6"/>` +
+      `<text x="${fmt(x + LEGEND_SWATCH + 4)}" y="${fmt(ry + LEGEND_SWATCH / 2)}" font-size="7" ` +
+      `font-family="system-ui, sans-serif" fill="${STITCH_COLOR}" dominant-baseline="central">` +
+      `${escapeAttr(e.color)} — ${e.count}코</text>`
+    );
+  });
+  return `<g class="legend">${rows.join('')}</g>`;
 }
 
 /** 단 번호 — 겉면 단은 격자 오른쪽, 안면 단은 왼쪽 */

@@ -174,20 +174,54 @@ describe('knit 격자 레이아웃', () => {
     expect(flat.stitches.map((s) => s.position.x)).toEqual(round.stitches.map((s) => s.position.x));
   });
 
-  it('cascade OFF: 코 수가 다르면 좌우 no-stitch 로 채운다 (기본 가운데 정렬)', () => {
+  it('cascade OFF 에서도 빈 칸은 구조 위치에 놓인다', () => {
+    // 2단이 4코만 소비 → 남은 부모 2개 위가 빈 칸 (가장자리 정렬이 아님)
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    // 2단은 4칸 → 좌우 1칸씩 채움
     expect(layout.fillerCells).toHaveLength(2);
     const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
-    expect(row2[0]!.cell!.col).toBe(1);
+    expect(row2[0]!.cell!.col).toBe(0);
+    // 빈 칸은 2단(위) 에 있고 소비되지 않은 부모 위에 위치
+    const row1Y = layout.stitches.find((s) => s.roundIndex === 1)!.position.y;
+    expect(layout.fillerCells!.every((f) => f.y < row1Y)).toBe(true);
   });
 
-  it('cascade OFF + align=L 이면 왼쪽 정렬', () => {
-    const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round', align: 'L', cascade: false });
-    const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
-    expect(row2[0]!.cell!.col).toBe(0);
+  it('코 수가 변하지 않는 단은 격자가 직사각형을 유지한다 (레이스)', () => {
+    // yo 로 늘고 ssk 로 줄어 총 코 수 동일 → 빈 칸도 넓힘도 없어야 한다
+    const rows = ['k6', 'k1, yo, ssk, k3', 'k6'];
+    for (const cascade of [true, false]) {
+      const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
+      expect(layout.fillerCells, `cascade ${cascade}`).toHaveLength(0);
+      expect(layout.stitches.every((s) => s.cell!.span === 1)).toBe(true);
+      expect(layout.bounds.width - 36).toBe(6 * KNIT_CELL_WIDTH);
+    }
+  });
+
+  it('늘림 위치 바로 아래에 빈 칸이 온다 (래글런)', () => {
+    const rows = ['k6', 'k1, m1l, k4, m1r, k1', 'k8'];
+    for (const cascade of [true, false]) {
+      const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
+      const fills = layout.fillerCells!;
+      expect(fills, `cascade ${cascade}`).toHaveLength(2);
+      // 빈 칸의 x 가 m1 코의 x 와 일치 (가장자리가 아님)
+      const m1x = layout.stitches
+        .filter((s) => s.op.kind === 'M1L' || s.op.kind === 'M1R')
+        .map((s) => s.position.x).sort((a, b) => a - b);
+      expect(fills.map((f) => f.x).sort((a, b) => a - b)).toEqual(m1x);
+    }
+  });
+
+  it('cascade OFF 는 칸을 넓히지 않고 옆 빈 칸으로 맞춘다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
+    const on = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    const off = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
+    // ON: 부모 칸이 2칸으로 넓어짐 / OFF: 부모 옆에 빈 칸
+    expect(on.stitches.filter((s) => s.roundIndex === 1 && s.cell!.span === 2)).toHaveLength(1);
+    expect(on.fillerCells).toHaveLength(0);
+    expect(off.stitches.filter((s) => s.roundIndex === 1).every((s) => s.cell!.span === 1)).toBe(true);
+    expect(off.fillerCells).toHaveLength(1);
   });
 
   it('cascade ON: 소비되지 않은 부모 위에 빈 칸이 생긴다', () => {
@@ -475,5 +509,43 @@ describe('단 중간 코막음 / 감아코', () => {
   it('감아코 별칭 ewrap / blco', () => {
     expect(parseExpand(1, 'ewrap3').ops[0]!.kind).toBe('CAST_ON');
     expect(parseExpand(1, 'blco3').ops[0]!.kind).toBe('CAST_ON');
+  });
+});
+
+describe('배색 도안', () => {
+  const rows = ['co6', 'k2:red, k2:navy, k2:red'];
+  const build = () => rows.map((src, i) => parseExpand(i + 1, src));
+
+  it('색은 칸 배경으로 칠해진다', () => {
+    const layout = layoutKnitGrid(build(), { shape: 'round' });
+    const svg = renderKnitSvg({ layout });
+    expect(svg).toContain('class="colorwork"');
+    // 칸 크기의 rect 로 채워짐
+    expect(svg).toMatch(/<g class="colorwork">.*<rect [^>]*fill="#[0-9a-f]{6}"/i);
+  });
+
+  it('어두운 칸 위 기호는 흰색, 밝은 칸 위는 어두운 색', () => {
+    const layout = layoutKnitGrid(build(), { shape: 'round' });
+    const svg = renderKnitSvg({ layout });
+    // navy(어두움) 위 기호 → 흰색
+    expect(svg).toContain('style="color: #ffffff"');
+  });
+
+  it('범례에 쓰인 색과 코 수가 나온다', () => {
+    const layout = layoutKnitGrid(build(), { shape: 'round' });
+    const svg = renderKnitSvg({ layout });
+    expect(svg).toContain('class="legend"');
+    expect(svg).toContain('4코'); // red 4
+    expect(svg).toContain('2코'); // navy 2
+  });
+
+  it('색이 없으면 범례를 그리지 않는다', () => {
+    const layout = layoutKnitGrid([parseExpand(1, 'k6')], { shape: 'round' });
+    expect(renderKnitSvg({ layout })).not.toContain('class="legend"');
+  });
+
+  it('showLegend=false 로 끌 수 있다', () => {
+    const layout = layoutKnitGrid(build(), { shape: 'round' });
+    expect(renderKnitSvg({ layout, showLegend: false })).not.toContain('class="legend"');
   });
 });
