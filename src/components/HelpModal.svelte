@@ -44,7 +44,10 @@
     { id: 'knit-P2TOG',     aliases: 'p2tog',        korean: '안뜨기 왼코겹치기', english: 'p2tog' },
     { id: 'knit-SSP',       aliases: 'ssp',          korean: '안뜨기 오른코겹치기', english: 'ssp' },
     { id: 'knit-NO_STITCH', aliases: 'ns',           korean: '코 없음',       english: 'no stitch' },
-    { id: 'knit-CAST_ON',   aliases: 'co',           korean: '코잡기',        english: 'cast on' },
+    { id: 'knit-CAST_ON',   aliases: 'co, ewrap',    korean: '코잡기 / 감아코', english: 'cast on' },
+    { id: 'knit-UNWORKED',  aliases: 'unw',          korean: '미작업 코',     english: 'unworked' },
+    { id: 'knit-WRAP_TURN', aliases: 'wt, w&t',      korean: '되돌아뜨기',    english: 'wrap & turn' },
+    { id: 'knit-DOUBLE_ST', aliases: 'ds',           korean: '독일식 되돌아뜨기', english: 'double stitch' },
     { id: 'knit-BIND_OFF',  aliases: 'bo',           korean: '코막음',        english: 'bind off' },
   ];
 
@@ -127,7 +130,22 @@
             <tr><td>코 없음</td><td>단마다 코 수가 다르면 빈 칸을 회색으로 채움 (기본 가운데 정렬)</td></tr>
             <tr><td><code>k3tog</code>·<code>sssk</code></td><td>3코 이상 모아뜨기. <code>k2tog^4</code> 처럼 <code>^N</code> 으로도 지정 가능</td></tr>
             <tr><td><code>co40</code></td><td>코잡기 40코 — 부모 단 없이 시작. 보통 1단에 쓴다</td></tr>
-            <tr><td><code>bo40</code></td><td>코막음 40코 — 코를 없애며 마무리</td></tr>
+            <tr><td><code>bo40</code></td><td>코막음 40코 — 코를 없애며 마무리. <b>단 중간</b>에 쓰면 진동·목선 파기 (위쪽에 빈 칸이 생김)</td></tr>
+            <tr><td><code>co5</code> (단 중간)</td><td><b>감아코</b> — 단 중간에서 코를 새로 만듦 (아래쪽에 빈 칸이 생김)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>되돌아뜨기 (short row)</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>wt</code> / <code>ds</code></td><td>되돌아뜨기 turn — 감아뜨기(wrap &amp; turn) / 독일식(double stitch)</td></tr>
+            <tr><td><code>unw</code></td><td><b>미작업 코</b> — 뜨지 않고 바늘에 남겨둔 코. 코 수가 보존되므로 경고가 뜨지 않고, 격자에는 회색으로 표시</td></tr>
+            <tr><td>쓰는 위치</td><td><b>그 단의 작업 순서대로</b> 적는다. 아직 안 지난 코면 뒤에, 이미 지나온 코면 앞에.<br>
+              예) <code>3: k12, wt, unw7</code> (가는 단 — 남은 7코는 앞쪽)<br>
+              <code>4: unw7, p13</code> (돌아오는 단 — 그 7코는 이미 지나옴)</td></tr>
+            <tr><td>확인</td><td>가는 단과 오는 단의 회색 구간이 <b>같은 열</b>에 오면 올바르게 적은 것</td></tr>
           </tbody>
         </table>
       </section>

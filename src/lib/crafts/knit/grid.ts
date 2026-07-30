@@ -172,6 +172,15 @@ function buildCellRows(
   );
   if (!cascade) return cellRows;
 
+  // 자식 목록 — 아래→위 전파(중간 코막음 등)에 사용
+  const children: number[][][] = rows.map((ops) => ops.map(() => []));
+  for (let r = 1; r < rows.length; r++) {
+    parents[r]!.forEach((ps, childIdx) => {
+      for (const p of ps) children[r - 1]![p]!.push(childIdx);
+    });
+  }
+
+  // 1) 위 → 아래: 부모 없는 코(yo, m1l, 단 중간 co) 아래에 빈 칸
   for (let r = rows.length - 2; r >= 0; r--) {
     const above = cellRows[r + 1]!;
     const ops = rows[r]!;
@@ -187,7 +196,7 @@ function buildCellRows(
       }
       const ps = parents[r + 1]![aboveOpIdx++]!;
       if (ps.length === 0) {
-        // 부모 없는 코 (yo, m1l …) → 아래 단에 빈 칸
+        // 부모 없는 코 (yo, m1l, 감아코 …) → 아래 단에 빈 칸
         out.push({ span: cell.span });
         continue;
       }
@@ -204,6 +213,37 @@ function buildCellRows(
     }
     cellRows[r] = out;
   }
+
+  // 2) 아래 → 위: 자식 없는 코(단 중간 코막음 등) 위에 빈 칸.
+  //    그 빈 칸도 자식이 없으므로 더 위 단으로 계속 전파된다.
+  for (let r = 1; r < rows.length; r++) {
+    const below = cellRows[r - 1]!;
+    const cur = cellRows[r]!;
+    const out: Cell[] = [];
+    let cursor = 0;        // cur 에서 다음에 내보낼 칸
+    let belowOpIdx = 0;    // below 에서 실제 op 인 칸의 인덱스
+
+    for (const cell of below) {
+      if (!cell.op) {
+        // 아래 단의 빈 칸 = 이 단에 부모 없는 코가 있던 자리 → 그 코를 그대로 내보냄
+        if (cursor < cur.length) out.push(cur[cursor++]!);
+        continue;
+      }
+      const kids = children[r - 1]![belowOpIdx++]!;
+      if (kids.length === 0) {
+        // 이 단이 소비하지 않은 코 (코막음·남은 코) → 위 단에 빈 칸
+        out.push({ span: cell.span });
+        continue;
+      }
+      // 이 부모의 자식들을 내보낸다 (이미 내보낸 칸은 건너뜀)
+      for (let k = 0; k < kids.length && cursor < cur.length; k++) {
+        out.push(cur[cursor++]!);
+      }
+    }
+    while (cursor < cur.length) out.push(cur[cursor++]!);
+    cellRows[r] = out;
+  }
+
   return cellRows;
 }
 

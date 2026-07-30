@@ -174,20 +174,32 @@ describe('knit 격자 레이아웃', () => {
     expect(flat.stitches.map((s) => s.position.x)).toEqual(round.stitches.map((s) => s.position.x));
   });
 
-  it('코 수가 다르면 no-stitch 로 채운다 (기본 가운데 정렬)', () => {
+  it('cascade OFF: 코 수가 다르면 좌우 no-stitch 로 채운다 (기본 가운데 정렬)', () => {
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round' });
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
     // 2단은 4칸 → 좌우 1칸씩 채움
     expect(layout.fillerCells).toHaveLength(2);
     const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
     expect(row2[0]!.cell!.col).toBe(1);
   });
 
-  it('align=L 이면 왼쪽 정렬', () => {
+  it('cascade OFF + align=L 이면 왼쪽 정렬', () => {
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round', align: 'L' });
+    const layout = layoutKnitGrid(rounds, { shape: 'round', align: 'L', cascade: false });
     const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
     expect(row2[0]!.cell!.col).toBe(0);
+  });
+
+  it('cascade ON: 소비되지 않은 부모 위에 빈 칸이 생긴다', () => {
+    const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round' });
+    const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
+    // 실제 코 4개는 왼쪽부터, 남은 부모 2개 위는 빈 칸
+    expect(row2[0]!.cell!.col).toBe(0);
+    expect(layout.fillerCells).toHaveLength(2);
+    const row1Y = layout.stitches.find((s) => s.roundIndex === 1)!.position.y;
+    // 빈 칸은 2단(위쪽) 에 위치
+    expect(layout.fillerCells!.every((f) => f.y < row1Y)).toBe(true);
   });
 
   it('kfb 는 만든 코 수만큼 칸을 차지', () => {
@@ -382,5 +394,86 @@ describe('코잡기 / 코막음', () => {
   it('별칭 cast-on / bind-off 도 인식', () => {
     expect(parseExpand(1, 'cast-on4').ops[0]!.kind).toBe('CAST_ON');
     expect(parseExpand(1, 'bind-off4').ops[0]!.kind).toBe('BIND_OFF');
+  });
+});
+
+describe('되돌아뜨기 (short row)', () => {
+  it('unw 는 뜨지 않고 코를 통과시킨다 (1 → 1)', () => {
+    const r = parseExpand(3, 'unw7');
+    expect(r.ops[0]!.kind).toBe('UNWORKED');
+    expect(r.totalConsume).toBe(7);
+    expect(r.totalProduce).toBe(7);
+  });
+
+  it('짧은 단도 코 수가 보존되어 경고가 나지 않는다', () => {
+    const r = parseExpand(3, 'k12, wt, unw7');
+    expect(r.totalConsume).toBe(20);
+    expect(r.totalProduce).toBe(20);
+  });
+
+  it('wt / w&t / ds 인식', () => {
+    expect(parseExpand(1, 'wt').ops[0]!.kind).toBe('WRAP_TURN');
+    expect(parseExpand(1, 'w&t').ops[0]!.kind).toBe('WRAP_TURN');
+    expect(parseExpand(1, 'ds').ops[0]!.kind).toBe('DOUBLE_ST');
+  });
+
+  it('미작업 코는 회색 칸으로 그려진다', () => {
+    const rounds = [parseExpand(1, 'co6'), parseExpand(2, 'k3, wt, unw2')];
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    const svg = renderKnitSvg({ layout });
+    expect(svg).toContain('class="no-stitch"');
+    expect(svg).toContain('#knit-WRAP_TURN');
+    // 미작업 코도 코이므로 stitches 에 남아 있다 (진행 추적용)
+    expect(layout.stitches.filter((s) => s.op.kind === 'UNWORKED')).toHaveLength(2);
+  });
+
+  it('되돌아뜨기 후 전체 단을 다시 뜰 수 있다', () => {
+    // 돌아오는 단(WS)에서는 이미 지나온 미작업 코를 **앞에** 적는다
+    const rows = ['co20', 'k20', 'k12, wt, unw7', 'unw7, p13', 'k20'];
+    const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+    // 모든 단이 20코를 유지
+    for (const r of rounds.slice(1)) expect(r.totalProduce).toBe(20);
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    expect(layout.stitches.filter((s) => s.roundIndex === 5)).toHaveLength(20);
+  });
+
+  it('가는 단과 오는 단의 미작업 구간이 같은 열에 놓인다', () => {
+    const rows = ['co8', 'k8', 'k5, wt, unw2', 'unw2, p6'];
+    const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    const xs = (round: number) => layout.stitches
+      .filter((s) => s.roundIndex === round && s.op.kind === 'UNWORKED')
+      .map((s) => s.position.x)
+      .sort((a, b) => a - b);
+    expect(xs(3)).toEqual(xs(4));
+    expect(xs(3)).toHaveLength(2);
+  });
+});
+
+describe('단 중간 코막음 / 감아코', () => {
+  it('중간 코막음 위에는 빈 칸이 생긴다', () => {
+    const rounds = [parseExpand(1, 'co10'), parseExpand(2, 'k3, bo4, k3'), parseExpand(3, 'k6')];
+    expect(rounds[1]!.totalConsume).toBe(10);
+    expect(rounds[1]!.totalProduce).toBe(6);
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    // 3단은 실제 6코 + 코막음 자리 4칸(빈 칸)
+    expect(layout.stitches.filter((s) => s.roundIndex === 3)).toHaveLength(6);
+    const row3Y = layout.stitches.find((s) => s.roundIndex === 3)!.position.y;
+    expect(layout.fillerCells!.filter((f) => f.y === row3Y)).toHaveLength(4);
+  });
+
+  it('감아코(단 중간 co)는 아래에 빈 칸을 만든다', () => {
+    const rounds = [parseExpand(1, 'co6'), parseExpand(2, 'k3, co4, k3')];
+    expect(rounds[1]!.totalConsume).toBe(6);
+    expect(rounds[1]!.totalProduce).toBe(10);
+    const layout = layoutKnitGrid(rounds, { shape: 'flat' });
+    const row1Y = layout.stitches.find((s) => s.roundIndex === 1)!.position.y;
+    // 1단(아래) 에 새로 만든 4코 자리만큼 빈 칸
+    expect(layout.fillerCells!.filter((f) => f.y === row1Y)).toHaveLength(4);
+  });
+
+  it('감아코 별칭 ewrap / blco', () => {
+    expect(parseExpand(1, 'ewrap3').ops[0]!.kind).toBe('CAST_ON');
+    expect(parseExpand(1, 'blco3').ops[0]!.kind).toBe('CAST_ON');
   });
 });

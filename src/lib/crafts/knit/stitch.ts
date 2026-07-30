@@ -29,6 +29,9 @@ const KNIT_META: Record<KnitStitchKind, StitchMeta> = {
   KTBL:      { kind: 'KTBL',      canonical: 'ktbl',  korean: '꼬아 겉뜨기',   english: 'knit tbl',        baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   PTBL:      { kind: 'PTBL',      canonical: 'ptbl',  korean: '꼬아 안뜨기',   english: 'purl tbl',        baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   SLIP_ST:   { kind: 'SLIP_ST',   canonical: 'sl',    korean: '걸러뜨기',      english: 'slip',            baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  UNWORKED:  { kind: 'UNWORKED',  canonical: 'unw',   korean: '미작업 코',     english: 'unworked',        baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  WRAP_TURN: { kind: 'WRAP_TURN', canonical: 'wt',    korean: '되돌아뜨기',    english: 'wrap & turn',     baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  DOUBLE_ST: { kind: 'DOUBLE_ST', canonical: 'ds',    korean: '독일식 되돌아뜨기', english: 'double stitch', baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   CAST_ON:   { kind: 'CAST_ON',   canonical: 'co',    korean: '코잡기',        english: 'cast on',         baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   BIND_OFF:  { kind: 'BIND_OFF',  canonical: 'bo',    korean: '코막음',        english: 'bind off',        baseConsume: 1, baseProduce: 0, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   NO_STITCH: { kind: 'NO_STITCH', canonical: 'ns',    korean: '코 없음',       english: 'no stitch',       baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
@@ -90,8 +93,13 @@ const RAW_ALIASES: Record<string, KnitStitchKind> = {
   sl: 'SLIP_ST', slip: 'SLIP_ST', slwyif: 'SLIP_ST', 'sl-wyif': 'SLIP_ST',
   // 코 없음
   ns: 'NO_STITCH',
-  // 코잡기 / 코막음
+  // 되돌아뜨기 (short row)
+  unw: 'UNWORKED',
+  wt: 'WRAP_TURN', 'w&t': 'WRAP_TURN',
+  ds: 'DOUBLE_ST',
+  // 코잡기 / 코막음 — co 를 단 중간에 쓰면 감아코(backward loop cast-on)
   co: 'CAST_ON', caston: 'CAST_ON', 'cast-on': 'CAST_ON',
+  ewrap: 'CAST_ON', blco: 'CAST_ON',
   bo: 'BIND_OFF', bindoff: 'BIND_OFF', 'bind-off': 'BIND_OFF',
   // 늘림
   kfb: 'KFB', inc: 'KFB', kfbf: 'KFB',

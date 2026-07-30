@@ -38,6 +38,18 @@ export const KNIT_SYMBOL_DEFS = `
   <line x1="-6" y1="-4" x2="6" y2="4" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"/>
   <line x1="-6" y1="4" x2="6" y2="-4" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"/>
 </g>
+<g id="knit-UNWORKED">
+  <!-- 미작업 코 — 회색 칸으로 채워지고 기호는 그리지 않는다 (렌더러가 배경 처리) -->
+</g>
+<g id="knit-WRAP_TURN">
+  <line x1="0" y1="-5" x2="0" y2="3" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+  <path d="M -4,4 Q 0,7 4,4" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+</g>
+<g id="knit-DOUBLE_ST">
+  <line x1="-2" y1="-5" x2="-2" y2="5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+  <line x1="2" y1="-5" x2="2" y2="5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+  <line x1="-4" y1="-5" x2="4" y2="-5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+</g>
 <g id="knit-CAST_ON">
   <ellipse cx="0" cy="0" rx="5" ry="3.2" fill="none" stroke="currentColor" stroke-width="${SW}"/>
 </g>

@@ -28,10 +28,18 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ${bounds.width + pad * 2} ${bounds.height + pad * 2}`;
   const cell = layout.cellSize ?? { width: 20, height: 14 };
 
+  // 미작업 코(unw) 는 실제 코지만 되돌아뜨기로 뜨지 않은 자리라 회색으로 채운다
+  const greyCells = [
+    ...(layout.fillerCells ?? []),
+    ...layout.stitches
+      .filter((s) => s.op.kind === 'UNWORKED')
+      .map((s) => ({ x: s.position.x, y: s.position.y, span: s.cell?.span ?? 1 })),
+  ];
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
-    renderFillers(layout.fillerCells ?? [], cell),
+    renderFillers(greyCells, cell),
     showGrid ? renderCellBorders(layout, cell) : '',
     renderRoundGroups(layout.stitches),
     renderRoundNumbers(layout.roundMarkers),
