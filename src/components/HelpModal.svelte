@@ -203,7 +203,9 @@
         <table class="syntax-table">
           <tbody>
             <tr><td>더블클릭 확대</td><td>미리보기 영역을 더블클릭하면 확대 모달이 열림</td></tr>
-            {#if !isKnit}
+            {#if isKnit}
+              <tr><td>균등 증감 계산기</td><td>편집기 하단 <i class="fa-solid fa-calculator"></i> 버튼 — 현재 코 수 → 목표 코 수 패턴 자동 생성. 늘림 방식(<code>m1l</code>/<code>m1r</code>/<code>yo</code>/<code>kfb</code>)과 줄임 방식(<code>k2tog</code>/<code>ssk</code>)을 고를 수 있음</td></tr>
+            {:else}
               <tr><td>균등 증감 계산기</td><td>편집기 하단 <i class="fa-solid fa-calculator"></i> 버튼 — 현재 단 코 수 → 목표 코 수 패턴 자동 생성</td></tr>
             {/if}
             <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>

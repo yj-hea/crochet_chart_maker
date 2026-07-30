@@ -1,24 +1,44 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import { evenIncDec, type BaseStitch } from '$lib/eveninc';
+  import {
+    evenIncDec,
+    evenIncDecKnit,
+    type BaseStitch,
+    type KnitBase,
+    type KnitIncMethod,
+    type KnitDecMethod,
+  } from '$lib/eveninc';
+  import type { CraftId } from '$lib/crafts';
 
   interface Props {
     /** 기본값: 현재 활성 단의 totalProduce */
     defaultFrom?: number;
+    /** 탭의 기법 — 대바늘은 늘림/줄임 방식을 고른다 */
+    craft?: CraftId;
     onClose: () => void;
     /** 생성된 패턴을 현재 포커스 단 아래에 새 단으로 삽입 */
     onInsert: (pattern: string) => void;
   }
-  let { defaultFrom, onClose, onInsert }: Props = $props();
+  let { defaultFrom, craft = 'crochet', onClose, onInsert }: Props = $props();
+  const isKnit = $derived(craft === 'knit');
 
   // 초기값으로만 사용 (모달이 열릴 때 한 번) — 이후엔 사용자가 자유롭게 편집
   const initialFrom = untrack(() => defaultFrom ?? 6);
   let from = $state<number>(initialFrom);
   let to = $state<number>(initialFrom + 6);
   let base = $state<BaseStitch>('x');
+  // 대바늘 옵션
+  let knitBase = $state<KnitBase>('k');
+  let knitInc = $state<KnitIncMethod>('m1l');
+  let knitDec = $state<KnitDecMethod>('k2tog');
   let fromInput: HTMLInputElement | undefined = $state();
 
-  const result = $derived(evenIncDec(from, to, base));
+  const result = $derived(
+    isKnit
+      ? evenIncDecKnit(from, to, { base: knitBase, inc: knitInc, dec: knitDec })
+      : evenIncDec(from, to, base),
+  );
+  const isIncrease = $derived(to > from);
 
   function handleKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose();
@@ -46,6 +66,22 @@
     if (!result.pattern) return;
     try { await navigator.clipboard.writeText(result.pattern); } catch { /* ignore */ }
   }
+
+  const KNIT_BASE_LABELS: Record<KnitBase, string> = {
+    k: '겉뜨기 (k)',
+    p: '안뜨기 (p)',
+  };
+  const KNIT_INC_LABELS: Record<KnitIncMethod, string> = {
+    m1l: '왼코 늘리기 (m1l) — 구멍 없음',
+    m1r: '오른코 늘리기 (m1r) — 구멍 없음',
+    m1p: '안뜨기 늘리기 (m1p)',
+    yo: '바늘비우기 (yo) — 구멍 남음',
+    kfb: '코늘리기 (kfb) — 한 코에 2번',
+  };
+  const KNIT_DEC_LABELS: Record<KnitDecMethod, string> = {
+    k2tog: '왼코겹치기 (k2tog) — 오른쪽으로 기욺',
+    ssk: '오른코겹치기 (ssk) — 왼쪽으로 기욺',
+  };
 
   const BASE_LABELS: Record<BaseStitch, string> = {
     x: '짧은뜨기 (X)',
@@ -85,14 +121,50 @@
           bind:value={to}
         />
       </div>
-      <div class="row">
-        <label for="base-select">기본 코</label>
-        <select id="base-select" bind:value={base}>
-          {#each Object.entries(BASE_LABELS) as [k, label]}
-            <option value={k}>{label}</option>
-          {/each}
-        </select>
-      </div>
+      {#if isKnit}
+        <div class="row">
+          <label for="knit-base">기본 코</label>
+          <select id="knit-base" bind:value={knitBase}>
+            {#each Object.entries(KNIT_BASE_LABELS) as [k, label] (k)}
+              <option value={k}>{label}</option>
+            {/each}
+          </select>
+        </div>
+        {#if isIncrease}
+          <div class="row">
+            <label for="knit-inc">늘림 방식</label>
+            <select id="knit-inc" bind:value={knitInc}>
+              {#each Object.entries(KNIT_INC_LABELS) as [k, label] (k)}
+                <option value={k}>{label}</option>
+              {/each}
+            </select>
+          </div>
+          <p class="hint">
+            {knitInc === 'kfb'
+              ? 'kfb 는 부모 코 하나를 소비합니다 (1코 → 2코).'
+              : '코와 코 사이에서 새 코를 만들어 부모 코를 소비하지 않습니다.'}
+          </p>
+        {:else}
+          <div class="row">
+            <label for="knit-dec">줄임 방식</label>
+            <select id="knit-dec" bind:value={knitDec}>
+              {#each Object.entries(KNIT_DEC_LABELS) as [k, label] (k)}
+                <option value={k}>{label}</option>
+              {/each}
+            </select>
+          </div>
+          <p class="hint">좌우 대칭으로 줄일 때는 한쪽은 k2tog, 다른 쪽은 ssk 를 씁니다.</p>
+        {/if}
+      {:else}
+        <div class="row">
+          <label for="base-select">기본 코</label>
+          <select id="base-select" bind:value={base}>
+            {#each Object.entries(BASE_LABELS) as [k, label] (k)}
+              <option value={k}>{label}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
 
       <div class="preview">
         <div class="summary">{result.summary}</div>
@@ -122,6 +194,12 @@
 </div>
 
 <style>
+  .hint {
+    margin: -4px 0 10px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-secondary, #666);
+  }
   .overlay {
     position: fixed; inset: 0;
     background: rgba(0, 0, 0, 0.4);

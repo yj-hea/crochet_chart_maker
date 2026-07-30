@@ -194,23 +194,21 @@
     <button type="button" class="append-btn" onclick={handleAppend}>
       + 단 추가
     </button>
-    {#if !isKnit}
-      <!-- 균등 증감 계산기는 코바늘 전용 (V/A 기반) -->
-      <button
-        type="button"
-        class="calc-btn"
-        onclick={() => (evenIncOpen = true)}
-        title="균등 증감 계산"
-      >
-        <i class="fa-solid fa-calculator"></i> 균등 증감
-      </button>
-    {/if}
+    <button
+      type="button"
+      class="calc-btn"
+      onclick={() => (evenIncOpen = true)}
+      title="균등 증감 계산"
+    >
+      <i class="fa-solid fa-calculator"></i> 균등 증감
+    </button>
   </div>
 </div>
 
 {#if evenIncOpen}
   <EvenIncModal
     defaultFrom={defaultFromCount}
+    craft={$pattern.craft}
     onClose={() => (evenIncOpen = false)}
     onInsert={handleInsertCalculated}
   />
