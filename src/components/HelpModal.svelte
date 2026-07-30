@@ -127,7 +127,10 @@
         <table class="syntax-table">
           <tbody>
             <tr><td>1코 = 1칸</td><td>한 단의 칸 수 = 그 단이 만든 코 수. 1단이 맨 아래</td></tr>
-            <tr><td>코 없음</td><td>단마다 코 수가 다르면 빈 칸을 회색으로 채움 (기본 가운데 정렬)</td></tr>
+            <tr><td>코 없음</td><td>코 수가 달라진 단만 그 <b>차이만큼</b> 회색 빈 칸으로 맞춤. 늘림 코 <b>아래</b>, 줄임 코 <b>위</b>에 놓인다</td></tr>
+            <tr><td>코 수가 같으면</td><td>격자를 건드리지 않음 — 레이스처럼 <code>yo</code> 와 <code>ssk</code> 가 상쇄되면 직사각형 유지</td></tr>
+            <tr><td>Cascade</td><td>맞추는 <b>방식</b>만 다름. <b>On</b>: <code>kfb</code> 의 부모 칸이 2칸 폭으로 넓어짐 / <b>Off</b>: 모든 칸 1칸 폭 + 옆에 빈 칸</td></tr>
+            <tr><td>게이지</td><td>편집기 상단 <code>게이지 [코] × [단] / 10cm</code> — 칸 세로 비율에 반영되고, 미리보기 아래에 실측 치수 표시 (가로는 고정)</td></tr>
             <tr><td><code>k3tog</code>·<code>sssk</code></td><td>3코 이상 모아뜨기. <code>k2tog^4</code> 처럼 <code>^N</code> 으로도 지정 가능</td></tr>
             <tr><td><code>co40</code></td><td>코잡기 40코 — 부모 단 없이 시작. 보통 1단에 쓴다</td></tr>
             <tr><td><code>bo40</code></td><td>코막음 40코 — 코를 없애며 마무리. <b>단 중간</b>에 쓰면 진동·목선 파기 (위쪽에 빈 칸이 생김)</td></tr>
@@ -244,7 +247,11 @@
             {/if}
             <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>
             <tr><td>도안 메모</td><td>편집기 상단 "메모" 버튼 — 도안 전체에 대한 메모. 마크다운·이미지 지원</td></tr>
-            <tr><td>평면 1단 방향</td><td>평면 도안 미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>
+            <tr><td>1단 방향</td><td>미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>
+            {#if isKnit}
+              <tr><td>미리보기 toolbar</td><td>격자 도안이라 연결선·세로 정렬 토글은 없음. Grid(칸 테두리) / Cascade / 정렬 / 1단 방향만 사용</td></tr>
+              <tr><td>좁은 화면</td><td>칸이 너무 작아지면 축소 대신 가로 스크롤 — 모바일에서도 기호가 보이도록</td></tr>
+            {/if}
             <tr><td>패널 크기 조정</td><td>편집기·미리보기 사이 핸들을 드래그 (좁은 화면에서는 상하 핸들). localStorage 에 저장</td></tr>
           </tbody>
         </table>
@@ -276,11 +283,23 @@
 
       <section>
         <h3>예시</h3>
+        {#if isKnit}
+          <pre><code>co40                        → 코잡기 40코
+k2, (p2, k2)*9, p2          → 고무뜨기
+k1, yo, ssk, k34, k2tog, yo, k1   → 레이스 (코 수 유지)
+k1, m1l, k38, m1r, k1       → 래글런 늘림 (42코)
+k12, wt, unw30              → 되돌아뜨기 (가는 단)
+unw30, p12                  → 되돌아뜨기 (오는 단)
+k2:navy, (k2:cream, k2:navy)*9    → 배색
+k8, bo10, k8                → 진동 파기 (중간 코막음)
+bo36                        → 코막음</code></pre>
+        {:else}
         <pre><code>mr, 6x
 6v                          → 12코
 tc(3ch), 11t                → 기둥코 + 11긴뜨기 (총 12슬롯)
 [tc(3ch), 1f], 10f, 1sl     → 기둥코와 F를 한 코에 + 10F + 빼뜨기
 skip(2), 1f, 3ch, 1f        → 첫 F 는 3번째 부모에서 시작</code></pre>
+        {/if}
       </section>
     </div>
   </div>
