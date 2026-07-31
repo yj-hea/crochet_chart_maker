@@ -129,7 +129,8 @@
             <tr><td>1코 = 1칸</td><td>한 단의 칸 수 = 그 단이 만든 코 수. 1단이 맨 아래</td></tr>
             <tr><td>코 없음</td><td>코 수가 달라진 단만 그 <b>차이만큼</b> 회색 빈 칸으로 맞춤. 늘림 코 <b>아래</b>, 줄임 코 <b>위</b>에 놓인다</td></tr>
             <tr><td>코 수가 같으면</td><td>격자를 건드리지 않음 — 레이스처럼 <code>yo</code> 와 <code>ssk</code> 가 상쇄되면 직사각형 유지</td></tr>
-            <tr><td>Cascade</td><td>맞추는 <b>방식</b>만 다름. <b>On</b>: <code>kfb</code> 의 부모 칸이 2칸 폭으로 넓어짐 / <b>Off</b>: 모든 칸 1칸 폭 + 옆에 빈 칸</td></tr>
+            <tr><td>Cascade <b>On</b></td><td>늘림·줄임으로 달라진 코 수만큼 빈 칸을 넣어 <b>열을 맞춤</b> (늘림 아래 / 줄임 옆)</td></tr>
+            <tr><td>Cascade <b>Off</b></td><td>그 빈 칸을 넣지 않아 <b>코가 붙어 보임</b>. 단 중간 코막음으로 생긴 구멍은 그대로 유지</td></tr>
             <tr><td>게이지</td><td>편집기 상단 <code>게이지 [코] × [단] / 10cm</code> — 칸 세로 비율에 반영되고, 미리보기 아래에 실측 치수 표시 (가로는 고정)</td></tr>
             <tr><td><code>k3tog</code>·<code>sssk</code></td><td>3코 이상 모아뜨기. <code>k2tog^4</code> 처럼 <code>^N</code> 으로도 지정 가능</td></tr>
             <tr><td><code>co40</code></td><td>코잡기 40코 — 부모 단 없이 시작. 보통 1단에 쓴다</td></tr>

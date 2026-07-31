@@ -92,23 +92,19 @@ function computeParents(rows: Op[][]): number[][][] {
 }
 
 /**
- * 칸 계획 — 인접 두 단의 **순 증감분만큼만** 좁은 쪽을 넓힌다.
+ * 칸 계획 — 모든 칸은 **1 단위 폭**이고, 열은 빈 칸으로만 맞춘다.
  *
- * 코 수가 변하지 않는 단(레이스의 `yo`+`ssk` 처럼 늘림과 줄임이 상쇄되는 경우)은
- * 아무것도 건드리지 않아 격자가 직사각형으로 유지된다 — 실제 차트 관행.
- * 코 수가 변하는 단만 그 차이만큼 조정한다:
+ * 1. **구멍** (양 모드 공통): 단 중간 코막음으로 편물에 뚫린 자리는 위 단들로 계속 이어진다.
+ * 2. **열 맞춤** (cascade ON 에서만): 늘림·줄임으로 코 수가 달라진 만큼
+ *    늘림 코 아래 / 줄임 코 옆에 빈 칸을 넣어 열을 맞춘다.
+ *    OFF 면 이 빈 칸을 넣지 않아 코가 서로 붙어 보이고, 폭 차이는 정렬 옵션으로만 처리한다.
  *
- * | 상황 | 조정 |
- * |---|---|
- * | 자식 단이 좁음 (줄임) | 줄임 칸을 부모들 폭까지 넓힘 → 남으면 자식 없는 부모 위에 빈 칸 |
- * | 부모 단이 좁음 (늘림) | 늘림 부모 칸을 자식들 폭까지 넓힘 → 남으면 부모 없는 코 아래에 빈 칸 |
- *
- * cascade OFF 면 칸을 넓히지 않고 빈 칸으로만 맞춘다 (구조 위치는 동일).
+ * 코 수가 변하지 않는 단(레이스의 `yo`+`ssk`)은 어느 모드에서도 격자를 건드리지 않는다.
  */
 interface RowPlan {
-  /** op 별 칸 폭 */
+  /** op 별 칸 폭 — 그 코가 만드는 코 수 (kfb=2). 열 맞춤으로 넓히지 않는다. */
   spans: number[];
-  /** op 앞에 끼워 넣을 빈 칸들의 폭 (index = op 인덱스, 마지막은 ops.length = 행 끝) */
+  /** op 앞에 끼워 넣을 빈 칸들의 폭 (key = op 인덱스, ops.length = 행 끝) */
   gapsBefore: Map<number, number[]>;
 }
 
@@ -122,7 +118,6 @@ function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPla
     gapsBefore: new Map<number, number[]>(),
   }));
 
-  // 자식 목록
   const children: number[][][] = rows.map((ops) => ops.map(() => []));
   for (let r = 1; r < rows.length; r++) {
     parents[r]!.forEach((ps, childIdx) => {
@@ -139,6 +134,24 @@ function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPla
     [...plan.gapsBefore.values()].reduce((acc, l) => acc + sum(l), 0);
   const rowUnits = (r: number): number => sum(plans[r]!.spans) + gapUnits(plans[r]!);
 
+  // 1) 구멍 — 단 중간 코막음 자리는 위 단으로 계속 이어진다
+  for (let r = 1; r < rows.length; r++) {
+    // 아래 단의 구멍을 이 단으로 전파
+    for (const [g, spans] of [...plans[r - 1]!.gapsBefore.entries()].sort((a, b) => a[0] - b[0])) {
+      const at = childIndexForParent(parents[r]!, g);
+      for (const span of spans) addGap(plans[r]!, at, span);
+    }
+    // 이 단이 소비하지 않은 코막음 코 → 바로 위에 구멍
+    for (let p = 0; p < rows[r - 1]!.length; p++) {
+      if (children[r - 1]![p]!.length > 0) continue;
+      if (rows[r - 1]![p]!.kind !== 'BIND_OFF') continue;
+      addGap(plans[r]!, firstChildIndexAfter(parents[r]!, p), plans[r - 1]!.spans[p]!);
+    }
+  }
+
+  if (!cascade) return plans;
+
+  // 2) 열 맞춤 — 늘림/줄임으로 생긴 코 수 차이만큼 빈 칸을 넣는다
   for (let pass = 0; pass < WIDTH_PASSES; pass++) {
     let changed = false;
 
@@ -148,26 +161,15 @@ function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPla
       let diff = rowUnits(r - 1) - rowUnits(r);
 
       if (diff > 0) {
-        // 자식 단이 좁다 — 줄임 칸을 부모 폭까지 넓힌 뒤, 남으면 자식 없는 부모 위에 빈 칸
-        if (cascade) {
-          for (let i = 0; i < rows[r]!.length && diff > 0; i++) {
-            const ps = parents[r]![i]!;
-            if (ps.length === 0) continue;
-            const target = sum(ps.map((p) => parentPlan.spans[p]!));
-            const extra = Math.min(diff, target - childPlan.spans[i]!);
-            if (extra > 0) { childPlan.spans[i]! += extra; diff -= extra; changed = true; }
-          }
-        }
+        // 자식 단이 좁다 — 소비되지 않은 코 위, 그리고 줄임 코 옆에 빈 칸
         for (let p = 0; p < rows[r - 1]!.length && diff > 0; p++) {
           if (children[r - 1]![p]!.length > 0) continue;
-          // 이 부모는 이 단이 소비하지 않았다 (코막음·남은 코) → 바로 위에 빈 칸
-          const at = firstChildIndexAfter(parents[r]!, p);
+          if (rows[r - 1]![p]!.kind === 'BIND_OFF') continue; // 구멍은 위에서 처리됨
           const span = Math.min(diff, parentPlan.spans[p]!);
-          addGap(childPlan, at, span);
+          addGap(childPlan, firstChildIndexAfter(parents[r]!, p), span);
           diff -= span;
           changed = true;
         }
-        // 그래도 남으면 줄임 코 옆에 빈 칸 (cascade OFF 에서 칸을 못 넓힐 때)
         for (let i = 0; i < rows[r]!.length && diff > 0; i++) {
           const ps = parents[r]![i]!;
           if (ps.length <= 1) continue;
@@ -176,27 +178,16 @@ function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPla
           if (span > 0) { addGap(childPlan, i, span); diff -= span; changed = true; }
         }
       } else if (diff < 0) {
-        // 부모 단이 좁다 — 늘림 부모 칸을 자식 폭까지 넓힌 뒤, 남으면 부모 없는 코 아래 빈 칸
+        // 부모 단이 좁다 — 부모 없는 코 아래, 그리고 늘림 부모 옆에 빈 칸
         let need = -diff;
-        if (cascade) {
-          for (let p = 0; p < rows[r - 1]!.length && need > 0; p++) {
-            const kids = children[r - 1]![p]!;
-            if (kids.length === 0) continue;
-            const target = sum(kids.map((c) => childPlan.spans[c]!));
-            const extra = Math.min(need, target - parentPlan.spans[p]!);
-            if (extra > 0) { parentPlan.spans[p]! += extra; need -= extra; changed = true; }
-          }
-        }
         for (let i = 0; i < rows[r]!.length && need > 0; i++) {
           if (parents[r]![i]!.length > 0) continue;
-          // 부모 없는 코 (yo, m1, 감아코) → 바로 아래에 빈 칸
           const at = lastParentIndexBefore(parents[r]!, i) + 1;
           const span = Math.min(need, childPlan.spans[i]!);
           addGap(parentPlan, at, span);
           need -= span;
           changed = true;
         }
-        // 그래도 남으면 늘림 부모 옆에 빈 칸 (cascade OFF 에서 칸을 못 넓힐 때)
         for (let p = 0; p < rows[r - 1]!.length && need > 0; p++) {
           const kids = children[r - 1]![p]!;
           if (kids.length === 0) continue;
@@ -209,6 +200,14 @@ function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPla
     if (!changed) break;
   }
   return plans;
+}
+
+/** 부모 인덱스 p 위에 오는 자식 위치 — p 를 소비하는 첫 자식 (없으면 행 끝) */
+function childIndexForParent(parentsOfRow: number[][], p: number): number {
+  for (let i = 0; i < parentsOfRow.length; i++) {
+    if (parentsOfRow[i]!.includes(p)) return i;
+  }
+  return firstChildIndexAfter(parentsOfRow, p);
 }
 
 /** 부모 인덱스 p 바로 위 위치 — p 이후를 처음 소비하는 자식의 인덱스 */
@@ -282,7 +281,14 @@ export function layoutKnitGrid(
     const rightPad = pad - leftPad;
 
     let cursor = 0;
+    // 정렬용 좌우 여백: cascade ON 이면 회색 칸으로 보이고,
+    // OFF 면 자리만 비워 둔다 (코가 붙어 보이도록 — 구멍만 회색으로 남긴다)
     const emitFiller = (span: number) => {
+      if (cascade) fillerCells.push({ x: (cursor + span / 2) * KNIT_CELL_WIDTH, y: yCenter, span });
+      cursor += span;
+    };
+    // 행 안쪽의 빈 칸(구멍·열 맞춤)은 두 모드 모두 회색으로 그린다
+    const emitGap = (span: number) => {
       fillerCells.push({ x: (cursor + span / 2) * KNIT_CELL_WIDTH, y: yCenter, span });
       cursor += span;
     };
@@ -290,7 +296,7 @@ export function layoutKnitGrid(
     for (let c = 0; c < leftPad; c++) emitFiller(1);
 
     for (const cell of cells) {
-      if (!cell.op) { emitFiller(cell.span); continue; }
+      if (!cell.op) { emitGap(cell.span); continue; }
       stitches.push({
         op: cell.op,
         roundIndex: meta[r]!.round.index,

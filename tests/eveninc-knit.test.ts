@@ -80,3 +80,16 @@ describe('대바늘 균등 증감', () => {
     expect(evenIncDecKnit(0, 10, {}).kind).toBe('invalid');
   });
 });
+
+// 공통 코어(buildGroups)를 대바늘과 나눠 쓰므로, 코바늘 출력이 변하지 않는지 함께 고정한다
+describe('코바늘 균등 증감 (회귀 방지)', () => {
+  it('기존 표기를 그대로 유지', async () => {
+    const { evenIncDec } = await import('../src/lib/eveninc');
+    expect(evenIncDec(6, 12).pattern).toBe('(1v)*6');
+    expect(evenIncDec(12, 18).pattern).toBe('(1x, 1v)*6');
+    expect(evenIncDec(18, 24).pattern).toBe('(2x, 1v)*6');
+    expect(evenIncDec(30, 24).pattern).toBe('(3x, 1a)*6');
+    expect(evenIncDec(44, 33).pattern).toBe('(2x, 1a)*11');
+    expect(evenIncDec(12, 18, 't').pattern).toBe('(1t, 1vt)*6');
+  });
+});

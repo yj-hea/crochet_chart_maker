@@ -174,20 +174,26 @@ describe('knit 격자 레이아웃', () => {
     expect(flat.stitches.map((s) => s.position.x)).toEqual(round.stitches.map((s) => s.position.x));
   });
 
-  it('cascade OFF 에서도 빈 칸은 구조 위치에 놓인다', () => {
-    // 2단이 4코만 소비 → 남은 부모 2개 위가 빈 칸 (가장자리 정렬이 아님)
+  it('cascade OFF: 늘림·줄임 때문에 생기던 빈 칸은 넣지 않는다', () => {
+    // 2단이 4코만 소비 → 폭 차이는 정렬로만 처리하고 코는 붙여 그린다
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    expect(layout.fillerCells).toHaveLength(2);
+    expect(layout.fillerCells).toHaveLength(0);
     const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
-    expect(row2[0]!.cell!.col).toBe(0);
-    // 빈 칸은 2단(위) 에 있고 소비되지 않은 부모 위에 위치
+    // 코끼리 사이에 여백 없이 연속
+    const xs = row2.map((s) => s.position.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBe(KNIT_CELL_WIDTH);
+  });
+
+  it('cascade ON: 소비되지 않은 코 위에 빈 칸', () => {
+    const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    expect(layout.fillerCells).toHaveLength(2);
     const row1Y = layout.stitches.find((s) => s.roundIndex === 1)!.position.y;
     expect(layout.fillerCells!.every((f) => f.y < row1Y)).toBe(true);
   });
 
   it('코 수가 변하지 않는 단은 격자가 직사각형을 유지한다 (레이스)', () => {
-    // yo 로 늘고 ssk 로 줄어 총 코 수 동일 → 빈 칸도 넓힘도 없어야 한다
     const rows = ['k6', 'k1, yo, ssk, k3', 'k6'];
     for (const cascade of [true, false]) {
       const rounds = rows.map((src, i) => parseExpand(i + 1, src));
@@ -198,42 +204,16 @@ describe('knit 격자 레이아웃', () => {
     }
   });
 
-  it('늘림 위치 바로 아래에 빈 칸이 온다 (래글런)', () => {
+  it('cascade ON 은 늘림 바로 아래에 빈 칸, OFF 는 넣지 않는다 (래글런)', () => {
     const rows = ['k6', 'k1, m1l, k4, m1r, k1', 'k8'];
-    for (const cascade of [true, false]) {
-      const rounds = rows.map((src, i) => parseExpand(i + 1, src));
-      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
-      const fills = layout.fillerCells!;
-      expect(fills, `cascade ${cascade}`).toHaveLength(2);
-      // 빈 칸의 x 가 m1 코의 x 와 일치 (가장자리가 아님)
-      const m1x = layout.stitches
-        .filter((s) => s.op.kind === 'M1L' || s.op.kind === 'M1R')
-        .map((s) => s.position.x).sort((a, b) => a - b);
-      expect(fills.map((f) => f.x).sort((a, b) => a - b)).toEqual(m1x);
-    }
-  });
+    const on = layoutKnitGrid(rows.map((src, i) => parseExpand(i + 1, src)), { shape: 'round' });
+    const off = layoutKnitGrid(rows.map((src, i) => parseExpand(i + 1, src)), { shape: 'round', cascade: false });
 
-  it('cascade OFF 는 칸을 넓히지 않고 옆 빈 칸으로 맞춘다', () => {
-    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
-    const on = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
-    const off = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    // ON: 부모 칸이 2칸으로 넓어짐 / OFF: 부모 옆에 빈 칸
-    expect(on.stitches.filter((s) => s.roundIndex === 1 && s.cell!.span === 2)).toHaveLength(1);
-    expect(on.fillerCells).toHaveLength(0);
-    expect(off.stitches.filter((s) => s.roundIndex === 1).every((s) => s.cell!.span === 1)).toBe(true);
-    expect(off.fillerCells).toHaveLength(1);
-  });
-
-  it('cascade ON: 소비되지 않은 부모 위에 빈 칸이 생긴다', () => {
-    const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round' });
-    const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
-    // 실제 코 4개는 왼쪽부터, 남은 부모 2개 위는 빈 칸
-    expect(row2[0]!.cell!.col).toBe(0);
-    expect(layout.fillerCells).toHaveLength(2);
-    const row1Y = layout.stitches.find((s) => s.roundIndex === 1)!.position.y;
-    // 빈 칸은 2단(위쪽) 에 위치
-    expect(layout.fillerCells!.every((f) => f.y < row1Y)).toBe(true);
+    const m1x = on.stitches
+      .filter((s) => s.op.kind === 'M1L' || s.op.kind === 'M1R')
+      .map((s) => s.position.x).sort((a, b) => a - b);
+    expect(on.fillerCells!.map((f) => f.x).sort((a, b) => a - b)).toEqual(m1x);
+    expect(off.fillerCells).toHaveLength(0);
   });
 
   it('kfb 는 만든 코 수만큼 칸을 차지', () => {
@@ -288,67 +268,62 @@ describe('knit 렌더러', () => {
   });
 });
 
-describe('knit cascade — 늘림/줄임에 맞춘 칸 폭', () => {
+describe('knit cascade — 열 맞춤 방식', () => {
   function rowSpan(layout: ReturnType<typeof layoutKnitGrid>, roundIndex: number): number {
-    const stitches = layout.stitches.filter((s) => s.roundIndex === roundIndex);
-    return stitches.reduce((sum, s) => sum + (s.cell?.span ?? 1), 0);
+    return layout.stitches
+      .filter((s) => s.roundIndex === roundIndex)
+      .reduce((sum, s) => sum + (s.cell?.span ?? 1), 0);
   }
 
-  it('kfb 의 부모 칸이 2칸으로 넓어진다', () => {
+  it('칸 폭은 늘리지 않는다 — 모든 칸이 만든 코 수만큼만 차지', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
+    for (const cascade of [true, false]) {
+      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
+      // 아래 단은 모두 1칸 (부모 칸을 넓히지 않음)
+      expect(layout.stitches.filter((s) => s.roundIndex === 1).every((s) => s.cell!.span === 1)).toBe(true);
+      // kfb 는 2코를 만들므로 2칸
+      expect(layout.stitches.find((s) => s.op.kind === 'KFB')!.cell!.span).toBe(2);
+    }
+  });
+
+  it('ON: 늘림 아래에 빈 칸을 넣어 열을 맞춘다', () => {
     const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
-    const row1 = layout.stitches.filter((s) => s.roundIndex === 1);
-    // 2단의 kfb 가 소비하는 부모(표시 순서 2번째)가 2칸
-    const widened = row1.filter((s) => (s.cell?.span ?? 1) === 2);
-    expect(widened).toHaveLength(1);
-    // 두 단의 총 폭이 같아진다 → no-stitch 채움 불필요
-    expect(rowSpan(layout, 1)).toBe(5);
+    expect(layout.fillerCells).toHaveLength(1);
     expect(rowSpan(layout, 2)).toBe(5);
-    expect(layout.fillerCells).toHaveLength(0);
   });
 
-  it('kfb 자식과 부모의 칸이 같은 x 범위를 덮는다', () => {
-    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
-    const parent = layout.stitches.find((s) => s.roundIndex === 1 && s.cell?.span === 2)!;
-    const kfb = layout.stitches.find((s) => s.op.kind === 'KFB')!;
-    expect(kfb.position.x).toBeCloseTo(parent.position.x);
-  });
-
-  it('cascade OFF 면 모든 부모 칸이 1칸 (부족분은 no-stitch)', () => {
+  it('OFF: 늘림 빈 칸 없이 코가 붙어 보인다', () => {
     const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    const row1 = layout.stitches.filter((s) => s.roundIndex === 1);
-    expect(row1.every((s) => (s.cell?.span ?? 1) === 1)).toBe(true);
-    expect(layout.fillerCells!.length).toBeGreaterThan(0);
+    expect(layout.fillerCells).toHaveLength(0);
+    const row1 = layout.stitches.filter((s) => s.roundIndex === 1).map((s) => s.position.x).sort((a, b) => a - b);
+    for (let i = 1; i < row1.length; i++) expect(row1[i]! - row1[i - 1]!).toBe(KNIT_CELL_WIDTH);
   });
 
-  it('k2tog 는 부모 둘의 폭만큼 넓어진다', () => {
-    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, k2tog, k1')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
-    const dec = layout.stitches.find((s) => s.op.kind === 'K2TOG')!;
-    expect(dec.cell!.span).toBe(2);
-    expect(rowSpan(layout, 1)).toBe(4);
-    expect(rowSpan(layout, 2)).toBe(4);
+  it('ON: 줄임 옆에 빈 칸 / OFF: 없음', () => {
+    const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'k1, k2tog, k2tog, k1')];
+    const on = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
+    const off = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
+    expect(on.fillerCells).toHaveLength(2);
+    expect(off.fillerCells).toHaveLength(0);
+    expect(off.stitches.filter((s) => s.roundIndex === 2)).toHaveLength(4);
   });
 
-  it('부모 없는 yo 아래에는 빈 칸(no stitch)이 생긴다', () => {
-    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, yo, k3')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
-    expect(rowSpan(layout, 2)).toBe(5);
-    // 1단은 4코 + yo 자리 빈 칸 1 → 총 폭 5, 채움 칸 1개
-    expect(layout.fillerCells).toHaveLength(1);
-    const yo = layout.stitches.find((s) => s.op.kind === 'YO')!;
-    expect(layout.fillerCells![0]!.x).toBeCloseTo(yo.position.x);
-  });
-
-  it('빈 칸은 더 아래 단으로도 전파된다', () => {
-    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, yo, k3'), parseExpand(3, 'k5')];
-    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
-    // 3단 5코 / 2단 5칸 / 1단 4코 + 빈칸 1
-    expect(rowSpan(layout, 3)).toBe(5);
-    expect(layout.fillerCells).toHaveLength(1);
-    expect(layout.fillerCells![0]!.y).toBeGreaterThan(0);
+  it('코막음 구멍은 두 모드 모두 유지되고 위 단으로 이어진다', () => {
+    const rows = ['co10', 'k3, bo4, k3', 'k6', 'k6'];
+    for (const cascade of [true, false]) {
+      const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
+      const yOf = (round: number) => layout.stitches.find((s) => s.roundIndex === round)!.position.y;
+      // 3단·4단 모두 구멍 4칸
+      expect(layout.fillerCells!.filter((f) => f.y === yOf(3)), `cascade ${cascade}`).toHaveLength(4);
+      expect(layout.fillerCells!.filter((f) => f.y === yOf(4)), `cascade ${cascade}`).toHaveLength(4);
+      // 구멍은 같은 열에 있다
+      const x3 = layout.fillerCells!.filter((f) => f.y === yOf(3)).map((f) => f.x).sort((a, b) => a - b);
+      const x4 = layout.fillerCells!.filter((f) => f.y === yOf(4)).map((f) => f.x).sort((a, b) => a - b);
+      expect(x3).toEqual(x4);
+    }
   });
 });
 
