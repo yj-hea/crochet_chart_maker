@@ -186,9 +186,9 @@ describe('layoutCircular', () => {
 });
 
 describe('사슬 위 한 코 그룹', () => {
-  /** 같은 단 안에서 가장 가까운 두 코 사이 거리 */
-  function minDistance(layout: ReturnType<typeof layoutFromSources>, roundIndex: number): number {
-    const row = layout.stitches.filter((s) => s.roundIndex === roundIndex);
+  /** 한 코 그룹 멤버들 사이의 최소 거리 */
+  function minGroupDistance(layout: ReturnType<typeof layoutFromSources>, roundIndex: number): number {
+    const row = layout.stitches.filter((s) => s.roundIndex === roundIndex && s.op.inSameHoleGroup);
     let min = Infinity;
     for (let i = 0; i < row.length; i++) {
       for (let j = i + 1; j < row.length; j++) {
@@ -199,15 +199,17 @@ describe('사슬 위 한 코 그룹', () => {
     return min;
   }
 
-  it('사슬 위에 얹힌 그룹의 코들이 겹치지 않는다', () => {
-    // `1ch` 위에 `[1f,2e]` — 예전에는 세 코가 모두 사슬 각도로 스냅되어 한 점에 겹쳤다
+  it('사슬 위에 얹힌 그룹의 코들이 기호 폭 이상 벌어진다', () => {
+    // `1ch` 위에 `[1f,2e]` — 예전에는 세 코가 모두 사슬 각도로 스냅되어 한 점에 겹쳤고,
+    // 그룹 간격을 살린 뒤에도 사슬 한 칸의 폭이 좁아 6~7px 로 붙어 있었다.
     const layout = layoutFromSources([
       'mr, 10t',
       '10vt',
       '(1t, 1vt)*10',
       '10sl, 1ch, [1f, 2e], 1ch, 8sl',
     ]);
-    expect(minDistance(layout, 4)).toBeGreaterThan(3);
+    // 기호 폭(약 10px) 보다 넓게
+    expect(minGroupDistance(layout, 4)).toBeGreaterThan(12);
   });
 
   it('그룹 멤버는 부모 사슬 주변에 벌어져 배치된다', () => {

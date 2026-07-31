@@ -16,6 +16,8 @@ import { STITCH_META } from '$lib/crafts/crochet/stitch';
 import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
 
 const MARKER_SIDE_OFFSET = 11;
+/** 사슬 위 한 코 그룹 멤버 사이 최소 간격 (px) — 기호 폭(약 10px)보다 넉넉하게 */
+const GROUP_MIN_CHORD = 15;
 const START_ANGLE = -Math.PI / 2; // 12시 방향
 
 /** 단 방향에 해당하는 부호. forward=CCW(-1), reverse=CW(+1) */
@@ -484,10 +486,18 @@ function placeRound(
       r = stitchOuterRadius(parent) + RADIAL_GAP + effectiveSymH(op);
       // angle 도 부모 따라가기 — alignChildToParents 없으니 직접.
       const parentAngle = Math.atan2(parent.position.y, parent.position.x);
-      if (op.inSameHoleGroup) {
+      if (op.inSameHoleGroup && sameHoleCtx) {
         // 한 코 그룹(`[1f,2e]` 등)이 사슬 위에 얹히면, 부모 각도로 그냥 스냅할 경우
-        // 그룹 멤버가 모두 한 점에 겹친다. 앵커에서 구한 보정각을 그룹 전체에
-        // 동일하게 적용해 멤버 간 간격을 유지한다.
+        // 그룹 멤버가 모두 한 점에 겹친다. 부모 각도를 중심으로 좌우 대칭 배치하되,
+        // 사슬 한 칸의 angular 폭이 매우 좁으므로 기호가 겹치지 않도록
+        // 최소 chord(GROUP_MIN_CHORD) 를 보장한다.
+        const n = Math.max(1, sameHoleCtx.produceMembers);
+        const k = Math.max(0, sameHoleCtx.producedCount - 1); // 이 op 의 그룹 내 순번
+        const step = Math.max(sameHoleCtx.territoryWidth / n, GROUP_MIN_CHORD / Math.max(r, 1));
+        midAngle = parentAngle + dirSign * step * (k - (n - 1) / 2);
+        sameHoleStackDelta = null;
+      } else if (op.inSameHoleGroup) {
+        // cascade off — 앵커에서 구한 보정각을 그룹 전체가 공유해 간격을 유지
         if (!op.sameHoleContinuation || sameHoleStackDelta === null) {
           sameHoleStackDelta = parentAngle - midAngle;
         }
