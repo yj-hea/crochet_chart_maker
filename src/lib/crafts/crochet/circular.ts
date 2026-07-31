@@ -692,15 +692,26 @@ function placeRound(
   }
 
   // 겹치는 cascade 코는 인접 non-overlap 양 끝을 anchor 로 outward bezier 호에 재배치.
-  // 같은 단 chain-as-parent 관계 (consumed chain + stack 된 sc) 는 이미 정확히 align 되어 있어 제외.
+  // 같은 단 chain 위에 **코 하나만** 얹힌 경우는 이미 정확히 align 되어 있어 제외하지만,
+  // 한 코 그룹(`[1f,2e]` 등)처럼 여러 개가 한 사슬에 얹히면 이웃과 부딪히므로 재배치 대상에 포함한다.
   const MIN_CHORD = 16;
+  const inRoundChildCount = new Map<number, number>();
+  for (const i of thisStitchIndices) {
+    for (const p of stitches[i]!.parentIndices) {
+      if (stitches[p]!.roundIndex !== roundIdx) continue;
+      inRoundChildCount.set(p, (inRoundChildCount.get(p) ?? 0) + 1);
+    }
+  }
   const visibleOps = thisStitchIndices.filter((i) => {
     const s = stitches[i]!;
     const k = s.op.kind;
     if (k === 'MAGIC' || k === 'SKIP') return false;
     if (k === 'CHAIN' && s.op.inSameHoleGroup) return false;
     if (consumedChains.has(i)) return false; // chain-as-parent chain.
-    if (s.parentIndices.some((p) => stitches[p]!.roundIndex === s.roundIndex)) return false; // stack sc.
+    const soloStack = s.parentIndices.some(
+      (p) => stitches[p]!.roundIndex === roundIdx && (inRoundChildCount.get(p) ?? 0) <= 1,
+    );
+    if (soloStack) return false; // 사슬 위 단독 코 — 사슬과 정렬 유지
     return true;
   });
   const dist = (i: number, j: number) => {

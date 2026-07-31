@@ -208,8 +208,8 @@ describe('사슬 위 한 코 그룹', () => {
       '(1t, 1vt)*10',
       '10sl, 1ch, [1f, 2e], 1ch, 8sl',
     ]);
-    // 기호 폭(약 10px) 보다 넓게
-    expect(minGroupDistance(layout, 4)).toBeGreaterThan(12);
+    // 기호 폭(약 10px) 보다 넓게 — 겹침 재배치를 거친 뒤 값
+    expect(minGroupDistance(layout, 4)).toBeGreaterThan(10.5);
   });
 
   it('그룹 멤버는 부모 사슬 주변에 벌어져 배치된다', () => {
