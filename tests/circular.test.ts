@@ -184,3 +184,49 @@ describe('layoutCircular', () => {
     }
   });
 });
+
+describe('사슬 위 한 코 그룹', () => {
+  /** 같은 단 안에서 가장 가까운 두 코 사이 거리 */
+  function minDistance(layout: ReturnType<typeof layoutFromSources>, roundIndex: number): number {
+    const row = layout.stitches.filter((s) => s.roundIndex === roundIndex);
+    let min = Infinity;
+    for (let i = 0; i < row.length; i++) {
+      for (let j = i + 1; j < row.length; j++) {
+        const a = row[i]!.position, b = row[j]!.position;
+        min = Math.min(min, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+    return min;
+  }
+
+  it('사슬 위에 얹힌 그룹의 코들이 겹치지 않는다', () => {
+    // `1ch` 위에 `[1f,2e]` — 예전에는 세 코가 모두 사슬 각도로 스냅되어 한 점에 겹쳤다
+    const layout = layoutFromSources([
+      'mr, 10t',
+      '10vt',
+      '(1t, 1vt)*10',
+      '10sl, 1ch, [1f, 2e], 1ch, 8sl',
+    ]);
+    expect(minDistance(layout, 4)).toBeGreaterThan(3);
+  });
+
+  it('그룹 멤버는 부모 사슬 주변에 벌어져 배치된다', () => {
+    const layout = layoutFromSources(['mr, 10t', '10sl, 1ch, [1f, 2e], 9sl']);
+    const row = layout.stitches.filter((s) => s.roundIndex === 2);
+    const group = row.filter((s) => s.op.inSameHoleGroup);
+    expect(group).toHaveLength(3);
+    const angles = group.map((s) => Math.atan2(s.position.y, s.position.x));
+    // 세 각도가 모두 다르다
+    expect(new Set(angles.map((a) => a.toFixed(4))).size).toBe(3);
+  });
+
+  it('사슬 위 단일 코는 사슬과 같은 각도를 유지한다', () => {
+    const layout = layoutFromSources(['mr, 10t', '10sl, 1ch, 1x, 9sl']);
+    const row = layout.stitches.filter((s) => s.roundIndex === 2);
+    const chain = row.find((s) => s.op.kind === 'CHAIN')!;
+    const sc = row.find((s) => s.op.kind === 'SC' && s.parentIndices.length > 0)!;
+    const ca = Math.atan2(chain.position.y, chain.position.x);
+    const sa = Math.atan2(sc.position.y, sc.position.x);
+    expect(Math.abs(ca - sa)).toBeLessThan(1e-9);
+  });
+});

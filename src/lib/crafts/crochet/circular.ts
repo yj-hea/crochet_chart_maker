@@ -244,6 +244,8 @@ function placeRound(
     produceMembers: number;
     producedCount: number;
   } | null = null;
+  /** 사슬 위에 얹힌 한 코 그룹의 각도 보정 — 그룹 멤버가 공유해 간격이 유지된다 */
+  let sameHoleStackDelta: number | null = null;
 
   for (const op of round.ops) {
     if (op.kind === 'MAGIC') {
@@ -481,7 +483,19 @@ function placeRound(
       const parent = stitches[inRoundParents[0]!]!;
       r = stitchOuterRadius(parent) + RADIAL_GAP + effectiveSymH(op);
       // angle 도 부모 따라가기 — alignChildToParents 없으니 직접.
-      midAngle = Math.atan2(parent.position.y, parent.position.x);
+      const parentAngle = Math.atan2(parent.position.y, parent.position.x);
+      if (op.inSameHoleGroup) {
+        // 한 코 그룹(`[1f,2e]` 등)이 사슬 위에 얹히면, 부모 각도로 그냥 스냅할 경우
+        // 그룹 멤버가 모두 한 점에 겹친다. 앵커에서 구한 보정각을 그룹 전체에
+        // 동일하게 적용해 멤버 간 간격을 유지한다.
+        if (!op.sameHoleContinuation || sameHoleStackDelta === null) {
+          sameHoleStackDelta = parentAngle - midAngle;
+        }
+        midAngle += sameHoleStackDelta;
+      } else {
+        sameHoleStackDelta = null;
+        midAngle = parentAngle;
+      }
     } else if (vAlign === 'even' && parents.length > 0) {
       let topParentIdx = parents[0]!;
       let topParentR = stitchOuterRadius(stitches[topParentIdx]!);
@@ -646,15 +660,21 @@ function placeRound(
         const chainIdx = runIndices[k]!;
         const ch = stitches[chainIdx]!;
         const newA = prevA + dirSign * step * (k + 1);
+        const oldA = Math.atan2(ch.position.y, ch.position.x);
+        const delta = newA - oldA;
         const chR = Math.sqrt(ch.position.x ** 2 + ch.position.y ** 2);
         ch.position = polarToCartesian(chR, newA);
-        // 이 chain 위에 stack 된 sc 가 있으면 angle 도 sync.
+        if (ch.angle !== undefined) ch.angle += delta;
+        // 이 chain 위에 stack 된 코들도 함께 이동.
+        // 같은 각도로 스냅하면 한 코 그룹(`[1f,2e]` 등) 멤버가 한 점에 겹치므로,
+        // 그룹 안에서 벌어져 있던 간격을 유지하도록 **같은 delta 만큼** 회전시킨다.
         for (const sIdx of thisStitchIndices) {
           const s = stitches[sIdx]!;
-          if (s.parentIndices.includes(chainIdx)) {
-            const sR = Math.sqrt(s.position.x ** 2 + s.position.y ** 2);
-            s.position = polarToCartesian(sR, newA);
-          }
+          if (!s.parentIndices.includes(chainIdx)) continue;
+          const sR = Math.sqrt(s.position.x ** 2 + s.position.y ** 2);
+          const sA = Math.atan2(s.position.y, s.position.x);
+          s.position = polarToCartesian(sR, sA + delta);
+          if (s.angle !== undefined) s.angle += delta;
         }
       }
     }
