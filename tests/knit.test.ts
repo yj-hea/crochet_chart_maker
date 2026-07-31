@@ -6,6 +6,11 @@ import { isRightSide, flipOp, toDisplayOrder } from '../src/lib/crafts/knit/flip
 import { renderKnitSvg } from '../src/lib/crafts/knit/svg';
 import type { ExpandedRound } from '../src/lib/expand/op';
 
+/** 회색으로 채워지는 칸 (구멍·열 맞춤). 정렬용 여백(pad)은 제외 */
+function holes(layout: ReturnType<typeof layoutKnitGrid>) {
+  return (layout.fillerCells ?? []).filter((f) => f.kind !== 'pad');
+}
+
 function parseExpand(index: number, src: string): ExpandedRound {
   const parsed = parseKnitRound(index, src);
   expect(parsed.errors).toEqual([]);
@@ -178,9 +183,9 @@ describe('knit 격자 레이아웃', () => {
     // 2단이 4코만 소비 → 폭 차이는 정렬로만 처리하고 코는 붙여 그린다
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'p4')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    expect(layout.fillerCells).toHaveLength(0);
+    expect(holes(layout)).toHaveLength(0);
     const row2 = layout.stitches.filter((s) => s.roundIndex === 2);
-    // 코끼리 사이에 여백 없이 연속
+    // 코 사이에 여백 없이 연속
     const xs = row2.map((s) => s.position.x).sort((a, b) => a - b);
     for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBe(KNIT_CELL_WIDTH);
   });
@@ -212,8 +217,8 @@ describe('knit 격자 레이아웃', () => {
     const m1x = on.stitches
       .filter((s) => s.op.kind === 'M1L' || s.op.kind === 'M1R')
       .map((s) => s.position.x).sort((a, b) => a - b);
-    expect(on.fillerCells!.map((f) => f.x).sort((a, b) => a - b)).toEqual(m1x);
-    expect(off.fillerCells).toHaveLength(0);
+    expect(holes(on).map((f) => f.x).sort((a, b) => a - b)).toEqual(m1x);
+    expect(holes(off)).toHaveLength(0);
   });
 
   it('kfb 는 만든 코 수만큼 칸을 차지', () => {
@@ -296,7 +301,7 @@ describe('knit cascade — 열 맞춤 방식', () => {
   it('OFF: 늘림 빈 칸 없이 코가 붙어 보인다', () => {
     const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k1, kfb, k2')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    expect(layout.fillerCells).toHaveLength(0);
+    expect(holes(layout)).toHaveLength(0);
     const row1 = layout.stitches.filter((s) => s.roundIndex === 1).map((s) => s.position.x).sort((a, b) => a - b);
     for (let i = 1; i < row1.length; i++) expect(row1[i]! - row1[i - 1]!).toBe(KNIT_CELL_WIDTH);
   });
@@ -305,8 +310,10 @@ describe('knit cascade — 열 맞춤 방식', () => {
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'k1, k2tog, k2tog, k1')];
     const on = layoutKnitGrid(rounds, { shape: 'round', cascade: true });
     const off = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
-    expect(on.fillerCells).toHaveLength(2);
-    expect(off.fillerCells).toHaveLength(0);
+    expect(holes(on)).toHaveLength(2);
+    expect(holes(off)).toHaveLength(0);
+    // 가장자리 여백은 격자만 그린다 (회색 채움 아님)
+    expect(off.fillerCells!.every((f) => f.kind === 'pad')).toBe(true);
     expect(off.stitches.filter((s) => s.roundIndex === 2)).toHaveLength(4);
   });
 
@@ -522,5 +529,39 @@ describe('배색 도안', () => {
   it('showLegend=false 로 끌 수 있다', () => {
     const layout = layoutKnitGrid(build(), { shape: 'round' });
     expect(renderKnitSvg({ layout, showLegend: false })).not.toContain('class="legend"');
+  });
+});
+
+describe('구멍과 새로 만든 코', () => {
+  const rows = ['k10', 'k4, bo2, k4', 'k4, co2, k4'];
+
+  it('감아코가 코막음 구멍을 메우면 빈 칸이 남지 않는다', () => {
+    for (const cascade of [true, false]) {
+      const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
+      expect(holes(layout), `cascade ${cascade}`).toHaveLength(0);
+      // 세 단 모두 10칸
+      expect(layout.bounds.width - 36).toBe(10 * KNIT_CELL_WIDTH);
+    }
+  });
+
+  it('코막음 코와 그 위 감아코가 같은 열에 온다', () => {
+    for (const cascade of [true, false]) {
+      const rounds = rows.map((src, i) => parseExpand(i + 1, src));
+      const layout = layoutKnitGrid(rounds, { shape: 'round', cascade });
+      const xs = (kind: string) => layout.stitches
+        .filter((s) => s.op.kind === kind).map((s) => s.position.x).sort((a, b) => a - b);
+      expect(xs('CAST_ON'), `cascade ${cascade}`).toEqual(xs('BIND_OFF'));
+    }
+  });
+
+  it('가장자리 여백은 격자만 그리고 회색으로 채우지 않는다', () => {
+    const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'k1, k2tog, k2tog, k1')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
+    const svg = renderKnitSvg({ layout });
+    const greyRects = (/<g class="no-stitch">(.*?)<\/g>/.exec(svg)?.[1].match(/<rect/g) ?? []).length;
+    const gridRects = (/<g class="grid">(.*?)<\/g>/.exec(svg)?.[1].match(/<rect/g) ?? []).length;
+    expect(greyRects).toBe(0);
+    expect(gridRects).toBe(12); // 6칸 × 2단 — 여백도 격자로 그려짐
   });
 });

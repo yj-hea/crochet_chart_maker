@@ -136,16 +136,30 @@ function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPla
 
   // 1) 구멍 — 단 중간 코막음 자리는 위 단으로 계속 이어진다
   for (let r = 1; r < rows.length; r++) {
-    // 아래 단의 구멍을 이 단으로 전파
+    // 이 단에서 부모 없이 새로 만든 코(감아코·m1·yo)는 아래 구멍을 메운다
+    let absorb = 0;
+    for (let i = 0; i < rows[r]!.length; i++) {
+      if (parents[r]![i]!.length === 0) absorb += plans[r]!.spans[i]!;
+    }
+    // 아래 단의 구멍을 이 단으로 전파 (메워진 만큼 제외)
     for (const [g, spans] of [...plans[r - 1]!.gapsBefore.entries()].sort((a, b) => a[0] - b[0])) {
       const at = childIndexForParent(parents[r]!, g);
-      for (const span of spans) addGap(plans[r]!, at, span);
+      for (const span of spans) {
+        const covered = Math.min(absorb, span);
+        absorb -= covered;
+        if (span - covered > 0) addGap(plans[r]!, at, span - covered);
+      }
     }
-    // 이 단이 소비하지 않은 코막음 코 → 바로 위에 구멍
+    // 이 단이 소비하지 않은 코막음 코 → 바로 위에 구멍 (새로 만든 코가 메우면 제외)
     for (let p = 0; p < rows[r - 1]!.length; p++) {
       if (children[r - 1]![p]!.length > 0) continue;
       if (rows[r - 1]![p]!.kind !== 'BIND_OFF') continue;
-      addGap(plans[r]!, firstChildIndexAfter(parents[r]!, p), plans[r - 1]!.spans[p]!);
+      const span = plans[r - 1]!.spans[p]!;
+      const covered = Math.min(absorb, span);
+      absorb -= covered;
+      if (span - covered > 0) {
+        addGap(plans[r]!, firstChildIndexAfter(parents[r]!, p), span - covered);
+      }
     }
   }
 
@@ -267,7 +281,7 @@ export function layoutKnitGrid(
   const rowCount = cellRows.length;
 
   const stitches: PositionedStitch[] = [];
-  const fillerCells: Array<{ x: number; y: number; span: number }> = [];
+  const fillerCells: NonNullable<LayoutResult['fillerCells']> = [];
   const roundMarkers: RoundMarker[] = [];
 
   for (let r = 0; r < rowCount; r++) {
@@ -281,15 +295,14 @@ export function layoutKnitGrid(
     const rightPad = pad - leftPad;
 
     let cursor = 0;
-    // 정렬용 좌우 여백: cascade ON 이면 회색 칸으로 보이고,
-    // OFF 면 자리만 비워 둔다 (코가 붙어 보이도록 — 구멍만 회색으로 남긴다)
+    // 정렬용 좌우 여백 — 격자만 그리고 회색으로 채우지 않는다 (코가 없는 자리일 뿐)
     const emitFiller = (span: number) => {
-      if (cascade) fillerCells.push({ x: (cursor + span / 2) * KNIT_CELL_WIDTH, y: yCenter, span });
+      fillerCells.push({ x: (cursor + span / 2) * KNIT_CELL_WIDTH, y: yCenter, span, kind: 'pad' });
       cursor += span;
     };
-    // 행 안쪽의 빈 칸(구멍·열 맞춤)은 두 모드 모두 회색으로 그린다
+    // 행 안쪽의 빈 칸 — 구멍·열 맞춤. 회색으로 채운다
     const emitGap = (span: number) => {
-      fillerCells.push({ x: (cursor + span / 2) * KNIT_CELL_WIDTH, y: yCenter, span });
+      fillerCells.push({ x: (cursor + span / 2) * KNIT_CELL_WIDTH, y: yCenter, span, kind: 'hole' });
       cursor += span;
     };
 

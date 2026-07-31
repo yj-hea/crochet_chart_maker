@@ -102,5 +102,14 @@ export interface LayoutResult {
    * 중심 좌표 + 폭(단위 칸 수). 실제 코가 아니므로 `stitches` 에 넣지 않는다
    * (진행 하이라이트 인덱스 보존).
    */
-  fillerCells?: Array<{ x: number; y: number; span: number }>;
+  fillerCells?: Array<{
+    x: number;
+    y: number;
+    span: number;
+    /**
+     * `hole` — 실제로 코가 없는 자리 (코막음 구멍·열 맞춤). 회색으로 채운다.
+     * `pad`  — 행이 차트 폭보다 좁아 남는 좌우 여백. 격자만 그린다.
+     */
+    kind?: 'hole' | 'pad';
+  }>;
 }

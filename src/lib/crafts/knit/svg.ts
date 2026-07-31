@@ -42,9 +42,10 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ` +
     `${bounds.width + pad * 2} ${bounds.height + legendHeight + pad * 2}`;
 
-  // 미작업 코(unw) 는 실제 코지만 되돌아뜨기로 뜨지 않은 자리라 회색으로 채운다
+  // 미작업 코(unw) 는 실제 코지만 되돌아뜨기로 뜨지 않은 자리라 회색으로 채운다.
+  // 정렬용 여백(`pad`) 은 격자만 그리고 채우지 않는다.
   const greyCells = [
-    ...(layout.fillerCells ?? []),
+    ...(layout.fillerCells ?? []).filter((f) => f.kind !== 'pad'),
     ...layout.stitches
       .filter((s) => s.op.kind === 'UNWORKED')
       .map((s) => ({ x: s.position.x, y: s.position.y, span: s.cell?.span ?? 1 })),
@@ -65,7 +66,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
 
 /** 코 없음 칸 — 회색 채움 */
 function renderFillers(
-  cells: ReadonlyArray<{ x: number; y: number; span: number }>,
+  cells: ReadonlyArray<{ x: number; y: number; span: number; kind?: string }>,
   cell: { width: number; height: number },
 ): string {
   if (cells.length === 0) return '';
