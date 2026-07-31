@@ -6,7 +6,7 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
-  import { setRoundDirection, addComment, workspace } from '$stores/tabs';
+  import { setRoundDirection, addComment, workspace, insertRoundsAfter } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
@@ -14,11 +14,13 @@
   import ShapeSelector from './ShapeSelector.svelte';
   import EvenIncModal from './EvenIncModal.svelte';
   import GaugeInput from './GaugeInput.svelte';
+  import ShortRowModal from './ShortRowModal.svelte';
 
   let focusRequests = $state<Record<string, FocusRequest>>({});
   // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
   let focusedRoundId = $state<string | null>(null);
   let evenIncOpen = $state(false);
+  let shortRowOpen = $state(false);
 
   // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
   const validationByRound = $derived.by(() => {
@@ -78,6 +80,18 @@
     updateRoundSource(newId, patternSrc);
     bumpFocus(newId, 'end');
     evenIncOpen = false;
+  }
+
+  /** 되돌아뜨기 — 여러 단을 한꺼번에 삽입 */
+  function handleInsertRows(sources: string[]) {
+    const rounds = $pattern.rounds;
+    const afterId = focusedRoundId && rounds.some((r) => r.id === focusedRoundId)
+      ? focusedRoundId
+      : rounds[rounds.length - 1]?.id ?? null;
+    const ids = insertRoundsAfter(afterId, sources);
+    const last = ids[ids.length - 1];
+    if (last) bumpFocus(last, 'end');
+    shortRowOpen = false;
   }
 
   function handleArrowUp(roundId: string, col: number) {
@@ -202,6 +216,16 @@
     >
       <i class="fa-solid fa-calculator"></i> 균등 증감
     </button>
+    {#if isKnit}
+      <button
+        type="button"
+        class="calc-btn"
+        onclick={() => (shortRowOpen = true)}
+        title="되돌아뜨기 계산 — unw 위치를 자동으로 배치"
+      >
+        <i class="fa-solid fa-arrow-turn-down"></i> 되돌아뜨기
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -211,6 +235,14 @@
     craft={$pattern.craft}
     onClose={() => (evenIncOpen = false)}
     onInsert={handleInsertCalculated}
+  />
+{/if}
+
+{#if shortRowOpen}
+  <ShortRowModal
+    defaultTotal={defaultFromCount}
+    onClose={() => (shortRowOpen = false)}
+    onInsert={handleInsertRows}
   />
 {/if}
 

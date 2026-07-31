@@ -347,6 +347,28 @@ export function addRoundAfter(id: string): string {
   return newId;
 }
 
+/**
+ * 여러 단을 한 번에 삽입 (되돌아뜨기처럼 여러 단이 한 묶음일 때).
+ * `afterId` 가 없으면 맨 끝에 붙인다. 반환값은 삽입된 단들의 id.
+ */
+export function insertRoundsAfter(afterId: string | null, sources: string[]): string[] {
+  const ids: string[] = [];
+  if (sources.length === 0) return ids;
+  updateActiveTab((t) => {
+    const idx = afterId ? t.rounds.findIndex((r) => r.id === afterId) : -1;
+    const at = idx < 0 ? t.rounds.length : idx + 1;
+    const inserted = sources.map((source) => {
+      const id = makeRoundId();
+      ids.push(id);
+      return { id, source };
+    });
+    const newRounds = [...t.rounds];
+    newRounds.splice(at, 0, ...inserted);
+    return { ...t, rounds: reparseAll(newRounds, t.craft) };
+  });
+  return ids;
+}
+
 export function addRoundAtEnd(): string {
   let newId = '';
   updateActiveTab((t) => {
