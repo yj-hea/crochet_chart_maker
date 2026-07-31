@@ -42,10 +42,10 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ` +
     `${bounds.width + pad * 2} ${bounds.height + legendHeight + pad * 2}`;
 
-  // 미작업 코(unw) 는 실제 코지만 되돌아뜨기로 뜨지 않은 자리라 회색으로 채운다.
-  // 정렬용 여백(`pad`) 은 격자만 그리고 채우지 않는다.
+  // 코가 없는 칸은 모두 같은 회색으로 채운다 —
+  // 구멍(코막음·열 맞춤), 정렬용 여백, 그리고 되돌아뜨기의 미작업 코(unw).
   const greyCells = [
-    ...(layout.fillerCells ?? []).filter((f) => f.kind !== 'pad'),
+    ...(layout.fillerCells ?? []),
     ...layout.stitches
       .filter((s) => s.op.kind === 'UNWORKED')
       .map((s) => ({ x: s.position.x, y: s.position.y, span: s.cell?.span ?? 1 })),

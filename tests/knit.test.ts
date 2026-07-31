@@ -555,13 +555,14 @@ describe('구멍과 새로 만든 코', () => {
     }
   });
 
-  it('가장자리 여백은 격자만 그리고 회색으로 채우지 않는다', () => {
+  it('코가 없는 칸은 여백까지 모두 회색으로 채워진다', () => {
     const rounds = [parseExpand(1, 'k6'), parseExpand(2, 'k1, k2tog, k2tog, k1')];
     const layout = layoutKnitGrid(rounds, { shape: 'round', cascade: false });
     const svg = renderKnitSvg({ layout });
     const greyRects = (/<g class="no-stitch">(.*?)<\/g>/.exec(svg)?.[1].match(/<rect/g) ?? []).length;
     const gridRects = (/<g class="grid">(.*?)<\/g>/.exec(svg)?.[1].match(/<rect/g) ?? []).length;
-    expect(greyRects).toBe(0);
-    expect(gridRects).toBe(12); // 6칸 × 2단 — 여백도 격자로 그려짐
+    // 2단은 4코 → 남는 좌우 2칸도 회색
+    expect(greyRects).toBe(2);
+    expect(gridRects).toBe(12); // 6칸 × 2단
   });
 });

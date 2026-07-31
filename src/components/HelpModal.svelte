@@ -131,7 +131,7 @@
             <tr><td>코 수가 같으면</td><td>격자를 건드리지 않음 — 레이스처럼 <code>yo</code> 와 <code>ssk</code> 가 상쇄되면 직사각형 유지</td></tr>
             <tr><td>Cascade <b>On</b></td><td>늘림·줄임으로 달라진 코 수만큼 빈 칸을 넣어 <b>열을 맞춤</b> (늘림 아래 / 줄임 옆)</td></tr>
             <tr><td>Cascade <b>Off</b></td><td>그 빈 칸을 넣지 않아 <b>코가 붙어 보임</b>. 단 중간 코막음으로 생긴 구멍은 그대로 유지</td></tr>
-            <tr><td>빈 칸 두 종류</td><td><b>구멍</b>(코가 없는 자리) 은 회색으로 채우고, <b>여백</b>(행이 차트 폭보다 좁아 남는 좌우) 은 격자 테두리만 그림</td></tr>
+            <tr><td>빈 칸</td><td>코가 없는 칸은 모두 회색 — 코막음 구멍, 열 맞춤 자리, 좌우 여백, 되돌아뜨기의 미작업 코</td></tr>
             <tr><td>구멍 메우기</td><td><code>bo2</code> 로 뚫은 자리를 다음 단에서 <code>co2</code>(감아코) 로 메우면 구멍이 사라지고 열이 맞음</td></tr>
             <tr><td>게이지</td><td>편집기 상단 <code>게이지 [코] × [단] / 10cm</code> — 칸 세로 비율에 반영되고, 미리보기 아래에 실측 치수 표시 (가로는 고정)</td></tr>
             <tr><td><code>k3tog</code>·<code>sssk</code></td><td>3코 이상 모아뜨기. <code>k2tog^4</code> 처럼 <code>^N</code> 으로도 지정 가능</td></tr>
