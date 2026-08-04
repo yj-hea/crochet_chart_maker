@@ -11,7 +11,7 @@
 
 import type { ParsedRound, SequenceNode, StitchNode, AstNode } from '$lib/parser/ast';
 import type { SourceRange } from '$lib/model/errors';
-import { NAMED_COLORS } from '$lib/model/colors';
+import { NAMED_COLORS, resolveColorValue } from '$lib/model/colors';
 
 /** 소스에 적어 넣을 색 표기 — 이름이 있으면 이름이 읽기 좋다 */
 export function colorLiteral(hex: string): string {
@@ -46,6 +46,92 @@ export function colorsInRound(parsed: ParsedRound | undefined): Map<string, numb
     counts.set(s.color, (counts.get(s.color) ?? 0) + s.count);
   }
   return counts;
+}
+
+// ============================================================
+// 텍스트 스캔 — 에디터 표시용
+// ============================================================
+
+/**
+ * 소스에서 찾은 색 표기 하나.
+ *
+ * AST 의 `colorRange` 와 달리 **입력 중인 미완성 색**(`:aa`)도 잡는다.
+ * 에디터는 타이핑 도중에도 매 키 입력마다 판단해야 하는데, 그 순간은 파싱이
+ * 실패해 AST 가 없기 때문이다.
+ */
+export interface ColorToken {
+  /** `:` 위치 */
+  start: number;
+  /** 색 값의 끝 (배타적) */
+  end: number;
+  /** `:` 뒤의 원문 — `aaf`, `#aaccff`, `navy`, 입력 직후면 `` */
+  raw: string;
+  /** 정규화된 hex. 아직 유효하지 않으면 undefined */
+  color?: string;
+}
+
+/**
+ * 소스를 훑어 색 표기를 모두 찾는다.
+ *
+ * 주석 문자열(`"..."`) 안의 `:` 는 건너뛴다 — `2x "3:5 비율"` 의 `:5` 를
+ * 색으로 오인하면 안 된다.
+ */
+export function scanColorTokens(source: string): ColorToken[] {
+  const out: ColorToken[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i]!;
+    if (ch === '"') {
+      // 주석 문자열 통째로 건너뛰기 (닫는 따옴표가 없으면 끝까지)
+      const close = source.indexOf('"', i + 1);
+      i = close < 0 ? source.length : close + 1;
+      continue;
+    }
+    if (ch !== ':') { i++; continue; }
+
+    const start = i;
+    let j = i + 1;
+    if (source[j] === '#') j++;
+    while (j < source.length && /[0-9a-zA-Z]/.test(source[j]!)) j++;
+    const raw = source.slice(start + 1, j);
+    out.push({ start, end: j, raw, color: resolveColorValue(raw) ?? undefined });
+    i = j;
+  }
+  return out;
+}
+
+/** 이 위치를 품는 색 표기 (경계 포함 — 커서가 끝에 붙어 있어도 편집 중으로 본다) */
+export function colorTokenAt(tokens: readonly ColorToken[], pos: number): ColorToken | undefined {
+  return tokens.find((t) => t.start <= pos && pos <= t.end);
+}
+
+/**
+ * 화면에서 동그라미로 접을 색 표기들.
+ *
+ * 두 가지는 접지 않는다:
+ *  - 아직 유효하지 않은 입력 중인 색 (`:aa`) — 글자가 보여야 마저 칠 수 있다
+ *  - 커서·선택이 걸쳐 있는 색 — 접혀 있으면 키보드로 고칠 수 없다
+ */
+export function foldableColorTokens(
+  source: string,
+  selFrom: number,
+  selTo: number,
+): ColorToken[] {
+  const from = Math.min(selFrom, selTo);
+  const to = Math.max(selFrom, selTo);
+  return scanColorTokens(source).filter(
+    (t) => t.color !== undefined && (to < t.start || from > t.end),
+  );
+}
+
+/** 색 표기 하나를 다른 색으로 교체 (hex 가 undefined 면 제거) */
+export function replaceColorToken(
+  source: string,
+  token: { start: number; end: number },
+  hex: string | undefined,
+): string {
+  const text = hex === undefined ? '' : `:${colorLiteral(hex)}`;
+  return source.slice(0, token.start) + text + source.slice(token.end);
 }
 
 /** 소스에 적용할 치환 하나 */

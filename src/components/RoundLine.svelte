@@ -8,7 +8,13 @@
   import type { Comment } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import ColorPalette from './ColorPalette.svelte';
-  import { collectStitches, setColorAt, setColorInRange } from '$lib/color-edit';
+  import {
+    scanColorTokens,
+    colorTokenAt,
+    foldableColorTokens,
+    replaceColorToken,
+    setColorInRange,
+  } from '$lib/color-edit';
 
   export interface FocusRequest {
     token: number;
@@ -102,75 +108,78 @@
   });
 
   // ── 인라인 색 스와치 ────────────────────────────────────────────
-  // 색 코드(`:navy`) 바로 뒤에 실제 색 동그라미를 끼워 넣는다. 텍스트는 건드리지 않고
-  // 위젯만 얹으므로 소스는 그대로다. 클릭하면 그 코의 색을 바꾸는 팔레트가 열린다.
+  //
+  // 색 표기(`:aaf`)를 **동그란 색 미리보기로 대체**해서 그린다 (replace decoration).
+  // hex 코드가 줄 안에 그대로 남아 있으면 도안을 읽기 어렵기 때문이다.
+  // 소스 텍스트는 건드리지 않는다 — 화면에서만 접힌다.
+  //
+  // 단, 커서가 그 색 표기 안(또는 끝)에 있으면 접지 않고 원래 글자를 보여준다.
+  // 안 그러면 한번 접힌 색을 키보드로 고칠 수 없다.
 
-  /** 스와치 위젯 — 어떤 코의 색인지 알 수 있도록 소스 위치를 data 속성에 담는다 */
+  /** 접힌 색 표기 자리에 그리는 동그라미 */
   class SwatchWidget extends WidgetType {
     color: string;
-    stitchStart: number;
-    constructor(color: string, stitchStart: number) {
+    from: number;
+    to: number;
+    constructor(color: string, from: number, to: number) {
       super();
       this.color = color;
-      this.stitchStart = stitchStart;
+      this.from = from;
+      this.to = to;
     }
-    // 같은 색·같은 코면 DOM 을 재사용 (매 타이핑마다 새로 만들지 않도록)
+    // 같은 색·같은 위치면 DOM 을 재사용 (타이핑마다 새로 만들지 않도록)
     eq(other: SwatchWidget) {
-      return other.color === this.color && other.stitchStart === this.stitchStart;
+      return other.color === this.color && other.from === this.from && other.to === this.to;
     }
     toDOM() {
       const el = document.createElement('span');
       el.className = 'cm-color-swatch';
       el.style.backgroundColor = this.color;
-      el.dataset.stitchStart = String(this.stitchStart);
+      el.dataset.from = String(this.from);
+      el.dataset.to = String(this.to);
       el.dataset.color = this.color;
-      el.title = `${this.color} — 클릭하여 색 바꾸기`;
+      el.title = `${this.color} — 클릭하여 바꾸기 (커서를 대면 코드가 보입니다)`;
       return el;
     }
     ignoreEvent() { return false; }
   }
 
-  const setSwatches = StateEffect.define<Array<{ at: number; color: string; stitchStart: number }>>();
+  /** 현재 문서·커서 상태에서 접을 색 표기들을 계산 */
+  function buildSwatches(state: EditorState): DecorationSet {
+    const sel = state.selection.main;
+    const ranges = foldableColorTokens(state.doc.toString(), sel.from, sel.to)
+      .map((t) =>
+        Decoration.replace({ widget: new SwatchWidget(t.color!, t.start, t.end) })
+          .range(t.start, t.end),
+      );
+    return Decoration.set(ranges);
+  }
+
   const swatchField = StateField.define<DecorationSet>({
-    create: () => Decoration.none,
+    create: (state) => buildSwatches(state),
     update(deco, tr) {
-      let updated = deco.map(tr.changes);
-      for (const eff of tr.effects) {
-        if (eff.is(setSwatches)) {
-          const docLen = tr.state.doc.length;
-          updated = Decoration.set(
-            eff.value
-              .filter((s) => s.at <= docLen)
-              .map((s) =>
-                Decoration.widget({ widget: new SwatchWidget(s.color, s.stitchStart), side: 1 })
-                  .range(s.at),
-              )
-              .sort((a, b) => a.from - b.from),
-          );
-        }
-      }
-      return updated;
+      // 글자나 커서가 움직였을 때만 다시 계산
+      if (!tr.docChanged && !tr.selection) return deco;
+      return buildSwatches(tr.state);
     },
     provide: (f) => EditorView.decorations.from(f),
   });
 
-  function applySwatches(v: EditorView, p: ParsedRound | undefined) {
-    const items = collectStitches(p?.body ?? p?.lastValid)
-      .filter((s) => s.color && s.colorRange)
-      .map((s) => ({ at: s.colorRange!.end, color: s.color!, stitchStart: s.range.start }));
-    v.dispatch({ effects: setSwatches.of(items) });
-  }
-
   // ── 팔레트 열기 상태 ────────────────────────────────────────────
-  /** 'swatch' = 특정 코 하나 / 'selection' = 현재 선택 범위 */
+  /**
+   * 'token'     = 색 표기 하나 (스와치 클릭 / `:` 입력 직후)
+   * 'selection' = 현재 선택 범위의 코들
+   */
   let paletteFor = $state<
-    | { kind: 'swatch'; stitchStart: number; color: string; anchor: HTMLElement }
+    | { kind: 'token'; from: number; to: number; color?: string; anchor: HTMLElement }
     | { kind: 'selection'; from: number; to: number; anchor: HTMLElement }
     | null
   >(null);
   let paletteBtn: HTMLButtonElement | undefined = $state();
+  /** `:` 를 친 자리에 팝오버를 띄우기 위한 0×0 기준점 */
+  let caretAnchor: HTMLDivElement | undefined = $state();
 
-  const paletteCurrent = $derived(paletteFor?.kind === 'swatch' ? paletteFor.color : undefined);
+  const paletteCurrent = $derived(paletteFor?.kind === 'token' ? paletteFor.color : undefined);
 
   function openSelectionPalette() {
     if (!view || !paletteBtn) return;
@@ -178,16 +187,47 @@
     paletteFor = { kind: 'selection', from: sel.from, to: sel.to, anchor: paletteBtn };
   }
 
+  /** 캐럿 좌표에 기준점을 옮기고 그 색 표기용 팔레트를 연다 */
+  function openTokenPaletteAtCaret(v: EditorView, from: number, to: number, color?: string) {
+    if (!caretAnchor) return;
+    const coords = v.coordsAtPos(from);
+    if (!coords) return;
+    caretAnchor.style.top = `${coords.bottom}px`;
+    caretAnchor.style.left = `${coords.left}px`;
+    paletteFor = { kind: 'token', from, to, color, anchor: caretAnchor };
+  }
+
   /** 팔레트에서 고른 색(또는 제거)을 소스에 반영 */
   function applyColor(hex: string | undefined) {
     const target = paletteFor;
     if (!target || !view) return;
     const src = view.state.doc.toString();
-    const next = target.kind === 'swatch'
-      ? setColorAt(src, parsed, target.stitchStart, hex)
-      : setColorInRange(src, parsed, { start: target.from, end: target.to }, hex);
+    let next: string;
+    if (target.kind === 'token') {
+      // 팔레트를 연 뒤에도 계속 타이핑할 수 있으므로 범위를 지금 다시 구한다
+      // (열 때 잡아둔 end 는 `:aa` → `:aaf` 처럼 이미 낡았을 수 있다)
+      const live = colorTokenAt(scanColorTokens(src), target.from);
+      next = replaceColorToken(src, live ?? { start: target.from, end: target.to }, hex);
+    } else {
+      next = setColorInRange(src, parsed, { start: target.from, end: target.to }, hex);
+    }
     paletteFor = null;
     if (next !== src) onChange(next);
+  }
+
+  /**
+   * 스페이스로 색 입력 확정 — 커서를 색 표기 끝으로 보내고 공백은 넣지 않는다.
+   * 커서가 빠져나가면 그 색은 자동으로 동그라미로 접힌다.
+   * 색이 아직 유효하지 않으면 평소처럼 공백이 입력된다.
+   */
+  function commitColorOnSpace(v: EditorView): boolean {
+    const sel = v.state.selection.main;
+    if (!sel.empty) return false;
+    const token = colorTokenAt(scanColorTokens(v.state.doc.toString()), sel.from);
+    if (!token || token.color === undefined) return false;
+    paletteFor = null;
+    v.dispatch({ selection: { anchor: token.end } });
+    return true;
   }
 
   // 붙여넣기·드래그 등으로 들어오는 개행은 허용하되 Enter 키 기본 동작은 별도 제어.
@@ -243,6 +283,11 @@
               },
             },
             {
+              // Space: 색 입력 확정 (색 표기 안일 때만. 아니면 평소대로 공백)
+              key: 'Space',
+              run: (v) => commitColorOnSpace(v),
+            },
+            {
               // Shift+Enter: 새 단 추가 (기존 동작 유지)
               key: 'Shift-Enter',
               run: () => { onShiftEnter(); return true; },
@@ -291,6 +336,23 @@
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {
               onChange(u.state.doc.toString());
+              // `:` 를 친 직후 그 자리에 색 팔레트를 띄운다.
+              // 포커스는 에디터에 남으므로 팝오버를 보면서 계속 타이핑할 수 있다.
+              let typedColon = false;
+              u.changes.iterChanges((_fa, _ta, _fb, _tb, inserted) => {
+                if (inserted.toString() === ':') typedColon = true;
+              });
+              if (typedColon) {
+                const pos = u.state.selection.main.head;
+                const token = colorTokenAt(scanColorTokens(u.state.doc.toString()), pos);
+                if (token) openTokenPaletteAtCaret(u.view, token.start, token.end, token.color);
+              }
+            }
+            // 커서가 그 색 표기를 벗어나면 팝오버를 닫는다
+            if ((u.docChanged || u.selectionSet) && paletteFor?.kind === 'token') {
+              const pos = u.state.selection.main.head;
+              const token = colorTokenAt(scanColorTokens(u.state.doc.toString()), pos);
+              if (!token) paletteFor = null;
             }
           }),
           EditorView.domEventHandlers({
@@ -299,14 +361,10 @@
               const el = (e.target as HTMLElement | null)?.closest?.('.cm-color-swatch');
               if (!(el instanceof HTMLElement)) return false;
               e.preventDefault(); // 스와치 클릭으로 커서가 튀지 않도록
-              const stitchStart = Number(el.dataset.stitchStart);
-              if (!Number.isFinite(stitchStart)) return false;
-              paletteFor = {
-                kind: 'swatch',
-                stitchStart,
-                color: el.dataset.color ?? '',
-                anchor: el,
-              };
+              const from = Number(el.dataset.from);
+              const to = Number(el.dataset.to);
+              if (!Number.isFinite(from) || !Number.isFinite(to)) return false;
+              paletteFor = { kind: 'token', from, to, color: el.dataset.color, anchor: el };
               return true;
             },
           }),
@@ -315,17 +373,19 @@
             '.cm-content': { padding: '6px 8px' },
             '.cm-line': { padding: '0' },
             '&.cm-focused': { outline: 'none' },
+            // 색 표기(`:aaf`)를 대신 그리는 동그라미 — 글자 자리를 차지한다
             '.cm-color-swatch': {
               display: 'inline-block',
-              width: '10px',
-              height: '10px',
-              marginLeft: '2px',
+              width: '11px',
+              height: '11px',
+              margin: '0 1px',
               borderRadius: '50%',
-              border: '1px solid rgba(0,0,0,0.25)',
-              verticalAlign: 'baseline',
+              border: '1px solid rgba(0,0,0,0.28)',
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.7) inset',
+              verticalAlign: 'middle',
               cursor: 'pointer',
             },
-            '.cm-color-swatch:hover': { transform: 'scale(1.3)' },
+            '.cm-color-swatch:hover': { transform: 'scale(1.25)' },
             '.cm-error': {
               textDecoration: 'underline wavy #d33',
               textDecorationThickness: '2px',
@@ -340,7 +400,6 @@
     });
     view = v;
     applyDecorations(v, errors, validationErrors);
-    applySwatches(v, parsed);
     // 마운트 시점에 포커스 요청이 이미 걸려있으면 즉시 포커스.
     if (focusRequest !== undefined) {
       lastSeenFocusToken = focusRequest.token;
@@ -364,10 +423,6 @@
     if (view) applyDecorations(view, errors, validationErrors);
   });
 
-  // 파싱 결과가 바뀌면 색 스와치 갱신
-  $effect(() => {
-    if (view) applySwatches(view, parsed);
-  });
 
   // 외부 포커스 요청 — 토큰이 실제로 증가했을 때만 포커스
   $effect(() => {
@@ -440,6 +495,8 @@
   >×</button>
 </div>
 
+<div class="caret-anchor" bind:this={caretAnchor}></div>
+
 {#if paletteFor}
   <ColorPalette
     anchor={paletteFor.anchor}
@@ -452,6 +509,12 @@
 {/if}
 
 <style>
+  /* `:` 입력 시 팝오버를 캐럿 위치에 띄우기 위한 0×0 기준점 */
+  .caret-anchor {
+    position: fixed;
+    width: 0; height: 0;
+    pointer-events: none;
+  }
   .color-btn {
     align-self: flex-start;
     margin-top: 4px;

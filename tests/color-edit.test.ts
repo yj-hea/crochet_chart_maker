@@ -205,3 +205,101 @@ describe('도안 전체 배색 교체 (스토어)', () => {
     expect(get(pattern).rounds[0]!.source).toBe('k4, p2:red, k4');
   });
 });
+
+// ── 에디터 표시용 텍스트 스캔 ──────────────────────────────────────
+describe('색 표기 스캔 (에디터 표시용)', () => {
+  it('완성된 색과 입력 중인 색을 모두 찾는다', async () => {
+    const { scanColorTokens } = await import('../src/lib/color-edit');
+    const src = '2x:navy, 1v:aa, 3x:#aaccff, 1f:';
+    expect(scanColorTokens(src).map((t) => [t.raw, t.color])).toEqual([
+      ['navy', '#0d47a1'],
+      ['aa', undefined],      // 입력 중 — 아직 유효하지 않다
+      ['#aaccff', '#aaccff'],
+      ['', undefined],        // `:` 만 친 직후
+    ]);
+  });
+
+  it('주석 안의 콜론은 색으로 보지 않는다', async () => {
+    const { scanColorTokens } = await import('../src/lib/color-edit');
+    const tokens = scanColorTokens('2x "3:5 비율로", 1v:red');
+    expect(tokens.map((t) => t.raw)).toEqual(['red']);
+  });
+
+  it('닫히지 않은 따옴표 뒤는 전부 주석으로 본다 (오탐 방지)', async () => {
+    const { scanColorTokens } = await import('../src/lib/color-edit');
+    expect(scanColorTokens('2x "미완성 :red')).toEqual([]);
+  });
+
+  it('AST 가 잡는 위치와 일치한다', async () => {
+    const { scanColorTokens } = await import('../src/lib/color-edit');
+    const src = '2x:navy, [1f:red, 1t], (1v:#aaccff)*3';
+    const scanned = scanColorTokens(src).map((t) => [t.start, t.end]);
+    const fromAst = collectStitches(cro(src).body)
+      .filter((s) => s.colorRange)
+      .map((s) => [s.colorRange!.start, s.colorRange!.end]);
+    expect(scanned).toEqual(fromAst);
+  });
+
+  it('커서 위치로 편집 중인 색을 찾는다 (양 끝 포함)', async () => {
+    const { scanColorTokens, colorTokenAt } = await import('../src/lib/color-edit');
+    const src = '2x:navy, 1v';
+    const tokens = scanColorTokens(src);
+    expect(colorTokenAt(tokens, 2)?.raw).toBe('navy');  // ':' 바로 위
+    expect(colorTokenAt(tokens, 7)?.raw).toBe('navy');  // 'navy' 끝 — 아직 편집 중
+    expect(colorTokenAt(tokens, 8)).toBeUndefined();    // ',' — 벗어남
+    expect(colorTokenAt(tokens, 0)).toBeUndefined();
+  });
+
+  it('색 표기 하나를 교체·제거한다', async () => {
+    const { scanColorTokens, replaceColorToken } = await import('../src/lib/color-edit');
+    const src = '2x:aa, 1v:red';
+    const [partial] = scanColorTokens(src);
+    expect(replaceColorToken(src, partial!, '#0d47a1')).toBe('2x:navy, 1v:red');
+    expect(replaceColorToken(src, partial!, undefined)).toBe('2x, 1v:red');
+  });
+});
+
+describe('색 표기 접기 (화면 표시)', () => {
+  /** 접힌 뒤 화면에 보이는 글자 — 접힌 자리는 ● 로 대체 */
+  async function rendered(src: string, selFrom: number, selTo = selFrom) {
+    const { foldableColorTokens } = await import('../src/lib/color-edit');
+    const folded = foldableColorTokens(src, selFrom, selTo);
+    let out = '';
+    let i = 0;
+    for (const t of folded) {
+      out += src.slice(i, t.start) + '●';
+      i = t.end;
+    }
+    return out + src.slice(i);
+  }
+
+  it('커서가 멀리 있으면 색 코드가 동그라미로 접힌다', async () => {
+    expect(await rendered('2x:#aaccff, 1v:navy', 0)).toBe('2x●, 1v●');
+  });
+
+  it('커서가 그 색 안에 있으면 펼쳐서 고칠 수 있다', async () => {
+    const src = '2x:#aaccff, 1v:navy';
+    // ':#aaccff' 중간에 커서 → 그 색만 펼쳐진다
+    expect(await rendered(src, 5)).toBe('2x:#aaccff, 1v●');
+    // 'navy' 끝에 커서 → 그 색만 펼쳐진다
+    expect(await rendered(src, src.length)).toBe('2x●, 1v:navy');
+  });
+
+  it('입력 중인 미완성 색은 접지 않는다', async () => {
+    // ':aa' 는 아직 유효하지 않다 — 커서가 멀어도 글자가 보여야 한다
+    expect(await rendered('2x:aa, 1v:red', 0)).toBe('2x:aa, 1v●');
+  });
+
+  it('선택 범위에 걸친 색은 펼쳐진다', async () => {
+    const src = '2x:navy, 1v:red';
+    expect(await rendered(src, 0, src.length)).toBe(src);
+  });
+
+  it('스페이스로 확정하는 순간 접힌다 (커서가 끝을 벗어남)', async () => {
+    const src = '2x:aaf';
+    // 확정 전 — 커서가 색 끝에 있다
+    expect(await rendered(src, src.length)).toBe('2x:aaf');
+    // 확정 후 — 커서가 한 칸 뒤로 (다음 글자를 치기 시작한 상태)
+    expect(await rendered(src + ', 1v', src.length + 2)).toBe('2x●, 1v');
+  });
+});
