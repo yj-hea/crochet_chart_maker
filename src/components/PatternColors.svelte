@@ -2,13 +2,18 @@
   /**
    * 도안 배색 목록.
    *
-   * 앞쪽 세 칩은 **표시 옵션**이라 본문을 건드리지 않는다 (점선 테두리로 구분):
-   *   빈칸 — 코가 없는 자리
-   *   칸   — 코가 있는 자리의 배경 (실 색을 지정하지 않은 코)
-   *   기호 — 실 색을 지정하지 않은 코의 기호 선
+   * 두 묶음으로 나뉜다.
    *
-   * 그 뒤는 본문에 `:색` 으로 적힌 실 색들이고, 색을 바꾸면 **도안 전체**에서
-   * 그 색으로 칠한 코가 한 번에 바뀐다 (소스 텍스트를 직접 치환 — 별칭 문법 불필요).
+   * **기본 배경색** — 코를 칠하는 색이 아니라 도안의 바탕:
+   *   빈칸 — 코가 없는 자리
+   *   칸   — 기호가 있는 모든 칸의 배경
+   *
+   * **배색** — 실 색:
+   *   기호 — 실 색을 지정하지 않은 코의 색 (= 기본 실 색)
+   *   그 뒤 — 본문에 `:색` 으로 적힌 실 색들. 바꾸면 **도안 전체**에서 그 색으로
+   *           칠한 코가 한 번에 바뀐다 (소스 텍스트를 직접 치환 — 별칭 문법 불필요)
+   *
+   * 점선 테두리 = 표시 옵션이라 본문을 건드리지 않는다는 뜻.
    */
   import { usedColors, uncoloredCount, replaceColorEverywhere } from '$stores/tabs';
   import { mainColor, emptyColor, symbolColor } from '$stores/mode';
@@ -22,19 +27,15 @@
   type Target = 'empty' | 'main' | 'symbol' | 'yarn';
   let editing = $state<{ kind: Target; color: string; anchor: HTMLElement } | null>(null);
 
-  /** 표시 옵션 칩 — 배열 순서가 곧 화면 순서다 (빈칸이 항상 맨 앞) */
-  const fixedChips = $derived([
+  /** 도안의 바탕 — 코를 칠하는 색이 아니다 */
+  const backgroundChips = $derived([
     {
       kind: 'empty' as const, label: '빈칸', color: $emptyColor,
       title: `빈칸 색 (${$emptyColor}) — 코가 없는 자리 (대바늘 빈칸 / 코바늘 바탕)`,
     },
     {
       kind: 'main' as const, label: '칸', color: $mainColor,
-      title: `칸 색 (${$mainColor}) — 실 색을 지정하지 않은 ${$uncoloredCount}코의 배경`,
-    },
-    {
-      kind: 'symbol' as const, label: '기호', color: $symbolColor,
-      title: `기호 색 (${$symbolColor}) — 실 색을 지정하지 않은 코의 기호 선`,
+      title: `칸 색 (${$mainColor}) — 기호가 있는 모든 칸의 배경`,
     },
   ]);
 
@@ -67,7 +68,8 @@
 </script>
 
 <div class="pattern-colors">
-  {#each fixedChips as chip (chip.kind)}
+  <!-- 기본 배경색 -->
+  {#each backgroundChips as chip (chip.kind)}
     <button
       type="button"
       class="chip fixed"
@@ -79,20 +81,29 @@
     </button>
   {/each}
 
-  {#if $usedColors.length > 0}
-    <span class="divider" aria-hidden="true"></span>
-    {#each $usedColors as entry (entry.color)}
-      <button
-        type="button"
-        class="chip"
-        onclick={(e) => (editing = { kind: 'yarn', color: entry.color, anchor: e.currentTarget })}
-        title="{entry.color} — {entry.count}코. 클릭하여 도안 전체에서 이 색 바꾸기"
-      >
-        <span class="dot" style="background: {entry.color}"></span>
-        <span class="count">{entry.count}</span>
-      </button>
-    {/each}
-  {/if}
+  <span class="divider" aria-hidden="true"></span>
+
+  <!-- 배색 — 기본 실 색(기호) 부터 -->
+  <button
+    type="button"
+    class="chip fixed"
+    onclick={(e) => (editing = { kind: 'symbol', color: $symbolColor, anchor: e.currentTarget })}
+    title="기본 실 색 ({$symbolColor}) — 실 색을 지정하지 않은 {$uncoloredCount}코"
+  >
+    <span class="dot" style="background: {$symbolColor}"></span>
+    <span class="count">기호 {$uncoloredCount}</span>
+  </button>
+  {#each $usedColors as entry (entry.color)}
+    <button
+      type="button"
+      class="chip"
+      onclick={(e) => (editing = { kind: 'yarn', color: entry.color, anchor: e.currentTarget })}
+      title="{entry.color} — {entry.count}코. 클릭하여 도안 전체에서 이 색 바꾸기"
+    >
+      <span class="dot" style="background: {entry.color}"></span>
+      <span class="count">{entry.count}</span>
+    </button>
+  {/each}
 </div>
 
 {#if editing}

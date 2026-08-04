@@ -10,7 +10,7 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
-import { viewOptions, setViewOption } from '$stores/tabs';
+import { viewOptions, setViewOption, pattern } from '$stores/tabs';
 import type { ViewOptions, ViewOptionKey } from '$lib/model/view-options';
 
 export type { FlatAlign, FlatVAlign, ColorMode } from '$lib/model/view-options';
@@ -73,3 +73,14 @@ export const mainColor = tabViewOption('mainColor');
 
 /** 실 색을 지정하지 않은 코의 기호 선 색. */
 export const symbolColor = tabViewOption('symbolColor');
+
+/**
+ * 실제로 코 자리를 채우는 모드인지.
+ * `colorMode: 'auto'` 는 크래프트 기본값을 뜻하므로(코바늘 = 기호색, 대바늘 = 칸 채우기)
+ * 여기서 한 번만 풀어서 UI·렌더러가 같은 판단을 공유하게 한다.
+ */
+export const fillMode = derived(
+  [viewOptions, pattern],
+  ([$view, $pattern]) =>
+    $view.colorMode === 'auto' ? $pattern.craft === 'knit' : $view.colorMode === 'fill',
+);
