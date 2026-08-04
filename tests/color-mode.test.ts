@@ -270,3 +270,56 @@ describe('코바늘 평면 — 격자 칸 채우기', () => {
     expect(group).not.toContain('<rect');
   });
 });
+
+describe('칠하는 방식 전환 (칸 ↔ 기호 색 교환)', () => {
+  async function setup(craft: 'crochet' | 'knit') {
+    const { createTab, viewOptions } = await import('../src/stores/tabs');
+    const mode = await import('../src/stores/mode');
+    const { get } = await import('svelte/store');
+    createTab(craft);
+    return { mode, get, viewOptions };
+  }
+
+  it('전환하면 칸 색과 기호 색이 맞바뀐다', async () => {
+    const { mode, get, viewOptions } = await setup('crochet');
+    mode.mainColor.set('#ffffff');
+    mode.symbolColor.set('#222222');
+    expect(get(mode.fillMode)).toBe(false); // 코바늘 기본은 기호색
+
+    mode.toggleColorMode();
+    expect(get(mode.fillMode)).toBe(true);
+    expect(get(viewOptions).mainColor).toBe('#222222');
+    expect(get(viewOptions).symbolColor).toBe('#ffffff');
+  });
+
+  it('두 번 누르면 처음 상태로 정확히 돌아온다', async () => {
+    const { mode, get, viewOptions } = await setup('crochet');
+    mode.mainColor.set('#ffe0b2');
+    mode.symbolColor.set('#3355ff');
+    const before = { ...get(viewOptions) };
+
+    mode.toggleColorMode();
+    mode.toggleColorMode();
+    const after = get(viewOptions);
+    expect(after.colorMode).toBe(before.colorMode === 'auto' ? 'symbol' : before.colorMode);
+    expect(after.mainColor).toBe(before.mainColor);
+    expect(after.symbolColor).toBe(before.symbolColor);
+  });
+
+  it('대바늘은 반대 방향으로 시작한다 (기본이 칸 채우기)', async () => {
+    const { mode, get } = await setup('knit');
+    expect(get(mode.fillMode)).toBe(true);
+    mode.toggleColorMode();
+    expect(get(mode.fillMode)).toBe(false);
+  });
+
+  it('교환 뒤 기호가 칸 위에서 대비를 유지한다', async () => {
+    // 흰 칸 + 검정 기호 → 검정 칸 + 흰 기호
+    const before = crochetSvg({ colorMode: 'symbol', mainColor: '#ffffff', symbolColor: '#222222' });
+    const after = crochetSvg({ colorMode: 'fill', mainColor: '#222222', symbolColor: '#ffffff' });
+    expect(colorworkGroup(before)).toContain('#ffffff');
+    expect(before.slice(0, before.indexOf('>'))).toContain('color: #222222');
+    expect(colorworkGroup(after)).toContain('#222222');
+    expect(after.slice(0, after.indexOf('>'))).toContain('color: #ffffff');
+  });
+});

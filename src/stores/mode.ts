@@ -10,7 +10,7 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
-import { viewOptions, setViewOption, pattern } from '$stores/tabs';
+import { viewOptions, setViewOption, setViewOptions, pattern } from '$stores/tabs';
 import type { ViewOptions, ViewOptionKey } from '$lib/model/view-options';
 
 export type { FlatAlign, FlatVAlign, ColorMode } from '$lib/model/view-options';
@@ -84,3 +84,20 @@ export const fillMode = derived(
   ([$view, $pattern]) =>
     $view.colorMode === 'auto' ? $pattern.craft === 'knit' : $view.colorMode === 'fill',
 );
+
+/**
+ * 칠하는 방식 전환 — 칸 색과 기호 색을 **맞바꾼다**.
+ *
+ * 두 모드는 같은 색을 어디에 칠하느냐의 차이라, 그냥 모드만 뒤집으면
+ * 대비가 뒤집혀 기호가 배경에 묻힌다 (흰 칸 + 흰 기호). 색을 함께 교환하면
+ * 흰 칸 + 검정 기호  ↔  검정 칸 + 흰 기호 처럼 자연스럽게 넘어가고,
+ * 두 번 누르면 처음 상태로 정확히 돌아온다.
+ */
+export function toggleColorMode(): void {
+  const view = get(viewOptions);
+  setViewOptions({
+    colorMode: get(fillMode) ? 'symbol' : 'fill',
+    mainColor: view.symbolColor,
+    symbolColor: view.mainColor,
+  });
+}

@@ -2,7 +2,7 @@
   import { pattern } from '$stores/pattern';
   import {
     mode, currentRound, currentStitch, showGrid, showConnections,
-    flatFlipVertical, flatAlign, flatCascade, flatVAlign, colorMode, fillMode,
+    flatFlipVertical, flatAlign, flatCascade, flatVAlign, fillMode, toggleColorMode,
   } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
@@ -279,7 +279,7 @@
       <button
         type="button"
         class="tool-btn toggle-btn"
-        onclick={() => colorMode.set($fillMode ? 'symbol' : 'fill')}
+        onclick={toggleColorMode}
         title={$fillMode
           ? '실 색으로 코 자리를 채우는 중 (기호는 대비색). 클릭: 기호 선 색으로'
           : '실 색을 기호 선에 칠하는 중. 클릭: 코 자리 채우기로'}

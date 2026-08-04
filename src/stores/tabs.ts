@@ -449,8 +449,18 @@ export function setGauge(gauge: Gauge | undefined): void {
  * 이 설정으로 시작하게 한다 (기존 탭들은 영향받지 않는다).
  */
 export function setViewOption<K extends ViewOptionKey>(key: K, value: ViewOptions[K]): void {
+  setViewOptions({ [key]: value } as Partial<ViewOptions>);
+}
+
+/**
+ * 표시 옵션 여러 개를 **한 번에** 바꾼다.
+ *
+ * 서로 맞물린 값(예: 칠하는 방식 전환 + 칸/기호 색 교체)은 한 갱신으로 처리해야
+ * 중간 상태가 화면에 스치지 않는다.
+ */
+export function setViewOptions(patch: Partial<ViewOptions>): void {
   updateActiveTab((t) => {
-    const view = { ...(t.view ?? DEFAULT_VIEW_OPTIONS), [key]: value };
+    const view = { ...(t.view ?? DEFAULT_VIEW_OPTIONS), ...patch };
     writeViewSeed(view);
     return { ...t, view };
   });
