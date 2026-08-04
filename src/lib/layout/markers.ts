@@ -21,7 +21,7 @@ export interface MarkerSlot {
   op: Op;
 }
 
-export function isMarkerOp(op: Op): boolean {
+function isMarkerOp(op: Op): boolean {
   return op.kind === 'MARKER';
 }
 
