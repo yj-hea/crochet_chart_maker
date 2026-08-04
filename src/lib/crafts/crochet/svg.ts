@@ -84,7 +84,7 @@ export function renderSvg(opts: RenderOptions): string {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${SYMBOL_DEFS}</defs>`,
     background,
-    renderColorDiscs(stitches, fillMode, mainColor),
+    renderStitchBackdrops(stitches, layout.gridGuide, fillMode, mainColor),
     grid,
     connections,
     roundGroups,
@@ -286,39 +286,52 @@ function renderConnections(stitches: PositionedStitch[]): string {
  * **메인 색**(기본 흰색)으로 깔아서, 바탕(빈칸 색)과 코가 있는 자리가 구분된다.
  * 기호색 모드에서도 메인 색으로 깔린다 — 실 색은 기호 선에 들어간다.
  *
- * 크기는 **도안 안의 모든 코가 같다**. 코마다 다르면 배색이 들쭉날쭉해 덩어리로
- * 읽히지 않기 때문이다. 그 하나의 크기는 **그 도안에서 가장 긴 기호**에 맞춘다 —
- * 짧은뜨기만 있는 도안은 작게, 두길긴뜨기가 섞인 도안은 그만큼 크게.
+ * **평면**은 격자가 있으므로 대바늘처럼 칸을 그대로 채운다 — 칸끼리 딱 붙어
+ * 배색이 면으로 읽힌다.
  *
- * 세로만 그렇게 늘리고 가로는 코 간격의 절반으로 묶는다. 가로까지 같이 키우면
- * 이웃 코의 바탕을 덮어써서, 색이 다른 코끼리 맞닿을 때 뒤에 그린 쪽이 앞을 잘라먹는다.
- * 원형 도안에서는 기호와 같은 각도로 회전시킨다.
+ * **원형**은 격자 칸이 없어 기호 자리에 타원을 깐다. 크기는 도안 안의 모든 코가
+ * 같고(코마다 다르면 배색이 들쭉날쭉하다), 그 하나의 크기는 **도안에서 가장 긴
+ * 기호**에 맞춘다. 세로만 그렇게 늘리고 가로는 코 간격의 절반으로 묶는다 —
+ * 가로까지 키우면 이웃 코 바탕을 덮어 색 경계에서 뒤에 그린 쪽이 앞을 잘라먹는다.
+ * 기호와 같은 각도로 회전시킨다.
  */
 /** 기호 끝에서 바탕이 더 뻗는 여유 */
 const DISC_PAD = 2.5;
 /** 가로 반지름 상한 — 이웃 코 바탕과 겹치지 않는 선 (평면 한 칸 너비의 절반) */
 const DISC_MAX_RX = FLAT_CELL_WIDTH / 2;
 
-function renderColorDiscs(
+function renderStitchBackdrops(
   stitches: PositionedStitch[],
+  guide: GridGuide | undefined,
   fillMode: boolean,
   mainColor: string,
 ): string {
   const drawn = stitches.filter((s) => s.op.kind !== 'MAGIC'); // 매직링은 코가 아니다
   if (drawn.length === 0) return '';
+  const fillOf = (s: PositionedStitch) =>
+    escapeAttr(fillMode ? (s.op.color ?? mainColor) : mainColor);
 
-  // 도안에서 가장 긴 기호 기준 — 한 번 정하면 모든 코에 같은 크기를 쓴다
+  // 평면 — 격자 칸을 그대로 채운다
+  if (guide?.type === 'rect') {
+    const w = guide.cellWidth;
+    const h = guide.cellHeight;
+    const cells = drawn.map((s) =>
+      `<rect x="${fmt(s.position.x - w / 2)}" y="${fmt(s.position.y - h / 2)}" ` +
+      `width="${fmt(w)}" height="${fmt(h)}" fill="${fillOf(s)}"/>`,
+    );
+    return `<g class="colorwork">${cells.join('')}</g>`;
+  }
+
+  // 원형 — 도안에서 가장 긴 기호 기준. 한 번 정하면 모든 코에 같은 크기를 쓴다
   const ry = drawn.reduce((max, s) => Math.max(max, symbolHalf(s.op)), 0) + DISC_PAD;
   const rx = Math.min(DISC_MAX_RX, ry);
-
   const discs = drawn.map((s) => {
-    const fill = fillMode ? (s.op.color ?? mainColor) : mainColor;
     const x = fmt(s.position.x);
     const y = fmt(s.position.y);
     const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
     return (
       `<ellipse cx="${x}" cy="${y}" rx="${fmt(rx)}" ry="${fmt(ry)}" ` +
-      `transform="rotate(${angleDeg} ${x} ${y})" fill="${escapeAttr(fill)}"/>`
+      `transform="rotate(${angleDeg} ${x} ${y})" fill="${fillOf(s)}"/>`
     );
   });
   return `<g class="colorwork">${discs.join('')}</g>`;

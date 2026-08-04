@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
 import { layoutCircular } from '../src/lib/crafts/crochet/circular';
+import { layoutFlat } from '../src/lib/crafts/crochet/flat';
 import { renderSvg } from '../src/lib/crafts/crochet/svg';
 import { parseKnitRound } from '../src/lib/crafts/knit/parser';
 import { expandKnit } from '../src/lib/crafts/knit/expander';
@@ -166,5 +167,57 @@ describe('기본 기호 색', () => {
   it('대바늘도 같다', () => {
     const svg = knitSvg({ symbolColor: '#3355ff' });
     expect(svg).toContain('color: #3355ff');
+  });
+});
+
+describe('코바늘 평면 — 격자 칸 채우기', () => {
+  /** 평면은 격자가 있으므로 타원이 아니라 칸(rect)을 채운다 */
+  function flatCells(rows: string[]) {
+    const rounds = rows.map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
+    const layout = layoutFlat(rounds);
+    const svg = renderSvg({ layout, colorMode: 'fill', mainColor: MAIN });
+    const group = colorworkGroup(svg);
+    const cells = [...group.matchAll(
+      /x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="([^"]+)"/g,
+    )].map((m) => ({
+      x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]), fill: m[5]!,
+    }));
+    return { cells, ellipses: (group.match(/<ellipse/g) ?? []).length, layout };
+  }
+
+  it('타원 대신 칸을 채운다', () => {
+    const { cells, ellipses } = flatCells(['6x', '3x:navy, 3x']);
+    expect(ellipses).toBe(0);
+    expect(cells).toHaveLength(12);
+  });
+
+  it('칸이 격자 크기 그대로라 서로 딱 붙는다', () => {
+    const { cells, layout } = flatCells(['6x', '6x']);
+    const guide = layout.gridGuide as { type: 'rect'; cellWidth: number; cellHeight: number };
+    expect(cells.every((c) => c.w === guide.cellWidth && c.h === guide.cellHeight)).toBe(true);
+
+    // 같은 행에서 한 칸의 오른쪽 끝 = 다음 칸의 왼쪽 끝 (틈도 겹침도 없다)
+    const row = cells.filter((c) => c.y === cells[0]!.y).sort((a, b) => a.x - b.x);
+    expect(row.length).toBeGreaterThan(1);
+    for (let i = 1; i < row.length; i++) {
+      expect(row[i]!.x).toBeCloseTo(row[i - 1]!.x + row[i - 1]!.w, 6);
+    }
+  });
+
+  it('칸 중심이 코 위치와 일치한다', () => {
+    const { cells, layout } = flatCells(['4x']);
+    const xs = layout.stitches
+      .filter((s) => s.roundIndex === 1)
+      .map((s) => s.position.x)
+      .sort((a, b) => a - b);
+    const centers = cells.map((c) => c.x + c.w / 2).sort((a, b) => a - b);
+    expect(centers).toEqual(xs);
+  });
+
+  it('원형은 그대로 타원을 쓴다', () => {
+    const rounds = ['6x', '12x'].map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
+    const group = colorworkGroup(renderSvg({ layout: layoutCircular(rounds), colorMode: 'fill' }));
+    expect(group).toContain('<ellipse');
+    expect(group).not.toContain('<rect');
   });
 });
