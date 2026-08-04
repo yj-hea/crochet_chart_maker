@@ -13,6 +13,7 @@ import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/layout/types';
 import { FLAT_CELL_WIDTH } from '$lib/layout/constants';
 import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
+import { extractMarkers, placeLinearMarkers } from '$lib/layout/markers';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
 
 const MARKER_SIDE_OFFSET = 16;
@@ -180,7 +181,9 @@ export interface FlatOptions {
 
 const Y_GAP = 25; // stitch 위/아래 사이 빈 공간 (px). 사슬 호 여유 + 시각적 spacing.
 
-export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): LayoutResult {
+export function layoutFlat(inputRounds: ExpandedRound[], opts: FlatOptions = {}): LayoutResult {
+  // 마커는 코가 아니라 코 사이 경계 — 슬롯을 차지하지 않도록 먼저 분리한다
+  const { rounds, markers: markerSlots } = extractMarkers(inputRounds);
   const stitches: PositionedStitch[] = [];
   const roundMarkers: RoundMarker[] = [];
   const slotMapByRound = new Map<number, number[]>();
@@ -308,6 +311,7 @@ export function layoutFlat(rounds: ExpandedRound[], opts: FlatOptions = {}): Lay
       yOffset,
     },
     roundMarkers,
+    stitchMarkers: placeLinearMarkers(markerSlots, stitches),
   };
 }
 

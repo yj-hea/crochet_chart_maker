@@ -8,12 +8,19 @@
  *  - 코 없음(no stitch) 칸은 회색으로 채운다.
  */
 
-import type { LayoutResult, PositionedStitch, RoundMarker } from '$lib/layout/types';
+import type {
+  LayoutResult,
+  PositionedStitch,
+  RoundMarker,
+  PositionedMarker,
+} from '$lib/layout/types';
 import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
 
 const NO_STITCH_FILL = '#e8e5e0';
+/** 마커 선 굵기 — 격자선(0.8)보다 굵게, 볼드체 정도의 대비 */
+const MARKER_STROKE = 1.6;
 
 export interface KnitRenderOptions {
   layout: LayoutResult;
@@ -59,6 +66,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     showGrid ? renderCellBorders(layout, cell) : '',
     renderRoundGroups(layout.stitches),
     renderRoundNumbers(layout.roundMarkers),
+    renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
     `</svg>`,
   ].join('');
@@ -181,6 +189,36 @@ function renderRoundNumbers(markers: RoundMarker[]): string {
       `text-anchor="${anchor}" dominant-baseline="central">${m.roundIndex}</text>`;
   });
   return `<g class="round-numbers">${parts.join('')}</g>`;
+}
+
+/**
+ * 편물 마커 — 칸 경계의 격자선을 **굵게** 덧그린다.
+ *
+ * 코 위가 아니라 **코 사이**를 가리키므로 칸을 덮지 않는다.
+ * 기본색은 격자와 같게 두고 굵기만 올려서(볼드체처럼) 격자의 일부로 읽히게 하고,
+ * 구분이 필요하면 `pm:fff` 처럼 색을 직접 지정한다.
+ */
+function renderStitchMarkers(
+  markers: readonly PositionedMarker[],
+  cell: { width: number; height: number },
+): string {
+  if (markers.length === 0) return '';
+  const h = cell.height / 2;
+  const parts = markers.map((m) => {
+    const color = m.color ? escapeAttr(m.color) : GRID_COLOR;
+    const { x, y } = m.position;
+    const label = m.label
+      ? `<text x="${fmt(x + 2)}" y="${fmt(y - h - 3)}" font-size="6" ` +
+        `font-family="system-ui, sans-serif" fill="${color}" ` +
+        `dominant-baseline="ideographic">${escapeAttr(m.label)}</text>`
+      : '';
+    return (
+      `<line x1="${fmt(x)}" y1="${fmt(y - h)}" x2="${fmt(x)}" y2="${fmt(y + h)}" ` +
+      `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
+      `vector-effect="non-scaling-stroke"/>` + label
+    );
+  });
+  return `<g class="stitch-markers">${parts.join('')}</g>`;
 }
 
 function escapeAttr(s: string): string {

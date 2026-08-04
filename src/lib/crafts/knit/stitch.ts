@@ -7,10 +7,12 @@
 
 import type {
   KnitStitchKind,
+  CommonStitchKind,
   StitchKind,
   StitchMeta,
   AliasTable,
 } from '$lib/model/stitch-kind';
+import { MARKER_META } from '$lib/model/stitch-kind';
 
 export type { KnitStitchKind };
 
@@ -22,7 +24,8 @@ export type { KnitStitchKind };
  */
 const CELL_HALF_HEIGHT = 7;
 
-const KNIT_META: Record<KnitStitchKind, StitchMeta> = {
+const KNIT_META: Record<KnitStitchKind | CommonStitchKind, StitchMeta> = {
+  MARKER:    MARKER_META,
   KNIT:      { kind: 'KNIT',      canonical: 'k',     korean: '겉뜨기',        english: 'knit',            baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   PURL:      { kind: 'PURL',      canonical: 'p',     korean: '안뜨기',        english: 'purl',            baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   YO:        { kind: 'YO',        canonical: 'yo',    korean: '바늘비우기',    english: 'yarn over',       baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
@@ -80,7 +83,7 @@ export function resolveKnitFootprint(
  * 대소문자 무관하게 받기 위해 소문자/대문자 변형을 함께 등록한다.
  * `k3tog` 처럼 코 수가 들어간 별칭은 파서가 토큰 텍스트에서 N 을 읽어 expansion 으로 쓴다.
  */
-const RAW_ALIASES: Record<string, KnitStitchKind> = {
+const RAW_ALIASES: Record<string, KnitStitchKind | CommonStitchKind> = {
   // 겉/안
   k: 'KNIT', knit: 'KNIT',
   p: 'PURL', purl: 'PURL',
@@ -112,6 +115,8 @@ const RAW_ALIASES: Record<string, KnitStitchKind> = {
   ssp: 'SSP',
   // 중심 모아뜨기
   cdd: 'CDD', sk2p: 'CDD', s2kp: 'CDD',
+  // 마커 — 코 사이 경계 (코를 소비/생성하지 않는다)
+  pm: 'MARKER', sm: 'MARKER', marker: 'MARKER',
 };
 
 /** `k3tog` / `sssk` / `kfbf` 처럼 별칭 자체가 코 수를 담는 경우의 expansion */

@@ -88,6 +88,27 @@ export interface RoundMarker {
   direction: 'right' | 'left';
 }
 
+/**
+ * 편물 마커 (`pm`) — 코가 아니라 **코와 코 사이의 경계**를 가리킨다.
+ *
+ * 코를 소비/생성하지 않으므로 `stitches` 에 넣지 않고, 레이아웃이 이웃한 두 코의
+ * 위치에서 경계 좌표를 따로 계산한다. 마커는 단마다 다시 적으므로 위 단으로
+ * 자동 전파되지 않는다 — 각 단의 마커는 그 단에서만 표시된다.
+ */
+export interface PositionedMarker {
+  roundIndex: number;
+  /** 경계의 중심 좌표 */
+  position: Point;
+  /**
+   * 마커 눈금이 뻗는 방향(라디안). 원형은 반지름 방향, 격자·평면은 undefined(세로).
+   */
+  angle?: number;
+  /** 사용자 지정 색 (`pm:#e91e63`) */
+  color?: string;
+  /** 사용자 지정 라벨 (`pm "옆선"`) */
+  label?: string;
+}
+
 export interface LayoutResult {
   stitches: PositionedStitch[];
   bounds: LayoutBounds;
@@ -113,4 +134,6 @@ export interface LayoutResult {
      */
     kind?: 'hole' | 'pad';
   }>;
+  /** 편물 마커 (`pm`) — 코 사이 경계 위치 */
+  stitchMarkers?: PositionedMarker[];
 }

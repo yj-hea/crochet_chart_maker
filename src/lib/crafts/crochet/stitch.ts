@@ -7,11 +7,13 @@
 
 import type {
   CrochetStitchKind,
+  CommonStitchKind,
   StitchKind,
   ModifierKind,
   StitchMeta,
   AliasTable,
 } from '$lib/model/stitch-kind';
+import { MARKER_META, MARKER_ALIASES } from '$lib/model/stitch-kind';
 
 // 기존 import 경로 호환 — 이 모듈에서 타입을 그대로 재수출한다.
 export type { StitchKind, ModifierKind, StitchMeta, CrochetStitchKind };
@@ -22,7 +24,8 @@ export { isStitchKind, isModifierKind } from '$lib/model/stitch-kind';
  * 리터럴은 `CrochetStitchKind` 로 완전성 검사를 받고,
  * 조회는 공용 `StitchKind` 로 하도록 넓혀서 노출한다 (Op.kind 가 합집합 타입이므로).
  */
-const CROCHET_STITCH_META: Record<CrochetStitchKind, StitchMeta> = {
+const CROCHET_STITCH_META: Record<CrochetStitchKind | CommonStitchKind, StitchMeta> = {
+  MARKER: MARKER_META,
   MAGIC: { kind: 'MAGIC', canonical: '@', korean: '매직링',     english: 'magic ring',          baseConsume: 0, baseProduce: 0, expandable: false, symbolHalfHeight: 7   },
   CHAIN: { kind: 'CHAIN', canonical: 'O', korean: '사슬뜨기',   english: 'chain (ch)',          baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: 3.5 },
   SLIP:  { kind: 'SLIP',  canonical: 'sl', korean: '빼뜨기',    english: 'slip stitch (sl)',    baseConsume: 1, baseProduce: 1, expandable: false, symbolHalfHeight: 2.2 },
@@ -177,6 +180,9 @@ export const ALIAS_MAP: AliasTable = Object.freeze({
   'blo': 'BLO',
   'BLO': 'BLO',
   'Blo': 'BLO',
+
+  // MARKER — 코 사이 경계 (두 크래프트 공용)
+  ...MARKER_ALIASES,
 });
 
 /**
