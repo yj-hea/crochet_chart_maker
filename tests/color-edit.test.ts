@@ -186,11 +186,12 @@ describe('도안 전체 배색 교체 (스토어)', () => {
     ]);
 
     replaceColorEverywhere('#0d47a1', '#aaccff');
+    // 모든 코에 색이 있고 #aaccff 가 9코로 최다 → 본문에서 빠지고 칸 색이 된다
     const sources = get(pattern).rounds.map((r) => r.source);
-    expect(sources).toEqual(['3x:#aaccff, 3x:red', '6x:#aaccff']);
+    expect(sources).toEqual(['3x, 3x:red', '6x']);
     // 바뀐 소스가 다시 파싱돼 에러가 없다
     for (const r of get(pattern).rounds) expect(r.parsed?.errors).toEqual([]);
-    expect(get(usedColors)[0]).toEqual({ color: '#aaccff', count: 9 });
+    expect(get(usedColors)).toEqual([{ color: '#e53935', count: 3 }]);
   });
 
   it('색 제거도 전체에 적용된다', async () => {
@@ -326,8 +327,12 @@ describe('색 없는 코에 실 색 일괄 지정', () => {
     expect(assignColorToUncolored(src, cro(src), '#000000')).toBe(src);
   });
 
-  it('지정 후에는 배색 목록의 정식 실 색이 되어 일괄 교체된다', async () => {
-    const { createTab, assignDefaultColorEverywhere, replaceColorEverywhere, usedColors, uncoloredCount, pattern } =
+  /**
+   * 일괄 지정하면 모든 코에 `:색` 이 붙어 본문이 색 표기로 뒤덮인다.
+   * 다수를 차지하는 색은 본문에서 빼고 칸 색(기본값)으로 내린다 — 그림은 그대로다.
+   */
+  it('지정 후 최다 색은 본문에서 빠지고 칸 색이 된다', async () => {
+    const { createTab, assignDefaultColorEverywhere, usedColors, uncoloredCount, viewOptions, pattern } =
       await import('../src/stores/tabs');
     const { updateRoundSource, addRoundAtEnd } = await import('../src/stores/pattern');
     const { get } = await import('svelte/store');
@@ -338,14 +343,43 @@ describe('색 없는 코에 실 색 일괄 지정', () => {
     expect(get(uncoloredCount)).toBe(9);
 
     assignDefaultColorEverywhere('#f5efe0');
-    expect(get(uncoloredCount)).toBe(0);
-    expect(get(usedColors)).toEqual([
-      { color: '#f5efe0', count: 9 },
-      { color: '#0d47a1', count: 3 },
-    ]);
 
-    // 이제 다른 색 칩과 똑같이 일괄 교체된다
-    replaceColorEverywhere('#f5efe0', '#e53935');
-    expect(get(pattern).rounds.map((r) => r.source)).toEqual(['3x:navy, 3x:red', '6x:red']);
+    // cream 9코 > navy 3코 → cream 이 본문에서 빠지고 칸 색이 된다
+    expect(get(pattern).rounds.map((r) => r.source)).toEqual(['3x:navy, 3x', '6x']);
+    expect(get(viewOptions).mainColor).toBe('#f5efe0');
+    expect(get(usedColors)).toEqual([{ color: '#0d47a1', count: 3 }]);
+    expect(get(uncoloredCount)).toBe(9);
+  });
+
+  it('소수 색을 고르면 그건 본문에 남고 원래 다수색이 내려간다', async () => {
+    const { createTab, assignDefaultColorEverywhere, viewOptions, pattern } =
+      await import('../src/stores/tabs');
+    const { updateRoundSource } = await import('../src/stores/pattern');
+    const { get } = await import('svelte/store');
+
+    createTab('crochet');
+    // navy 9코 (이미 지정) + 색 없는 3코
+    updateRoundSource(get(pattern).rounds[0]!.id, '9x:navy, 3x');
+    assignDefaultColorEverywhere('#e53935');
+
+    // red 3코 < navy 9코 → navy 가 칸 색으로 내려가고 red 만 본문에 남는다
+    expect(get(pattern).rounds[0]!.source).toBe('9x, 3x:red');
+    expect(get(viewOptions).mainColor).toBe('#0d47a1');
+  });
+
+  it('색 없는 코가 남아 있으면 정규화하지 않는다', async () => {
+    const { createTab, replaceColorEverywhere, viewOptions, pattern } =
+      await import('../src/stores/tabs');
+    const { updateRoundSource } = await import('../src/stores/pattern');
+    const { get } = await import('svelte/store');
+
+    createTab('crochet');
+    updateRoundSource(get(pattern).rounds[0]!.id, '6x:navy, 3x');
+    const before = get(viewOptions).mainColor;
+
+    // navy 가 최다지만 색 없는 3코가 남아 있다 — 빼면 두 무리가 합쳐진다
+    replaceColorEverywhere('#0d47a1', '#e53935');
+    expect(get(pattern).rounds[0]!.source).toBe('6x:red, 3x');
+    expect(get(viewOptions).mainColor).toBe(before);
   });
 });

@@ -490,13 +490,57 @@ export function replaceColorEverywhere(from: string, to: string | undefined): vo
       changed = true;
       return { ...r, source: next };
     });
-    return changed ? { ...t, rounds: reparseAll(rounds, t.craft) } : t;
+    if (!changed) return t;
+    // 교체 결과 어느 한 색이 다수가 되면 그 색은 본문에서 빼고 칸 색으로 내린다
+    return withDominantColorAsDefault({ ...t, rounds: reparseAll(rounds, t.craft) });
   });
+}
+
+/**
+ * 가장 많이 쓰인 실 색을 본문에서 빼고 **칸 색**(기본값)으로 옮긴다.
+ *
+ * 색을 일괄 지정하면 모든 코에 `:색` 이 붙어 에디터가 색 동그라미로 뒤덮인다.
+ * 다수를 차지하는 색은 굳이 적을 필요가 없으므로 기본값으로 내리고, 본문에는
+ * 소수 색만 남긴다 — 화면에 그려지는 결과는 똑같다.
+ *
+ * **색 없는 코가 하나라도 남아 있으면 손대지 않는다.** 그 상태에서 최다 색을 빼면
+ * "원래 색이 없던 코" 와 "최다 색 코" 가 한 무리로 합쳐져 뜻이 달라진다.
+ */
+function withDominantColorAsDefault(t: Tab): Tab {
+  const counts = new Map<string, number>();
+  let uncolored = 0;
+  for (const r of t.rounds) {
+    for (const st of collectStitches(r.parsed?.body ?? r.parsed?.lastValid)) {
+      if (st.color) counts.set(st.color, (counts.get(st.color) ?? 0) + st.count);
+      else uncolored += st.count;
+    }
+  }
+  if (uncolored > 0 || counts.size === 0) return t;
+
+  let dominant = '';
+  let best = -1;
+  for (const [color, n] of counts) {
+    if (n > best) { dominant = color; best = n; }
+  }
+
+  let changed = false;
+  const rounds = t.rounds.map((r) => {
+    const next = replaceColorInRound(r.source, r.parsed, dominant, undefined);
+    if (next === r.source) return r;
+    changed = true;
+    return { ...r, source: next };
+  });
+  if (!changed) return t;
+
+  const view = { ...(t.view ?? DEFAULT_VIEW_OPTIONS), mainColor: dominant };
+  writeViewSeed(view);
+  return { ...t, view, rounds: reparseAll(rounds, t.craft) };
 }
 
 /**
  * 활성 탭에서 실 색을 지정하지 않은 코 전부에 `:색` 을 넣는다.
  * "기본 코" 를 정식 실 색으로 승격시켜 이후 일괄 교체 대상이 되게 한다.
+ * 넣은 뒤 최다 색은 다시 본문에서 빼 칸 색으로 내린다 (본문이 색 표기로 뒤덮이지 않도록).
  */
 export function assignDefaultColorEverywhere(hex: string): void {
   updateActiveTab((t) => {
@@ -507,7 +551,8 @@ export function assignDefaultColorEverywhere(hex: string): void {
       changed = true;
       return { ...r, source: next };
     });
-    return changed ? { ...t, rounds: reparseAll(rounds, t.craft) } : t;
+    if (!changed) return t;
+    return withDominantColorAsDefault({ ...t, rounds: reparseAll(rounds, t.craft) });
   });
 }
 
