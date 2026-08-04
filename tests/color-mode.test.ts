@@ -214,6 +214,49 @@ describe('코바늘 평면 — 격자 칸 채우기', () => {
     expect(centers).toEqual(xs);
   });
 
+  it('V(늘림)는 차지한 2칸을 모두 채운다 — cascade 와 무관하게', () => {
+    for (const cascade of [true, false]) {
+      const rounds = ['4x', '2x, 1v:red, 1x'].map((s, i) =>
+        expand(parseRound(i + 1, s).body!, i + 1));
+      const svg = renderSvg({ layout: layoutFlat(rounds, { cascade }), colorMode: 'fill' });
+      const red = [...colorworkGroup(svg).matchAll(
+        /x="([-\d.]+)" y="[-\d.]+" width="([\d.]+)"[^>]*fill="#e53935"/g,
+      )];
+      expect(red, `cascade=${cascade}`).toHaveLength(1);
+      expect(Number(red[0]![2]), `cascade=${cascade}`).toBe(48); // 24 × 2칸
+    }
+  });
+
+  it('정렬이 바뀌어도 V 바탕은 같은 2칸을 덮고 기호를 품는다', () => {
+    for (const align of ['L', 'C', 'R'] as const) {
+      const rounds = ['4x', '2x, 1v, 1x'].map((s, i) =>
+        expand(parseRound(i + 1, s).body!, i + 1));
+      const v = layoutFlat(rounds, { align }).stitches.find((s) => s.op.kind === 'INC')!;
+      expect(v.cellSpan?.cells, align).toBe(2);
+      const center = v.position.x + v.cellSpan!.offsetX;
+      const half = (v.cellSpan!.cells * 24) / 2;
+      // 정렬에 따라 기호는 span 안 어디든 놓일 수 있지만 항상 span 안에 있다
+      expect(v.position.x, align).toBeGreaterThanOrEqual(center - half);
+      expect(v.position.x, align).toBeLessThanOrEqual(center + half);
+      expect(center, align).toBeCloseTo(12, 6); // 어느 정렬이든 같은 두 칸
+    }
+  });
+
+  it('칸들이 V 앞뒤로도 빈틈없이 이어진다', () => {
+    const rounds = ['4x', '2x, 1v, 1x'].map((s, i) =>
+      expand(parseRound(i + 1, s).body!, i + 1));
+    const svg = renderSvg({ layout: layoutFlat(rounds), colorMode: 'fill' });
+    const row = [...colorworkGroup(svg).matchAll(
+      /x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)"/g,
+    )].map((m) => ({ x: Number(m[1]), y: Number(m[2]), w: Number(m[3]) }));
+    const top = row.filter((c) => c.y === Math.min(...row.map((r) => r.y)))
+      .sort((a, b) => a.x - b.x);
+    expect(top).toHaveLength(4);
+    for (let i = 1; i < top.length; i++) {
+      expect(top[i]!.x).toBeCloseTo(top[i - 1]!.x + top[i - 1]!.w, 6);
+    }
+  });
+
   it('원형은 그대로 타원을 쓴다', () => {
     const rounds = ['6x', '12x'].map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
     const group = colorworkGroup(renderSvg({ layout: layoutCircular(rounds), colorMode: 'fill' }));

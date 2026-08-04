@@ -41,6 +41,15 @@ export interface PositionedStitch {
    *  - span: 차지하는 칸 수 (kfb 처럼 여러 코를 만드는 경우 > 1)
    */
   cell?: { row: number; col: number; span: number };
+  /**
+   * 평면 레이아웃(코바늘) — 이 코가 가로로 차지하는 칸.
+   *
+   * V(늘림)·A(줄임)처럼 한 기호가 여러 칸을 차지할 때, 기호 자체는 정렬(L/R/C)에
+   * 따라 그중 한 칸에만 놓인다. 배색 바탕은 차지한 칸 **전체**를 칠해야 하므로
+   * 칸 수와 함께 "기호 위치에서 span 중심까지의 거리"를 들고 있는다.
+   * (절대 좌표 대신 오프셋인 이유 — 배치 후처리로 기호가 옮겨져도 따라간다.)
+   */
+  cellSpan?: { cells: number; offsetX: number };
 }
 
 export interface LayoutBounds {

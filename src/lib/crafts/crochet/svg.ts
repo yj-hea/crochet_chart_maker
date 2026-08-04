@@ -311,14 +311,18 @@ function renderStitchBackdrops(
   const fillOf = (s: PositionedStitch) =>
     escapeAttr(fillMode ? (s.op.color ?? mainColor) : mainColor);
 
-  // 평면 — 격자 칸을 그대로 채운다
+  // 평면 — 격자 칸을 그대로 채운다.
+  // V(늘림)·A(줄임)는 한 기호가 여러 칸을 차지하므로 그 칸들을 다 칠한다.
   if (guide?.type === 'rect') {
-    const w = guide.cellWidth;
     const h = guide.cellHeight;
-    const cells = drawn.map((s) =>
-      `<rect x="${fmt(s.position.x - w / 2)}" y="${fmt(s.position.y - h / 2)}" ` +
-      `width="${fmt(w)}" height="${fmt(h)}" fill="${fillOf(s)}"/>`,
-    );
+    const cells = drawn.map((s) => {
+      const w = (s.cellSpan?.cells ?? 1) * guide.cellWidth;
+      const cx = s.position.x + (s.cellSpan?.offsetX ?? 0);
+      return (
+        `<rect x="${fmt(cx - w / 2)}" y="${fmt(s.position.y - h / 2)}" ` +
+        `width="${fmt(w)}" height="${fmt(h)}" fill="${fillOf(s)}"/>`
+      );
+    });
     return `<g class="colorwork">${cells.join('')}</g>`;
   }
 
