@@ -56,7 +56,7 @@ describe('코가 있는 자리 vs 없는 자리', () => {
 
   it('코바늘 — 코 자리엔 메인 색 바탕, 바탕만 빈칸 색', () => {
     const svg = crochetSvg();
-    expect(count(svg, /<circle[^>]*fill="#ffffff"/g)).toBeGreaterThan(0);
+    expect(count(svg, /<ellipse[^>]*fill="#ffffff"/g)).toBeGreaterThan(0);
     // 바탕은 rect 한 장
     expect(count(svg, new RegExp(`<rect[^>]*fill="${EMPTY}"`, 'g'))).toBe(1);
   });
@@ -79,13 +79,13 @@ describe('실 색을 어디에 칠할지', () => {
     for (const colorMode of ['auto', 'symbol'] as const) {
       const svg = crochetSvg({ colorMode });
       expect(svg, colorMode).toContain(`color: ${NAVY}`);
-      expect(count(svg, new RegExp(`<circle[^>]*fill="${NAVY}"`, 'g')), colorMode).toBe(0);
+      expect(count(svg, new RegExp(`<ellipse[^>]*fill="${NAVY}"`, 'g')), colorMode).toBe(0);
     }
   });
 
   it('코바늘 배경색 모드는 코 바탕이 실 색, 기호는 대비색', () => {
     const svg = crochetSvg({ colorMode: 'fill' });
-    expect(count(svg, new RegExp(`<circle[^>]*fill="${NAVY}"`, 'g'))).toBe(3);
+    expect(count(svg, new RegExp(`<ellipse[^>]*fill="${NAVY}"`, 'g'))).toBe(3);
     expect(svg).toContain('color: #ffffff');       // 어두운 네이비 위엔 흰 기호
     expect(svg).not.toContain(`color: ${NAVY}`);
   });
@@ -122,15 +122,32 @@ describe('표시 옵션 검증', () => {
 });
 
 describe('코바늘 코 바탕 크기', () => {
-  it('코 종류와 무관하게 모두 같은 크기다', () => {
-    // 짧은뜨기(반높이 3.5) ~ 세길긴뜨기(17.5) 까지 한 단에 늘어놓는다
-    const rounds = ['6x', '1x, 1t, 1f, 1e, 1dtr, 1x'].map((s, i) =>
-      expand(parseRound(i + 1, s).body!, i + 1));
+  /** 도안의 코 바탕 크기들 ("rx×ry" 문자열) */
+  function discSizes(rows: string[]): string[] {
+    const rounds = rows.map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
     const svg = renderSvg({ layout: layoutCircular(rounds), colorMode: 'fill' });
-    const radii = [...colorworkGroup(svg).matchAll(/ r="([\d.]+)"/g)].map((m) => Number(m[1]));
+    return [...colorworkGroup(svg).matchAll(/rx="([\d.]+)" ry="([\d.]+)"/g)]
+      .map((m) => `${m[1]}x${m[2]}`);
+  }
 
-    expect(radii.length).toBeGreaterThan(6);
-    expect(new Set(radii).size).toBe(1); // 전부 같은 크기
+  it('한 도안 안에서는 코 종류가 섞여도 모두 같은 크기다', () => {
+    // 짧은뜨기(반높이 3.5) ~ 세길긴뜨기(17.5) 를 한 단에 늘어놓는다
+    const sizes = discSizes(['6x', '1x, 1t, 1f, 1e, 1dtr, 1x']);
+    expect(sizes.length).toBeGreaterThan(6);
+    expect(new Set(sizes).size).toBe(1);
+  });
+
+  it('그 크기는 도안에서 가장 긴 기호를 따라간다', () => {
+    const ryOf = (rows: string[]) => Number(discSizes(rows)[0]!.split('x')[1]);
+    // 짧은뜨기 3.5 / 한길긴뜨기 10.5 / 세길긴뜨기 17.5 (+ 여유 2.5)
+    expect(ryOf(['6x', '12x'])).toBe(6);
+    expect(ryOf(['6x', '6x, 6f'])).toBe(13);
+    expect(ryOf(['6x', '6x, 6dtr'])).toBe(20);
+  });
+
+  it('가로는 이웃 코 바탕을 덮지 않도록 묶는다', () => {
+    const rxOf = (rows: string[]) => Number(discSizes(rows)[0]!.split('x')[0]);
+    expect(rxOf(['6x', '6x, 6dtr'])).toBeLessThanOrEqual(12);
   });
 });
 

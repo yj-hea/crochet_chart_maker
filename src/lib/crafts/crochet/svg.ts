@@ -29,6 +29,7 @@ import type {
 } from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
+import { FLAT_CELL_WIDTH } from '$lib/layout/constants';
 import {
   STITCH_COLOR,
   CONNECTION_COLOR,
@@ -279,37 +280,58 @@ function renderConnections(stitches: PositionedStitch[]): string {
 }
 
 /**
- * 코 자리에 깔리는 색 원반 — 대바늘의 "코가 있는 칸" 에 해당한다.
+ * 코 자리에 깔리는 색 바탕 — 대바늘의 "코가 있는 칸" 에 해당한다.
  *
- * 코바늘엔 격자 칸이 없으므로 기호 자리에 원반을 깐다. 실 색을 지정하지 않은 코도
+ * 코바늘엔 격자 칸이 없으므로 기호 자리에 직접 깐다. 실 색을 지정하지 않은 코도
  * **메인 색**(기본 흰색)으로 깔아서, 바탕(빈칸 색)과 코가 있는 자리가 구분된다.
- *
  * 기호색 모드에서도 메인 색으로 깔린다 — 실 색은 기호 선에 들어간다.
  *
- * 크기는 **모든 코가 같다** — 대바늘 격자에서 칸 하나가 코 종류와 무관하게 같은 크기인
- * 것과 같다. 코마다 크기가 다르면 배색이 들쭉날쭉해 덩어리로 읽히지 않는다.
- * (한길긴뜨기처럼 세로로 긴 기호는 바탕 밖으로 나오는데, 격자 도안에서 기호가 칸을
- * 넘어가는 것과 같은 상황이라 그대로 둔다.)
+ * 크기는 **도안 안의 모든 코가 같다**. 코마다 다르면 배색이 들쭉날쭉해 덩어리로
+ * 읽히지 않기 때문이다. 그 하나의 크기는 **그 도안에서 가장 긴 기호**에 맞춘다 —
+ * 짧은뜨기만 있는 도안은 작게, 두길긴뜨기가 섞인 도안은 그만큼 크게.
+ *
+ * 세로만 그렇게 늘리고 가로는 코 간격의 절반으로 묶는다. 가로까지 같이 키우면
+ * 이웃 코의 바탕을 덮어써서, 색이 다른 코끼리 맞닿을 때 뒤에 그린 쪽이 앞을 잘라먹는다.
+ * 원형 도안에서는 기호와 같은 각도로 회전시킨다.
  */
-/** 코 바탕 반지름 — 코 종류와 무관하게 고정 */
-const DISC_R = 8;
+/** 기호 끝에서 바탕이 더 뻗는 여유 */
+const DISC_PAD = 2.5;
+/** 가로 반지름 상한 — 이웃 코 바탕과 겹치지 않는 선 (평면 한 칸 너비의 절반) */
+const DISC_MAX_RX = FLAT_CELL_WIDTH / 2;
 
 function renderColorDiscs(
   stitches: PositionedStitch[],
   fillMode: boolean,
   mainColor: string,
 ): string {
-  const discs: string[] = [];
-  for (const s of stitches) {
-    if (s.op.kind === 'MAGIC') continue; // 매직링은 코가 아니라 시작 표시
+  const drawn = stitches.filter((s) => s.op.kind !== 'MAGIC'); // 매직링은 코가 아니다
+  if (drawn.length === 0) return '';
+
+  // 도안에서 가장 긴 기호 기준 — 한 번 정하면 모든 코에 같은 크기를 쓴다
+  const ry = drawn.reduce((max, s) => Math.max(max, symbolHalf(s.op)), 0) + DISC_PAD;
+  const rx = Math.min(DISC_MAX_RX, ry);
+
+  const discs = drawn.map((s) => {
     const fill = fillMode ? (s.op.color ?? mainColor) : mainColor;
-    discs.push(
-      `<circle cx="${fmt(s.position.x)}" cy="${fmt(s.position.y)}" r="${DISC_R}" ` +
-      `fill="${escapeAttr(fill)}"/>`,
+    const x = fmt(s.position.x);
+    const y = fmt(s.position.y);
+    const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
+    return (
+      `<ellipse cx="${x}" cy="${y}" rx="${fmt(rx)}" ry="${fmt(ry)}" ` +
+      `transform="rotate(${angleDeg} ${x} ${y})" fill="${escapeAttr(fill)}"/>`
     );
-  }
-  if (discs.length === 0) return '';
+  });
   return `<g class="colorwork">${discs.join('')}</g>`;
+}
+
+/** 이 코 기호의 반높이 — V/A 는 base 코, 긴뜨기 계열은 감은 수를 반영 */
+function symbolHalf(op: PositionedStitch['op']): number {
+  const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
+  const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
+  if ((baseKind === 'TR' || baseKind === 'DTR') && op.yarnOverCount && op.yarnOverCount >= 2) {
+    return 9 + 2 * (op.yarnOverCount - 1);
+  }
+  return STITCH_META[baseKind]?.symbolHalfHeight ?? 5;
 }
 
 function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symbolColor: string): string {

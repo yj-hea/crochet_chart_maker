@@ -31,8 +31,14 @@
 
   // 이름 있는 색 — grey 는 gray 와 같은 값이라 뺀다
   const NAMED = Object.entries(NAMED_COLORS).filter(([name]) => name !== 'grey');
-  /** 이미 쓴 색 중 기본 팔레트에 없는 것만 따로 보여준다 (중복 방지) */
-  const extraUsed = $derived(used.filter((c) => !NAMED.some(([, v]) => v === c)));
+  /**
+   * 이미 쓴 색 중 기본 팔레트에 없는 것만 따로 보여준다.
+   * 중복 제거는 필수 — 빈칸·칸·기호 색이 서로 같거나 실 색과 겹치면
+   * 같은 값이 두 번 들어와 `{#each}` 키가 충돌한다.
+   */
+  const extraUsed = $derived(
+    [...new Set(used)].filter((c) => !NAMED.some(([, v]) => v === c)),
+  );
 
   function place() {
     placeDropdown(anchor, popover, 'left');
