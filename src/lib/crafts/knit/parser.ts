@@ -253,6 +253,7 @@ class KnitParser {
     // 주석 / 색상
     let comment: string | undefined;
     let color: string | undefined;
+    let colorRange: SourceRange | undefined;
     while (true) {
       const tok = this.peek();
       if (tok?.type === 'STRING') {
@@ -261,6 +262,7 @@ class KnitParser {
         continue;
       }
       if (tok?.type === 'COLON') {
+        const colonStart = tok.range.start;
         this.advance();
         const val = this.peek();
         if (!val || (val.type !== 'HEX_COLOR' && val.type !== 'COLOR_VALUE')) {
@@ -277,6 +279,7 @@ class KnitParser {
           return undefined;
         }
         color = resolved;
+        colorRange = { start: colonStart, end: val.range.end };
         this.advance();
         continue;
       }
@@ -290,6 +293,7 @@ class KnitParser {
       expansion,
       comment,
       color,
+      colorRange,
       range: { start: startPos, end: this.peek(-1)?.range.end ?? startPos },
     };
   }

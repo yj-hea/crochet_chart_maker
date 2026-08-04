@@ -6,7 +6,7 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
-  import { setRoundDirection, addComment, workspace, insertRoundsAfter } from '$stores/tabs';
+  import { setRoundDirection, addComment, workspace, insertRoundsAfter, usedColors } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
@@ -15,6 +15,7 @@
   import EvenIncModal from './EvenIncModal.svelte';
   import GaugeInput from './GaugeInput.svelte';
   import ShortRowModal from './ShortRowModal.svelte';
+  import PatternColors from './PatternColors.svelte';
 
   let focusRequests = $state<Record<string, FocusRequest>>({});
   // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
@@ -150,6 +151,8 @@
   // 크래프트·도형별 방향 아이콘/라벨.
   // 대바늘에서 direction 은 겉면(RS)/안면(WS) 의 수동 오버라이드다.
   const isKnit = $derived($pattern.craft === 'knit');
+  /** 팔레트에 먼저 보여줄, 이 도안에서 이미 쓴 색 */
+  const usedColorList = $derived($usedColors.map((c) => c.color));
   const dirIcon = $derived(isKnit
     ? { forward: 'fa-regular fa-eye', reverse: 'fa-regular fa-eye-slash' }
     : $pattern.shape === 'circular'
@@ -168,6 +171,7 @@
     {#if isKnit}
       <GaugeInput />
     {/if}
+    <PatternColors />
     <div class="header-spacer"></div>
     {#if patternComment}
       <CommentPin comment={patternComment} />
@@ -183,6 +187,8 @@
       source={round.source}
       index={i + 1}
       errors={round.parsed?.errors ?? []}
+      parsed={round.parsed}
+      usedColors={usedColorList}
       validationErrors={validationByRound.get(round.id) ?? []}
       stitchCount={round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}

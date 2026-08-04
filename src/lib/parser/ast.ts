@@ -33,6 +33,11 @@ export interface StitchNode {
   comment?: string;
   /** 인라인 색상 :#rrggbb — 기호/폰트 색상 (배색 도안용) */
   color?: string;
+  /**
+   * 색 표기(`:` 부터 색 값 끝까지)의 소스 범위.
+   * 에디터가 색 스와치를 띄우고 색을 치환할 때 사용한다. 색이 없으면 undefined.
+   */
+  colorRange?: SourceRange;
   range: SourceRange;
 }
 
