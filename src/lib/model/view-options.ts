@@ -7,6 +7,8 @@
  * 그 뒤로는 도안끼리 서로 영향을 주지 않는다.
  */
 
+import { resolveColorValue } from './colors';
+
 /**
  * 평면 도안에서 단마다 코 수가 다를 때 좁은 단을 max 폭 안에서 어디에 정렬할지.
  *  - 'L': 좌측 끝  /  'R': 우측 끝  /  'C': 가운데
@@ -20,6 +22,17 @@ export type FlatAlign = 'L' | 'R' | 'C';
  */
 export type FlatVAlign = 'same' | 'even';
 
+/**
+ * 실 색을 어디에 칠할지.
+ *  - 'auto'   : 크래프트 기본값 (코바늘 = 기호색, 대바늘 = 칸 배경)
+ *  - 'symbol' : 기호 선 색
+ *  - 'fill'   : 코 자리를 채우고 기호는 명도 대비로 반전
+ *
+ * `auto` 를 남겨 두는 이유 — 기본값은 크래프트마다 다른데 표시 옵션은 크래프트를
+ * 모르기 때문이다. 사용자가 실제로 버튼을 눌렀을 때만 명시값으로 굳는다.
+ */
+export type ColorMode = 'auto' | 'symbol' | 'fill';
+
 export interface ViewOptions {
   /** 배경 그리드 표시 */
   showGrid: boolean;
@@ -31,7 +44,25 @@ export interface ViewOptions {
   /** 부모-자식 폭/위치 맞춤 */
   flatCascade: boolean;
   flatVAlign: FlatVAlign;
+  /** 실 색을 기호에 칠할지, 코 자리를 채울지 */
+  colorMode: ColorMode;
+  /** 코가 **없는** 자리의 색 (대바늘 빈칸 / 코바늘 바탕) */
+  emptyColor: string;
+  /**
+   * 코가 **있는** 자리의 배경색 — 실 색을 따로 지정하지 않은 코에 쓴다.
+   * 도안의 메인 컬러. 배색 팔레트에서 바꿀 수 있다.
+   */
+  mainColor: string;
+  /** 실 색을 지정하지 않은 코의 **기호 선** 색 */
+  symbolColor: string;
 }
+
+/** 코 없는 자리의 기본색 — 종이 도안의 무채색 칸 느낌 */
+export const DEFAULT_EMPTY_COLOR = '#e8e5e0';
+/** 실 색을 지정하지 않은 코의 칸 배경색 */
+export const DEFAULT_MAIN_COLOR = '#ffffff';
+/** 실 색을 지정하지 않은 코의 기호 선 색 */
+export const DEFAULT_SYMBOL_COLOR = '#222222';
 
 export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   showGrid: true,
@@ -40,12 +71,17 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   flatAlign: 'L',
   flatCascade: true,
   flatVAlign: 'same',
+  colorMode: 'auto',
+  emptyColor: DEFAULT_EMPTY_COLOR,
+  mainColor: DEFAULT_MAIN_COLOR,
+  symbolColor: DEFAULT_SYMBOL_COLOR,
 });
 
 export type ViewOptionKey = keyof ViewOptions;
 
 const ALIGNS: readonly string[] = ['L', 'R', 'C'];
 const VALIGNS: readonly string[] = ['same', 'even'];
+const COLOR_MODES: readonly string[] = ['auto', 'symbol', 'fill'];
 
 /**
  * 외부 데이터(localStorage·파일·Dropbox)에서 읽은 값을 관대하게 정규화한다.
@@ -66,6 +102,12 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
     flatVAlign: VALIGNS.includes(v.flatVAlign as string)
       ? (v.flatVAlign as FlatVAlign)
       : DEFAULT_VIEW_OPTIONS.flatVAlign,
+    colorMode: COLOR_MODES.includes(v.colorMode as string)
+      ? (v.colorMode as ColorMode)
+      : DEFAULT_VIEW_OPTIONS.colorMode,
+    emptyColor: resolveColorValue(String(v.emptyColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.emptyColor,
+    mainColor: resolveColorValue(String(v.mainColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.mainColor,
+    symbolColor: resolveColorValue(String(v.symbolColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.symbolColor,
   };
 }
 

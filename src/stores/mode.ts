@@ -10,10 +10,10 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
-import { viewOptions, setViewOption } from '$stores/tabs';
+import { viewOptions, setViewOption, pattern } from '$stores/tabs';
 import type { ViewOptions, ViewOptionKey } from '$lib/model/view-options';
 
-export type { FlatAlign, FlatVAlign } from '$lib/model/view-options';
+export type { FlatAlign, FlatVAlign, ColorMode } from '$lib/model/view-options';
 
 export type AppMode = 'edit' | 'read';
 
@@ -61,3 +61,42 @@ export const flatCascade = tabViewOption('flatCascade');
 
 /** 세로 정렬 모드 (same/even). */
 export const flatVAlign = tabViewOption('flatVAlign');
+
+/** 실 색을 기호에 칠할지, 코 자리를 채울지. */
+export const colorMode = tabViewOption('colorMode');
+
+/** 코가 없는 자리의 색 (빈칸·바탕). */
+export const emptyColor = tabViewOption('emptyColor');
+
+/** 실 색을 지정하지 않은 코의 칸 배경색 (도안 메인 컬러). */
+export const mainColor = tabViewOption('mainColor');
+
+/** 실 색을 지정하지 않은 코의 기호 선 색. */
+export const symbolColor = tabViewOption('symbolColor');
+
+/**
+ * 실제로 코 자리를 채우는 모드인지.
+ * `colorMode: 'auto'` 는 크래프트 기본값을 뜻하므로(코바늘 = 기호색, 대바늘 = 칸 채우기)
+ * 여기서 한 번만 풀어서 UI·렌더러가 같은 판단을 공유하게 한다.
+ */
+export const fillMode = derived(
+  [viewOptions, pattern],
+  ([$view, $pattern]) =>
+    $view.colorMode === 'auto' ? $pattern.craft === 'knit' : $view.colorMode === 'fill',
+);
+
+/**
+ * 칠하는 방식 전환.
+ *
+ * 칸 색과 기호 색은 **같은 성질이 아니라서 맞바꾸지 않는다**.
+ * 칸 색은 실 색(그 코가 무슨 실인지)이고, 기호 색은 잉크 색(선을 무슨 색으로
+ * 그리는지)이다. 기호색 모드의 검정은 "실이 검정"이 아니라 도안을 검은 선으로
+ * 그린다는 관례일 뿐이라, 그걸 실 색 자리로 옮기면 흰 실이어야 할 코가 검정 칸이 된다.
+ *
+ * 그래서 실 색을 지정하지 않은 코는 두 모드에서 똑같이 보이고(흰 칸 + 검정 기호),
+ * 이 전환은 **실 색을 지정한 코**의 표시 방식만 바꾼다:
+ *   기호색 — 흰 칸 + 그 실 색 기호   /   배경색 — 그 실 색 칸 + 대비색 기호
+ */
+export function toggleColorMode(): void {
+  colorMode.set(get(fillMode) ? 'symbol' : 'fill');
+}

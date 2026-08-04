@@ -10,6 +10,7 @@
 
 import type { ParsedRound, SequenceNode } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
+import type { ColorMode } from '$lib/model/view-options';
 import type { LayoutResult } from '$lib/layout/types';
 import type { StitchKind, StitchMeta } from '$lib/model/stitch-kind';
 import type { Gauge } from '$lib/model/gauge';
@@ -41,6 +42,14 @@ export interface CraftLayoutOptions {
 export interface CraftRenderOptions {
   showGrid?: boolean;
   showConnections?: boolean;
+  /** 실 색을 기호에 칠할지, 코 자리를 채울지 ('auto' = 크래프트 기본) */
+  colorMode?: ColorMode;
+  /** 코가 없는 자리의 색 */
+  emptyColor?: string;
+  /** 실 색을 지정하지 않은 코의 칸 배경색 (도안 메인 컬러) */
+  mainColor?: string;
+  /** 실 색을 지정하지 않은 코의 기호 선 색 */
+  symbolColor?: string;
 }
 
 export interface CraftDefinition {

@@ -1,6 +1,9 @@
 <script lang="ts">
   import { pattern } from '$stores/pattern';
-  import { mode, currentRound, currentStitch, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign } from '$stores/mode';
+  import {
+    mode, currentRound, currentStitch, showGrid, showConnections,
+    flatFlipVertical, flatAlign, flatCascade, flatVAlign, fillMode, toggleColorMode,
+  } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
   import { isValidGauge, stitchesToCm, rowsToCm } from '$lib/model/gauge';
@@ -17,7 +20,8 @@
    */
   const physicalSize = $derived.by(() => {
     const g = $pattern.gauge;
-    if (!isKnit || !isValidGauge(g)) return null;
+    // 대바늘 전체 / 코바늘은 평면만 — 원형은 단마다 지름이 달라 환산이 성립하지 않는다
+    if (!(isKnit || $pattern.shape === 'flat') || !isValidGauge(g)) return null;
     let maxStitches = 0;
     let rows = 0;
     for (const r of $pattern.rounds) {
@@ -272,6 +276,17 @@
       {/if}
     </div>
     <div class="btn-group">
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        onclick={toggleColorMode}
+        title={$fillMode
+          ? '실 색으로 코 자리를 채우는 중 (기호는 대비색). 클릭: 기호 선 색으로'
+          : '실 색을 기호 선에 칠하는 중. 클릭: 코 자리 채우기로'}
+      >
+        <i class="fa-solid fa-{$fillMode ? 'fill-drip' : 'pen-nib'}"></i>
+        {$fillMode ? '배경색' : '기호색'}
+      </button>
       {#if showFlatTools}
         <button
           type="button"
