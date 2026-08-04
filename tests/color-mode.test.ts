@@ -165,6 +165,21 @@ describe('기본 기호 색', () => {
     expect(svg).toContain('color: #3355ff');
   });
 
+  /**
+   * 진행 하이라이트는 `g.round` 의 style.color 를 직접 지웠다 쓴다.
+   * 기본 기호색을 거기 두면 Edit 모드에서 매번 지워져 미리보기에 반영되지 않는다.
+   * 반드시 **루트**에 있어야 상속으로 살아남는다.
+   */
+  it('단(g.round) 이 아니라 SVG 루트에 얹힌다', () => {
+    for (const svg of [crochetSvg({ symbolColor: '#3355ff' }), knitSvg({ symbolColor: '#3355ff' })]) {
+      const root = svg.slice(0, svg.indexOf('>') + 1);
+      expect(root).toContain('color: #3355ff');
+      for (const g of svg.match(/<g class="round"[^>]*>/g) ?? []) {
+        expect(g).not.toContain('color:');
+      }
+    }
+  });
+
   it('실 색을 지정한 코는 기본 기호 색을 덮어쓴다', () => {
     const svg = crochetSvg({ colorMode: 'symbol', symbolColor: '#3355ff' });
     expect(svg).toContain('color: #3355ff');   // 색 없는 코

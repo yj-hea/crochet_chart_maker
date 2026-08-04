@@ -72,7 +72,7 @@ export function renderSvg(opts: RenderOptions): string {
 
   const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
   const connections = showConnections ? renderConnections(stitches) : '';
-  const roundGroups = renderRoundGroups(stitches, fillMode, symbolColor);
+  const roundGroups = renderRoundGroups(stitches, fillMode);
   const markers = renderRoundMarkers(layout.roundMarkers);
   const background = opts.emptyColor
     ? `<rect x="${fmt(bounds.minX)}" y="${fmt(bounds.minY)}" ` +
@@ -81,7 +81,11 @@ export function renderSvg(opts: RenderOptions): string {
     : '';
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
+    // 기본 기호색은 **루트**에 둔다 — 단(g.round) 에 두면 진행 하이라이트가
+    // `g.style.color` 를 직접 지우면서 같이 날아간다. 루트에 두면 상속으로 살아남고,
+    // 하이라이트는 현재 단만 덮어쓰면 된다.
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" ` +
+      `style="color: ${escapeAttr(symbolColor)}">`,
     `<defs>${SYMBOL_DEFS}</defs>`,
     background,
     renderStitchBackdrops(stitches, layout.gridGuide, fillMode, mainColor),
@@ -359,7 +363,7 @@ function symbolHalf(op: PositionedStitch['op']): number {
   return STITCH_META[baseKind]?.symbolHalfHeight ?? 5;
 }
 
-function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symbolColor: string): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -373,10 +377,8 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symb
   for (const roundIdx of sortedRounds) {
     const items = byRound.get(roundIdx)!
       .map((s) => renderStitchUse(s, fillMode)).join('');
-    // 색을 지정하지 않은 코는 이 그룹 색을 그대로 물려받는다
-    groups.push(
-      `<g class="round" data-round="${roundIdx}" style="color: ${escapeAttr(symbolColor)}">${items}</g>`
-    );
+    // 색을 지정하지 않은 코는 루트의 기본 기호색을 물려받는다
+    groups.push(`<g class="round" data-round="${roundIdx}">${items}</g>`);
   }
 
   return groups.join('');

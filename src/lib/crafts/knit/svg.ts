@@ -74,12 +74,15 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   ];
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
+    // 기본 기호색은 **루트**에 둔다 — 단(g.round) 에 두면 진행 하이라이트가
+    // `g.style.color` 를 직접 지우면서 같이 날아간다.
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" ` +
+      `style="color: ${escapeAttr(symbolColor)}">`,
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
     renderFillers(greyCells, cell, emptyColor),
     renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
     showGrid ? renderCellBorders(layout, cell) : '',
-    renderRoundGroups(layout.stitches, fillMode, symbolColor),
+    renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
@@ -123,7 +126,7 @@ function renderCellBorders(layout: LayoutResult, cell: { width: number; height: 
   return `<g class="grid">${rects.join('')}</g>`;
 }
 
-function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symbolColor: string): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -134,10 +137,8 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symb
   for (const roundIdx of [...byRound.keys()].sort((a, b) => a - b)) {
     const items = byRound.get(roundIdx)!
       .map((s) => renderStitchUse(s, fillMode)).join('');
-    // 색을 지정하지 않은 코는 이 그룹 색을 그대로 물려받는다
-    groups.push(
-      `<g class="round" data-round="${roundIdx}" style="color: ${escapeAttr(symbolColor)}">${items}</g>`,
-    );
+    // 색을 지정하지 않은 코는 루트의 기본 기호색을 물려받는다
+    groups.push(`<g class="round" data-round="${roundIdx}">${items}</g>`);
   }
   return groups.join('');
 }
