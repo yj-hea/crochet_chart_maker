@@ -18,7 +18,7 @@ import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
 
-const NO_STITCH_FILL = '#e8e5e0';
+import { DEFAULT_EMPTY_COLOR, type ColorMode } from '$lib/model/view-options';
 /** 마커 선 굵기 — 격자선(0.8)보다 굵게, 볼드체 정도의 대비 */
 const MARKER_STROKE = 1.6;
 
@@ -28,6 +28,10 @@ export interface KnitRenderOptions {
   showGrid?: boolean;
   /** 배색 범례 표시 (기본 true — 색이 쓰인 경우에만 그려짐) */
   showLegend?: boolean;
+  /** 실 색을 어디에 칠할지. 대바늘 기본은 칸 채우기 */
+  colorMode?: ColorMode;
+  /** 코 없는 칸·바탕색 */
+  emptyColor?: string;
 }
 
 const LEGEND_ROW_HEIGHT = 13;
@@ -37,6 +41,9 @@ const LEGEND_SWATCH = 9;
 export function renderKnitSvg(opts: KnitRenderOptions): string {
   const { layout } = opts;
   const showGrid = opts.showGrid ?? true;
+  // 대바늘 기본은 칸 채우기 (기호는 명도 대비로 반전)
+  const fillMode = (opts.colorMode ?? 'auto') !== 'symbol';
+  const emptyColor = opts.emptyColor ?? DEFAULT_EMPTY_COLOR;
   const { bounds } = layout;
   const pad = 4;
   const cell = layout.cellSize ?? { width: 20, height: 14 };
@@ -61,10 +68,14 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
-    renderFillers(greyCells, cell),
-    renderColorCells(layout.stitches, cell),
+    // 바탕 — 코 없는 칸과 같은 색이라야 격자 밖이 겉돌지 않는다
+    `<rect x="${fmt(bounds.minX - pad)}" y="${fmt(bounds.minY - pad)}" ` +
+      `width="${fmt(bounds.width + pad * 2)}" height="${fmt(bounds.height + legendHeight + pad * 2)}" ` +
+      `fill="${escapeAttr(emptyColor)}"/>`,
+    renderFillers(greyCells, cell, emptyColor),
+    fillMode ? renderColorCells(layout.stitches, cell) : '',
     showGrid ? renderCellBorders(layout, cell) : '',
-    renderRoundGroups(layout.stitches),
+    renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
@@ -76,12 +87,13 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
 function renderFillers(
   cells: ReadonlyArray<{ x: number; y: number; span: number; kind?: string }>,
   cell: { width: number; height: number },
+  fill: string,
 ): string {
   if (cells.length === 0) return '';
   const rects = cells.map((c) => {
     const w = c.span * cell.width;
     return `<rect x="${fmt(c.x - w / 2)}" y="${fmt(c.y - cell.height / 2)}" ` +
-      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${NO_STITCH_FILL}"/>`;
+      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${escapeAttr(fill)}"/>`;
   });
   return `<g class="no-stitch">${rects.join('')}</g>`;
 }
@@ -107,7 +119,7 @@ function renderCellBorders(layout: LayoutResult, cell: { width: number; height: 
   return `<g class="grid">${rects.join('')}</g>`;
 }
 
-function renderRoundGroups(stitches: PositionedStitch[]): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -116,15 +128,17 @@ function renderRoundGroups(stitches: PositionedStitch[]): string {
   }
   const groups: string[] = [];
   for (const roundIdx of [...byRound.keys()].sort((a, b) => a - b)) {
-    const items = byRound.get(roundIdx)!.map(renderStitchUse).join('');
+    const items = byRound.get(roundIdx)!.map((s) => renderStitchUse(s, fillMode)).join('');
     groups.push(`<g class="round" data-round="${roundIdx}" style="color: ${STITCH_COLOR}">${items}</g>`);
   }
   return groups.join('');
 }
 
-function renderStitchUse(s: PositionedStitch): string {
-  // 배색 도안: 색은 **칸 배경**으로 칠하고 기호는 대비색으로 그린다
-  const colorStyle = s.op.color ? ` style="color: ${escapeAttr(contrastInk(s.op.color))}"` : '';
+function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
+  // 칸 채우기 모드면 기호를 배경 대비색으로, 기호색 모드면 실 색 그대로
+  const colorStyle = s.op.color
+    ? ` style="color: ${escapeAttr(fillMode ? contrastInk(s.op.color) : s.op.color)}"`
+    : '';
   // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
   return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
 }

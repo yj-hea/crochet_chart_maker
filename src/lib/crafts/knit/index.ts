@@ -41,7 +41,12 @@ export const knit: CraftDefinition = {
 
   render(layout: LayoutResult, opts: CraftRenderOptions): string {
     // 대바늘은 격자가 도안의 일부 — showGrid 를 끄면 테두리만 감춘다.
-    return renderKnitSvg({ layout, showGrid: opts.showGrid ?? true });
+    return renderKnitSvg({
+      layout,
+      showGrid: opts.showGrid ?? true,
+      colorMode: opts.colorMode,
+      emptyColor: opts.emptyColor,
+    });
   },
 
   stitchMeta(kind: StitchKind) {

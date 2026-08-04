@@ -13,7 +13,7 @@ import { writable, derived, get } from 'svelte/store';
 import { viewOptions, setViewOption } from '$stores/tabs';
 import type { ViewOptions, ViewOptionKey } from '$lib/model/view-options';
 
-export type { FlatAlign, FlatVAlign } from '$lib/model/view-options';
+export type { FlatAlign, FlatVAlign, ColorMode } from '$lib/model/view-options';
 
 export type AppMode = 'edit' | 'read';
 
@@ -61,3 +61,9 @@ export const flatCascade = tabViewOption('flatCascade');
 
 /** 세로 정렬 모드 (same/even). */
 export const flatVAlign = tabViewOption('flatVAlign');
+
+/** 실 색을 기호에 칠할지, 코 자리를 채울지. */
+export const colorMode = tabViewOption('colorMode');
+
+/** 코 없는 자리·차트 바탕색. */
+export const emptyColor = tabViewOption('emptyColor');

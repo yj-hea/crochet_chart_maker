@@ -43,7 +43,13 @@ export const crochet: CraftDefinition = {
   },
 
   render(layout: LayoutResult, opts: CraftRenderOptions): string {
-    return renderSvg({ layout, showGrid: opts.showGrid, showConnections: opts.showConnections });
+    return renderSvg({
+      layout,
+      showGrid: opts.showGrid,
+      showConnections: opts.showConnections,
+      colorMode: opts.colorMode,
+      emptyColor: opts.emptyColor,
+    });
   },
 
   stitchMeta(kind: StitchKind) {
