@@ -20,7 +20,8 @@
    */
   const physicalSize = $derived.by(() => {
     const g = $pattern.gauge;
-    if (!isKnit || !isValidGauge(g)) return null;
+    // 대바늘 전체 / 코바늘은 평면만 — 원형은 단마다 지름이 달라 환산이 성립하지 않는다
+    if (!(isKnit || $pattern.shape === 'flat') || !isValidGauge(g)) return null;
     let maxStitches = 0;
     let rows = 0;
     for (const r of $pattern.rounds) {

@@ -13,7 +13,12 @@ const NAVY = '#0d47a1';
 const EMPTY = '#e8e5e0';
 const MAIN = '#ffffff';
 
-interface Opts { colorMode?: 'auto' | 'symbol' | 'fill'; emptyColor?: string; mainColor?: string }
+interface Opts {
+  colorMode?: 'auto' | 'symbol' | 'fill';
+  emptyColor?: string;
+  mainColor?: string;
+  symbolColor?: string;
+}
 
 /** 1단 6코, 2단 = 네이비 3코 + 색 없는 3코 */
 function crochetSvg(opts: Opts = {}) {
@@ -51,7 +56,7 @@ describe('코가 있는 자리 vs 없는 자리', () => {
 
   it('코바늘 — 코 자리엔 메인 색 바탕, 바탕만 빈칸 색', () => {
     const svg = crochetSvg();
-    expect(count(svg, /<ellipse[^>]*fill="#ffffff"/g)).toBeGreaterThan(0);
+    expect(count(svg, /<circle[^>]*fill="#ffffff"/g)).toBeGreaterThan(0);
     // 바탕은 rect 한 장
     expect(count(svg, new RegExp(`<rect[^>]*fill="${EMPTY}"`, 'g'))).toBe(1);
   });
@@ -74,13 +79,13 @@ describe('실 색을 어디에 칠할지', () => {
     for (const colorMode of ['auto', 'symbol'] as const) {
       const svg = crochetSvg({ colorMode });
       expect(svg, colorMode).toContain(`color: ${NAVY}`);
-      expect(count(svg, new RegExp(`<ellipse[^>]*fill="${NAVY}"`, 'g')), colorMode).toBe(0);
+      expect(count(svg, new RegExp(`<circle[^>]*fill="${NAVY}"`, 'g')), colorMode).toBe(0);
     }
   });
 
   it('코바늘 배경색 모드는 코 바탕이 실 색, 기호는 대비색', () => {
     const svg = crochetSvg({ colorMode: 'fill' });
-    expect(count(svg, new RegExp(`<ellipse[^>]*fill="${NAVY}"`, 'g'))).toBe(3);
+    expect(count(svg, new RegExp(`<circle[^>]*fill="${NAVY}"`, 'g'))).toBe(3);
     expect(svg).toContain('color: #ffffff');       // 어두운 네이비 위엔 흰 기호
     expect(svg).not.toContain(`color: ${NAVY}`);
   });
@@ -117,28 +122,32 @@ describe('표시 옵션 검증', () => {
 });
 
 describe('코바늘 코 바탕 크기', () => {
-  it('기호보다 약간 크고, 기호 높이를 따라간다', () => {
+  it('코 종류와 무관하게 모두 같은 크기다', () => {
     // 짧은뜨기(반높이 3.5) ~ 세길긴뜨기(17.5) 까지 한 단에 늘어놓는다
     const rounds = ['6x', '1x, 1t, 1f, 1e, 1dtr, 1x'].map((s, i) =>
       expand(parseRound(i + 1, s).body!, i + 1));
     const svg = renderSvg({ layout: layoutCircular(rounds), colorMode: 'fill' });
-    // `<defs>` 안의 기호 정의에도 ellipse 가 있으므로 코 바탕 그룹만 본다
-    const sizes = [...colorworkGroup(svg).matchAll(/rx="([\d.]+)" ry="([\d.]+)"/g)]
-      .map((m) => ({ rx: Number(m[1]), ry: Number(m[2]) }));
+    const radii = [...colorworkGroup(svg).matchAll(/ r="([\d.]+)"/g)].map((m) => Number(m[1]));
 
-    // 기호 반높이 + 여유 — 짧은뜨기 6, 긴뜨기 9.5, 한길 13, 두길 16.5, 세길 20
-    const rys = [...new Set(sizes.map((s) => s.ry))].sort((a, b) => a - b);
-    expect(rys).toEqual([6, 9.5, 13, 16.5, 20]);
-    // 가로는 이웃 코를 침범하지 않도록 묶어 둔다
-    expect(Math.max(...sizes.map((s) => s.rx))).toBeLessThanOrEqual(7);
+    expect(radii.length).toBeGreaterThan(6);
+    expect(new Set(radii).size).toBe(1); // 전부 같은 크기
+  });
+});
+
+describe('기본 기호 색', () => {
+  it('실 색을 지정하지 않은 코는 기본 기호 색을 물려받는다', () => {
+    const svg = crochetSvg({ symbolColor: '#3355ff' });
+    expect(svg).toContain('color: #3355ff');
   });
 
-  it('원형 도안에서는 기호와 같은 각도로 눕는다', () => {
-    const rounds = ['6x', '6f'].map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
-    const svg = renderSvg({ layout: layoutCircular(rounds), colorMode: 'fill' });
-    const rotations = [...colorworkGroup(svg).matchAll(/transform="rotate\(([-\d.]+)/g)]
-      .map((m) => Number(m[1]));
-    // 6코가 60° 간격으로 돌아간다 — 서로 다른 각도가 여럿 나온다
-    expect(new Set(rotations).size).toBeGreaterThan(1);
+  it('실 색을 지정한 코는 기본 기호 색을 덮어쓴다', () => {
+    const svg = crochetSvg({ colorMode: 'symbol', symbolColor: '#3355ff' });
+    expect(svg).toContain('color: #3355ff');   // 색 없는 코
+    expect(svg).toContain(`color: ${NAVY}`);   // 색 지정한 코
+  });
+
+  it('대바늘도 같다', () => {
+    const svg = knitSvg({ symbolColor: '#3355ff' });
+    expect(svg).toContain('color: #3355ff');
   });
 });

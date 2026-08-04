@@ -19,7 +19,7 @@
  */
 
 import { contrastInk } from '$lib/render/contrast';
-import { DEFAULT_MAIN_COLOR, type ColorMode } from '$lib/model/view-options';
+import { DEFAULT_MAIN_COLOR, DEFAULT_SYMBOL_COLOR, type ColorMode } from '$lib/model/view-options';
 import type {
   LayoutResult,
   PositionedStitch,
@@ -48,8 +48,10 @@ export interface RenderOptions {
   colorMode?: ColorMode;
   /** 코가 **없는** 자리(바탕)의 색. 미지정이면 투명 */
   emptyColor?: string;
-  /** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러) */
+  /** 실 색을 지정하지 않은 코의 칸 배경색 (도안 메인 컬러) */
   mainColor?: string;
+  /** 실 색을 지정하지 않은 코의 기호 선 색 */
+  symbolColor?: string;
   /** 배경 그리드 표시 여부 (디버깅·확인용) */
   showGrid?: boolean;
   /** 부모-자식 연결선 표시 여부 (기본 true) */
@@ -63,12 +65,13 @@ export function renderSvg(opts: RenderOptions): string {
   // 코바늘 기본은 기호 선 색
   const fillMode = opts.colorMode === 'fill';
   const mainColor = opts.mainColor ?? DEFAULT_MAIN_COLOR;
+  const symbolColor = opts.symbolColor ?? DEFAULT_SYMBOL_COLOR;
   const { bounds, stitches } = layout;
   const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
 
   const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
   const connections = showConnections ? renderConnections(stitches) : '';
-  const roundGroups = renderRoundGroups(stitches, fillMode, mainColor);
+  const roundGroups = renderRoundGroups(stitches, fillMode, symbolColor);
   const markers = renderRoundMarkers(layout.roundMarkers);
   const background = opts.emptyColor
     ? `<rect x="${fmt(bounds.minX)}" y="${fmt(bounds.minY)}" ` +
@@ -283,15 +286,13 @@ function renderConnections(stitches: PositionedStitch[]): string {
  *
  * 기호색 모드에서도 메인 색으로 깔린다 — 실 색은 기호 선에 들어간다.
  *
- * 모양은 **기호보다 약간 큰 타원**이다. 원으로 하면 한길긴뜨기·두길긴뜨기처럼
- * 세로로 긴 기호를 덮으려다 가로로도 그만큼 커져 이웃 코를 침범한다.
- * 그래서 세로는 기호 높이를 따라가고 가로는 코 간격 안에서 묶어 둔다.
- * 원형 도안에서는 기호와 같은 각도로 회전시킨다.
+ * 크기는 **모든 코가 같다** — 대바늘 격자에서 칸 하나가 코 종류와 무관하게 같은 크기인
+ * 것과 같다. 코마다 크기가 다르면 배색이 들쭉날쭉해 덩어리로 읽히지 않는다.
+ * (한길긴뜨기처럼 세로로 긴 기호는 바탕 밖으로 나오는데, 격자 도안에서 기호가 칸을
+ * 넘어가는 것과 같은 상황이라 그대로 둔다.)
  */
-/** 기호 끝에서 바탕이 더 뻗는 여유 */
-const DISC_PAD = 2.5;
-/** 가로 반지름 상한 — 이웃 코를 침범하지 않는 선 */
-const DISC_RX = 7;
+/** 코 바탕 반지름 — 코 종류와 무관하게 고정 */
+const DISC_R = 8;
 
 function renderColorDiscs(
   stitches: PositionedStitch[],
@@ -301,32 +302,17 @@ function renderColorDiscs(
   const discs: string[] = [];
   for (const s of stitches) {
     if (s.op.kind === 'MAGIC') continue; // 매직링은 코가 아니라 시작 표시
-    const ry = effectiveSymHalf(s.op) + DISC_PAD;
-    const rx = Math.min(DISC_RX, ry);
     const fill = fillMode ? (s.op.color ?? mainColor) : mainColor;
-    const x = fmt(s.position.x);
-    const y = fmt(s.position.y);
-    const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
     discs.push(
-      `<ellipse cx="${x}" cy="${y}" rx="${fmt(rx)}" ry="${fmt(ry)}" ` +
-      `transform="rotate(${angleDeg} ${x} ${y})" fill="${escapeAttr(fill)}"/>`,
+      `<circle cx="${fmt(s.position.x)}" cy="${fmt(s.position.y)}" r="${DISC_R}" ` +
+      `fill="${escapeAttr(fill)}"/>`,
     );
   }
   if (discs.length === 0) return '';
   return `<g class="colorwork">${discs.join('')}</g>`;
 }
 
-/** 이 코 기호의 실제 반높이 — V/A 는 base 코, 긴뜨기 계열은 감은 수를 반영 */
-function effectiveSymHalf(op: PositionedStitch['op']): number {
-  const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
-  const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
-  if ((baseKind === 'TR' || baseKind === 'DTR') && op.yarnOverCount && op.yarnOverCount >= 2) {
-    return 9 + 2 * (op.yarnOverCount - 1);
-  }
-  return STITCH_META[baseKind]?.symbolHalfHeight ?? 5;
-}
-
-function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, mainColor: string): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symbolColor: string): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -339,21 +325,23 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, main
 
   for (const roundIdx of sortedRounds) {
     const items = byRound.get(roundIdx)!
-      .map((s) => renderStitchUse(s, fillMode, mainColor)).join('');
+      .map((s) => renderStitchUse(s, fillMode)).join('');
+    // 색을 지정하지 않은 코는 이 그룹 색을 그대로 물려받는다
     groups.push(
-      `<g class="round" data-round="${roundIdx}" style="color: ${STITCH_COLOR}">${items}</g>`
+      `<g class="round" data-round="${roundIdx}" style="color: ${escapeAttr(symbolColor)}">${items}</g>`
     );
   }
 
   return groups.join('');
 }
 
-function renderStitchUse(s: PositionedStitch, fillMode: boolean, mainColor: string): string {
+function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
   const x = fmt(s.position.x);
   const y = fmt(s.position.y);
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
-  // 원반 위에 그리므로 기호는 그 원반의 대비색 (진한 실 위에서 묻히지 않도록)
-  const ink = fillMode ? contrastInk(s.op.color ?? mainColor) : s.op.color;
+  // 실 색을 지정한 코만 색을 덮어쓴다 (지정 없으면 그룹의 기본 기호색을 물려받는다).
+  // 배경색 모드에서는 그 코의 바탕 위에서 읽히도록 대비색으로 그린다.
+  const ink = s.op.color ? (fillMode ? contrastInk(s.op.color) : s.op.color) : undefined;
   const colorStyle = ink ? ` style="color: ${escapeAttr(ink)}"` : '';
 
   // INC/DEC는 fan 형태(다리 여러 개)로 출력

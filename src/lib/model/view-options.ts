@@ -49,16 +49,20 @@ export interface ViewOptions {
   /** 코가 **없는** 자리의 색 (대바늘 빈칸 / 코바늘 바탕) */
   emptyColor: string;
   /**
-   * 코가 **있는** 자리의 기본 색 — 실 색을 따로 지정하지 않은 코에 쓴다.
+   * 코가 **있는** 자리의 배경색 — 실 색을 따로 지정하지 않은 코에 쓴다.
    * 도안의 메인 컬러. 배색 팔레트에서 바꿀 수 있다.
    */
   mainColor: string;
+  /** 실 색을 지정하지 않은 코의 **기호 선** 색 */
+  symbolColor: string;
 }
 
 /** 코 없는 자리의 기본색 — 종이 도안의 무채색 칸 느낌 */
 export const DEFAULT_EMPTY_COLOR = '#e8e5e0';
-/** 실 색을 지정하지 않은 코의 기본색 */
+/** 실 색을 지정하지 않은 코의 칸 배경색 */
 export const DEFAULT_MAIN_COLOR = '#ffffff';
+/** 실 색을 지정하지 않은 코의 기호 선 색 */
+export const DEFAULT_SYMBOL_COLOR = '#222222';
 
 export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   showGrid: true,
@@ -70,6 +74,7 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   colorMode: 'auto',
   emptyColor: DEFAULT_EMPTY_COLOR,
   mainColor: DEFAULT_MAIN_COLOR,
+  symbolColor: DEFAULT_SYMBOL_COLOR,
 });
 
 export type ViewOptionKey = keyof ViewOptions;
@@ -102,6 +107,7 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
       : DEFAULT_VIEW_OPTIONS.colorMode,
     emptyColor: resolveColorValue(String(v.emptyColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.emptyColor,
     mainColor: resolveColorValue(String(v.mainColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.mainColor,
+    symbolColor: resolveColorValue(String(v.symbolColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.symbolColor,
   };
 }
 

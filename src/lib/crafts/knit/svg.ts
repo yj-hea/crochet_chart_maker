@@ -18,7 +18,9 @@ import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
 
-import { DEFAULT_EMPTY_COLOR, DEFAULT_MAIN_COLOR, type ColorMode } from '$lib/model/view-options';
+import {
+  DEFAULT_EMPTY_COLOR, DEFAULT_MAIN_COLOR, DEFAULT_SYMBOL_COLOR, type ColorMode,
+} from '$lib/model/view-options';
 /** 마커 선 굵기 — 격자선(0.8)보다 굵게, 볼드체 정도의 대비 */
 const MARKER_STROKE = 1.6;
 
@@ -32,8 +34,10 @@ export interface KnitRenderOptions {
   colorMode?: ColorMode;
   /** 코가 **없는** 칸의 색 */
   emptyColor?: string;
-  /** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러) */
+  /** 실 색을 지정하지 않은 코의 칸 배경색 (도안 메인 컬러) */
   mainColor?: string;
+  /** 실 색을 지정하지 않은 코의 기호 선 색 */
+  symbolColor?: string;
 }
 
 const LEGEND_ROW_HEIGHT = 13;
@@ -47,6 +51,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   const fillMode = (opts.colorMode ?? 'auto') !== 'symbol';
   const emptyColor = opts.emptyColor ?? DEFAULT_EMPTY_COLOR;
   const mainColor = opts.mainColor ?? DEFAULT_MAIN_COLOR;
+  const symbolColor = opts.symbolColor ?? DEFAULT_SYMBOL_COLOR;
   const { bounds } = layout;
   const pad = 4;
   const cell = layout.cellSize ?? { width: 20, height: 14 };
@@ -74,7 +79,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     renderFillers(greyCells, cell, emptyColor),
     renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
     showGrid ? renderCellBorders(layout, cell) : '',
-    renderRoundGroups(layout.stitches, fillMode, mainColor),
+    renderRoundGroups(layout.stitches, fillMode, symbolColor),
     renderRoundNumbers(layout.roundMarkers),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
@@ -118,7 +123,7 @@ function renderCellBorders(layout: LayoutResult, cell: { width: number; height: 
   return `<g class="grid">${rects.join('')}</g>`;
 }
 
-function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, mainColor: string): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, symbolColor: string): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -128,17 +133,19 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, main
   const groups: string[] = [];
   for (const roundIdx of [...byRound.keys()].sort((a, b) => a - b)) {
     const items = byRound.get(roundIdx)!
-      .map((s) => renderStitchUse(s, fillMode, mainColor)).join('');
-    groups.push(`<g class="round" data-round="${roundIdx}" style="color: ${STITCH_COLOR}">${items}</g>`);
+      .map((s) => renderStitchUse(s, fillMode)).join('');
+    // 색을 지정하지 않은 코는 이 그룹 색을 그대로 물려받는다
+    groups.push(
+      `<g class="round" data-round="${roundIdx}" style="color: ${escapeAttr(symbolColor)}">${items}</g>`,
+    );
   }
   return groups.join('');
 }
 
-function renderStitchUse(s: PositionedStitch, fillMode: boolean, mainColor: string): string {
-  // 칸 채우기 모드: 기호는 칸 배경의 대비색 / 기호색 모드: 기호가 실 색
-  const ink = fillMode
-    ? contrastInk(s.op.color ?? mainColor)
-    : s.op.color;
+function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
+  // 실 색을 지정한 코만 색을 덮어쓴다 (지정 없으면 그룹의 기본 기호색을 물려받는다).
+  // 칸 채우기 모드에서는 그 칸 배경 위에서 읽히도록 대비색으로 그린다.
+  const ink = s.op.color ? (fillMode ? contrastInk(s.op.color) : s.op.color) : undefined;
   const colorStyle = ink ? ` style="color: ${escapeAttr(ink)}"` : '';
   // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
   return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;

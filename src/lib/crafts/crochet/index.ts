@@ -50,6 +50,7 @@ export const crochet: CraftDefinition = {
       colorMode: opts.colorMode,
       emptyColor: opts.emptyColor,
       mainColor: opts.mainColor,
+      symbolColor: opts.symbolColor,
     });
   },
 

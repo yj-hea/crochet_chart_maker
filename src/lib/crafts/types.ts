@@ -46,8 +46,10 @@ export interface CraftRenderOptions {
   colorMode?: ColorMode;
   /** 코가 없는 자리의 색 */
   emptyColor?: string;
-  /** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러) */
+  /** 실 색을 지정하지 않은 코의 칸 배경색 (도안 메인 컬러) */
   mainColor?: string;
+  /** 실 색을 지정하지 않은 코의 기호 선 색 */
+  symbolColor?: string;
 }
 
 export interface CraftDefinition {

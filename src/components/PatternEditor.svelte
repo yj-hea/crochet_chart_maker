@@ -153,6 +153,11 @@
   // 크래프트·도형별 방향 아이콘/라벨.
   // 대바늘에서 direction 은 겉면(RS)/안면(WS) 의 수동 오버라이드다.
   const isKnit = $derived($pattern.craft === 'knit');
+  /**
+   * 게이지를 쓸 수 있는 도안 — 대바늘 전체, 코바늘은 평면만.
+   * 코바늘 원형은 단마다 지름이 달라져 10cm 당 코수 환산이 성립하지 않는다.
+   */
+  const showGauge = $derived(isKnit || $pattern.shape === 'flat');
   /** 팔레트에 먼저 보여줄, 이 도안에서 이미 쓴 색 */
   const usedColorList = $derived($usedColors.map((c) => c.color));
   const dirIcon = $derived(isKnit
@@ -171,7 +176,7 @@
   <div class="editor-header">
     <ShapeSelector />
     <!-- 게이지·배색은 자주 건드리지 않으므로 접어 둔다 -->
-    {#if isKnit}
+    {#if showGauge}
       <button
         type="button"
         class="disclosure"
@@ -203,7 +208,7 @@
       </button>
     {/if}
   </div>
-  {#if isKnit && gaugeOpen}
+  {#if showGauge && gaugeOpen}
     <div class="disclosure-panel"><GaugeInput /></div>
   {/if}
   {#if colorsOpen}
