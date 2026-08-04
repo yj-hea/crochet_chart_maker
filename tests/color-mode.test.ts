@@ -271,7 +271,7 @@ describe('코바늘 평면 — 격자 칸 채우기', () => {
   });
 });
 
-describe('칠하는 방식 전환 (칸 ↔ 기호 색 교환)', () => {
+describe('칠하는 방식 전환', () => {
   async function setup(craft: 'crochet' | 'knit') {
     const { createTab, viewOptions } = await import('../src/stores/tabs');
     const mode = await import('../src/stores/mode');
@@ -280,30 +280,27 @@ describe('칠하는 방식 전환 (칸 ↔ 기호 색 교환)', () => {
     return { mode, get, viewOptions };
   }
 
-  it('전환하면 칸 색과 기호 색이 맞바뀐다', async () => {
+  /**
+   * 칸 색(실 색)과 기호 색(잉크)은 성질이 다르므로 맞바꾸지 않는다.
+   * 바꾸면 "흰 실이어야 할 코"가 검정 칸이 된다.
+   */
+  it('전환해도 칸 색·기호 색은 그대로다', async () => {
     const { mode, get, viewOptions } = await setup('crochet');
     mode.mainColor.set('#ffffff');
     mode.symbolColor.set('#222222');
-    expect(get(mode.fillMode)).toBe(false); // 코바늘 기본은 기호색
 
     mode.toggleColorMode();
     expect(get(mode.fillMode)).toBe(true);
-    expect(get(viewOptions).mainColor).toBe('#222222');
-    expect(get(viewOptions).symbolColor).toBe('#ffffff');
+    expect(get(viewOptions).mainColor).toBe('#ffffff');
+    expect(get(viewOptions).symbolColor).toBe('#222222');
   });
 
-  it('두 번 누르면 처음 상태로 정확히 돌아온다', async () => {
-    const { mode, get, viewOptions } = await setup('crochet');
-    mode.mainColor.set('#ffe0b2');
-    mode.symbolColor.set('#3355ff');
-    const before = { ...get(viewOptions) };
-
+  it('두 번 누르면 처음 모드로 돌아온다', async () => {
+    const { mode, get } = await setup('crochet');
+    const before = get(mode.fillMode);
     mode.toggleColorMode();
     mode.toggleColorMode();
-    const after = get(viewOptions);
-    expect(after.colorMode).toBe(before.colorMode === 'auto' ? 'symbol' : before.colorMode);
-    expect(after.mainColor).toBe(before.mainColor);
-    expect(after.symbolColor).toBe(before.symbolColor);
+    expect(get(mode.fillMode)).toBe(before);
   });
 
   it('대바늘은 반대 방향으로 시작한다 (기본이 칸 채우기)', async () => {
@@ -313,13 +310,26 @@ describe('칠하는 방식 전환 (칸 ↔ 기호 색 교환)', () => {
     expect(get(mode.fillMode)).toBe(false);
   });
 
-  it('교환 뒤 기호가 칸 위에서 대비를 유지한다', async () => {
-    // 흰 칸 + 검정 기호 → 검정 칸 + 흰 기호
-    const before = crochetSvg({ colorMode: 'symbol', mainColor: '#ffffff', symbolColor: '#222222' });
-    const after = crochetSvg({ colorMode: 'fill', mainColor: '#222222', symbolColor: '#ffffff' });
-    expect(colorworkGroup(before)).toContain('#ffffff');
-    expect(before.slice(0, before.indexOf('>'))).toContain('color: #222222');
-    expect(colorworkGroup(after)).toContain('#222222');
-    expect(after.slice(0, after.indexOf('>'))).toContain('color: #ffffff');
+  it('실 색을 지정하지 않은 코는 두 모드에서 똑같이 보인다', () => {
+    const opts = { mainColor: '#ffffff', symbolColor: '#222222' };
+    // 색 지정이 하나도 없는 도안
+    const plain = (colorMode: 'symbol' | 'fill') => {
+      const rounds = ['6x', '12x'].map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
+      return renderSvg({ layout: layoutCircular(rounds), colorMode, ...opts });
+    };
+    expect(colorworkGroup(plain('symbol'))).toBe(colorworkGroup(plain('fill')));
+  });
+
+  it('전환은 실 색을 지정한 코의 표시만 바꾼다', () => {
+    const opts = { mainColor: '#ffffff', symbolColor: '#222222' };
+    const symbolMode = crochetSvg({ colorMode: 'symbol', ...opts });
+    const fillMode = crochetSvg({ colorMode: 'fill', ...opts });
+
+    // 기호색: 칸은 전부 흰색, 네이비는 기호 선에
+    expect(colorworkGroup(symbolMode)).not.toContain(NAVY);
+    expect(symbolMode).toContain(`color: ${NAVY}`);
+    // 배경색: 네이비가 칸으로 가고 기호는 대비색
+    expect(colorworkGroup(fillMode)).toContain(NAVY);
+    expect(fillMode).not.toContain(`color: ${NAVY}`);
   });
 });

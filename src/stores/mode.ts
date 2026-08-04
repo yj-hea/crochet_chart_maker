@@ -10,7 +10,7 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
-import { viewOptions, setViewOption, setViewOptions, pattern } from '$stores/tabs';
+import { viewOptions, setViewOption, pattern } from '$stores/tabs';
 import type { ViewOptions, ViewOptionKey } from '$lib/model/view-options';
 
 export type { FlatAlign, FlatVAlign, ColorMode } from '$lib/model/view-options';
@@ -86,18 +86,17 @@ export const fillMode = derived(
 );
 
 /**
- * 칠하는 방식 전환 — 칸 색과 기호 색을 **맞바꾼다**.
+ * 칠하는 방식 전환.
  *
- * 두 모드는 같은 색을 어디에 칠하느냐의 차이라, 그냥 모드만 뒤집으면
- * 대비가 뒤집혀 기호가 배경에 묻힌다 (흰 칸 + 흰 기호). 색을 함께 교환하면
- * 흰 칸 + 검정 기호  ↔  검정 칸 + 흰 기호 처럼 자연스럽게 넘어가고,
- * 두 번 누르면 처음 상태로 정확히 돌아온다.
+ * 칸 색과 기호 색은 **같은 성질이 아니라서 맞바꾸지 않는다**.
+ * 칸 색은 실 색(그 코가 무슨 실인지)이고, 기호 색은 잉크 색(선을 무슨 색으로
+ * 그리는지)이다. 기호색 모드의 검정은 "실이 검정"이 아니라 도안을 검은 선으로
+ * 그린다는 관례일 뿐이라, 그걸 실 색 자리로 옮기면 흰 실이어야 할 코가 검정 칸이 된다.
+ *
+ * 그래서 실 색을 지정하지 않은 코는 두 모드에서 똑같이 보이고(흰 칸 + 검정 기호),
+ * 이 전환은 **실 색을 지정한 코**의 표시 방식만 바꾼다:
+ *   기호색 — 흰 칸 + 그 실 색 기호   /   배경색 — 그 실 색 칸 + 대비색 기호
  */
 export function toggleColorMode(): void {
-  const view = get(viewOptions);
-  setViewOptions({
-    colorMode: get(fillMode) ? 'symbol' : 'fill',
-    mainColor: view.symbolColor,
-    symbolColor: view.mainColor,
-  });
+  colorMode.set(get(fillMode) ? 'symbol' : 'fill');
 }

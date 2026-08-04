@@ -216,6 +216,28 @@ export function setColorAt(
 }
 
 /**
+ * 실 색을 **지정하지 않은** 코들에만 `:색` 을 붙인다.
+ *
+ * "기본 코" 를 정식 실 색으로 승격시키는 동작이다. 표시 옵션(칸 색)으로 색을 입히면
+ * 화면만 바뀌고 배색 목록에 실 색으로 잡히지 않는데, 이건 본문을 고치므로
+ * 이후 다른 색으로 일괄 교체하는 것도 똑같이 된다.
+ * 이미 색이 있는 코는 건드리지 않는다.
+ */
+export function assignColorToUncolored(
+  source: string,
+  parsed: ParsedRound | undefined,
+  hex: string,
+): string {
+  const edits: Edit[] = [];
+  for (const s of collectStitches(parsed?.body ?? parsed?.lastValid)) {
+    if (s.color) continue;
+    const edit = editFor(source, s, hex);
+    if (edit) edits.push(edit);
+  }
+  return edits.length > 0 ? applyEdits(source, edits) : source;
+}
+
+/**
  * 이 단에서 `from` 색으로 칠해진 코를 모두 `to` 색으로 바꾼다 (배색 교체용).
  * `to` 가 undefined 면 그 색을 제거한다.
  */

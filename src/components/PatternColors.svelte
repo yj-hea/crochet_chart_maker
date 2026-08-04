@@ -15,7 +15,12 @@
    *
    * 점선 테두리 = 표시 옵션이라 본문을 건드리지 않는다는 뜻.
    */
-  import { usedColors, uncoloredCount, replaceColorEverywhere } from '$stores/tabs';
+  import {
+    usedColors,
+    uncoloredCount,
+    replaceColorEverywhere,
+    assignDefaultColorEverywhere,
+  } from '$stores/tabs';
   import { mainColor, emptyColor, symbolColor } from '$stores/mode';
   import ColorPalette from './ColorPalette.svelte';
   import {
@@ -24,7 +29,11 @@
     DEFAULT_SYMBOL_COLOR,
   } from '$lib/model/view-options';
 
-  type Target = 'empty' | 'main' | 'symbol' | 'yarn';
+  /**
+   * 'assign' 은 색을 고르는 대상이 아니라 **동작**이다 —
+   * 실 색을 지정하지 않은 코 전부에 `:색` 을 본문에 넣어 정식 실 색으로 승격시킨다.
+   */
+  type Target = 'empty' | 'main' | 'symbol' | 'yarn' | 'assign';
   let editing = $state<{ kind: Target; color: string; anchor: HTMLElement } | null>(null);
 
   /** 도안의 바탕 — 코를 칠하는 색이 아니다 */
@@ -44,7 +53,8 @@
     ...$usedColors.map((c) => c.color),
   ]);
 
-  const DEFAULTS: Record<Exclude<Target, 'yarn'>, string> = {
+  /** 표시 옵션 색의 기본값 — 'yarn'(본문 색) 과 'assign'(동작) 은 대상이 아니다 */
+  const DEFAULTS: Record<'empty' | 'main' | 'symbol', string> = {
     empty: DEFAULT_EMPTY_COLOR,
     main: DEFAULT_MAIN_COLOR,
     symbol: DEFAULT_SYMBOL_COLOR,
@@ -53,16 +63,21 @@
 
   function pick(hex: string) {
     if (!editing) return;
-    if (editing.kind === 'yarn') replaceColorEverywhere(editing.color, hex);
-    else SETTERS[editing.kind].set(hex);
+    if (editing.kind === 'assign') assignDefaultColorEverywhere(hex);
+    else if (editing.kind === 'yarn') replaceColorEverywhere(editing.color, hex);
+    else SETTERS[editing.kind as keyof typeof SETTERS].set(hex);
     editing = null;
   }
 
   function clear() {
     if (!editing) return;
+    if (editing.kind === 'assign') { editing = null; return; } // 지울 대상이 없다
     // 표시 옵션 색은 없앨 수 없다 — 기본값으로 되돌린다
     if (editing.kind === 'yarn') replaceColorEverywhere(editing.color, undefined);
-    else SETTERS[editing.kind].set(DEFAULTS[editing.kind]);
+    else {
+      const key = editing.kind as keyof typeof SETTERS;
+      SETTERS[key].set(DEFAULTS[key]);
+    }
     editing = null;
   }
 </script>
@@ -93,6 +108,17 @@
     <span class="dot" style="background: {$symbolColor}"></span>
     <span class="count">기호 {$uncoloredCount}</span>
   </button>
+  {#if $uncoloredCount > 0}
+    <button
+      type="button"
+      class="assign-btn"
+      onclick={(e) => (editing = { kind: 'assign', color: $symbolColor, anchor: e.currentTarget })}
+      title="색 없는 {$uncoloredCount}코에 실 색 지정 — 본문에 :색 을 넣어 정식 실 색으로 만듭니다"
+      aria-label="색 없는 코에 실 색 지정"
+    >
+      <i class="fa-solid fa-fill-drip"></i>
+    </button>
+  {/if}
   {#each $usedColors as entry (entry.color)}
     <button
       type="button"
@@ -148,6 +174,19 @@
     background: var(--bg-hover, #f4f1ec);
     border-color: var(--border, #e2e2e2);
   }
+  /* 색 없는 코에 실 색을 넣는 동작 — 색을 고르는 칩이 아니라 버튼이다 */
+  .assign-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px;
+    margin-left: -2px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted, #999);
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .assign-btn:hover { background: var(--bg-hover, #f4f1ec); color: var(--text, #333); }
   .dot {
     width: 12px; height: 12px;
     border-radius: 50%;

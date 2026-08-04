@@ -303,3 +303,49 @@ describe('색 표기 접기 (화면 표시)', () => {
     expect(await rendered(src + ', 1v', src.length + 2)).toBe('2x●, 1v');
   });
 });
+
+describe('색 없는 코에 실 색 일괄 지정', () => {
+  it('색이 없는 코에만 붙고 이미 있는 코는 그대로', async () => {
+    const { assignColorToUncolored } = await import('../src/lib/color-edit');
+    const src = '2x:navy, 3x, 1v';
+    const out = assignColorToUncolored(src, cro(src), '#f5efe0');
+    expect(out).toBe('2x:navy, 3x:cream, 1v:cream');
+    expect(reparseColors(out)).toEqual(['#0d47a1', '#f5efe0', '#f5efe0']);
+  });
+
+  it('반복·한코그룹 안에도 들어간다', async () => {
+    const { assignColorToUncolored } = await import('../src/lib/color-edit');
+    const src = '(1x, 1v:red)*3, [1f, 1t]';
+    const out = assignColorToUncolored(src, cro(src), '#0d47a1');
+    expect(out).toBe('(1x:navy, 1v:red)*3, [1f:navy, 1t:navy]');
+  });
+
+  it('전부 색이 있으면 원본 그대로', async () => {
+    const { assignColorToUncolored } = await import('../src/lib/color-edit');
+    const src = '2x:navy, 1v:red';
+    expect(assignColorToUncolored(src, cro(src), '#000000')).toBe(src);
+  });
+
+  it('지정 후에는 배색 목록의 정식 실 색이 되어 일괄 교체된다', async () => {
+    const { createTab, assignDefaultColorEverywhere, replaceColorEverywhere, usedColors, uncoloredCount, pattern } =
+      await import('../src/stores/tabs');
+    const { updateRoundSource, addRoundAtEnd } = await import('../src/stores/pattern');
+    const { get } = await import('svelte/store');
+
+    createTab('crochet');
+    updateRoundSource(get(pattern).rounds[0]!.id, '3x:navy, 3x');
+    updateRoundSource(addRoundAtEnd(), '6x');
+    expect(get(uncoloredCount)).toBe(9);
+
+    assignDefaultColorEverywhere('#f5efe0');
+    expect(get(uncoloredCount)).toBe(0);
+    expect(get(usedColors)).toEqual([
+      { color: '#f5efe0', count: 9 },
+      { color: '#0d47a1', count: 3 },
+    ]);
+
+    // 이제 다른 색 칩과 똑같이 일괄 교체된다
+    replaceColorEverywhere('#f5efe0', '#e53935');
+    expect(get(pattern).rounds.map((r) => r.source)).toEqual(['3x:navy, 3x:red', '6x:red']);
+  });
+});

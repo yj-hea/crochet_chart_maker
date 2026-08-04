@@ -23,7 +23,12 @@ import {
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
-import { replaceColorInRound, colorsInRound, collectStitches } from '$lib/color-edit';
+import {
+  replaceColorInRound,
+  colorsInRound,
+  collectStitches,
+  assignColorToUncolored,
+} from '$lib/color-edit';
 import {
   normalizeViewOptions,
   readViewSeed,
@@ -481,6 +486,23 @@ export function replaceColorEverywhere(from: string, to: string | undefined): vo
     let changed = false;
     const rounds = t.rounds.map((r) => {
       const next = replaceColorInRound(r.source, r.parsed, from, to);
+      if (next === r.source) return r;
+      changed = true;
+      return { ...r, source: next };
+    });
+    return changed ? { ...t, rounds: reparseAll(rounds, t.craft) } : t;
+  });
+}
+
+/**
+ * 활성 탭에서 실 색을 지정하지 않은 코 전부에 `:색` 을 넣는다.
+ * "기본 코" 를 정식 실 색으로 승격시켜 이후 일괄 교체 대상이 되게 한다.
+ */
+export function assignDefaultColorEverywhere(hex: string): void {
+  updateActiveTab((t) => {
+    let changed = false;
+    const rounds = t.rounds.map((r) => {
+      const next = assignColorToUncolored(r.source, r.parsed, hex);
       if (next === r.source) return r;
       changed = true;
       return { ...r, source: next };
