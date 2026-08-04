@@ -290,15 +290,23 @@ function renderConnections(stitches: PositionedStitch[]): string {
  * 배색이 면으로 읽힌다.
  *
  * **원형**은 격자 칸이 없어 기호 자리에 타원을 깐다. 크기는 도안 안의 모든 코가
- * 같고(코마다 다르면 배색이 들쭉날쭉하다), 그 하나의 크기는 **도안에서 가장 긴
- * 기호**에 맞춘다. 세로만 그렇게 늘리고 가로는 코 간격의 절반으로 묶는다 —
- * 가로까지 키우면 이웃 코 바탕을 덮어 색 경계에서 뒤에 그린 쪽이 앞을 잘라먹는다.
+ * 같고(코마다 다르면 배색이 들쭉날쭉하다), **한 칸 크기**를 바닥으로 삼아
+ * 도안에서 가장 긴 기호까지 세로로만 늘린다:
+ *
+ *   가로 = 칸 너비 / 2          (항상 한 칸 너비 — 이웃 코와 맞닿는다)
+ *   세로 = max(칸 너비 / 2, 가장 긴 기호 반높이 + 여유)
+ *
+ * 가로를 세로와 같이 키우지 않는 이유 — 이웃 코 바탕을 덮어써서 색이 다른 코끼리
+ * 맞닿을 때 뒤에 그린 쪽이 앞을 잘라먹는다.
  * 기호와 같은 각도로 회전시킨다.
  */
 /** 기호 끝에서 바탕이 더 뻗는 여유 */
 const DISC_PAD = 2.5;
-/** 가로 반지름 상한 — 이웃 코 바탕과 겹치지 않는 선 (평면 한 칸 너비의 절반) */
-const DISC_MAX_RX = FLAT_CELL_WIDTH / 2;
+/**
+ * 바탕 반지름의 바닥이자 가로 반지름 — 평면 한 칸 너비의 절반.
+ * 짧은뜨기만 있는 도안도 한 칸을 꽉 채운다 (기호 크기로만 잡으면 칸의 절반이 된다).
+ */
+const DISC_RX = FLAT_CELL_WIDTH / 2;
 
 function renderStitchBackdrops(
   stitches: PositionedStitch[],
@@ -326,9 +334,11 @@ function renderStitchBackdrops(
     return `<g class="colorwork">${cells.join('')}</g>`;
   }
 
-  // 원형 — 도안에서 가장 긴 기호 기준. 한 번 정하면 모든 코에 같은 크기를 쓴다
-  const ry = drawn.reduce((max, s) => Math.max(max, symbolHalf(s.op)), 0) + DISC_PAD;
-  const rx = Math.min(DISC_MAX_RX, ry);
+  // 원형 — 한 칸 크기를 바닥으로, 도안에서 가장 긴 기호까지 세로로만 늘린다.
+  // 한 번 정하면 모든 코에 같은 크기를 쓴다.
+  const tallest = drawn.reduce((max, s) => Math.max(max, symbolHalf(s.op)), 0);
+  const ry = Math.max(DISC_RX, tallest + DISC_PAD);
+  const rx = DISC_RX;
   const discs = drawn.map((s) => {
     const x = fmt(s.position.x);
     const y = fmt(s.position.y);

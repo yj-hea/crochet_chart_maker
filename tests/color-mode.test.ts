@@ -138,17 +138,24 @@ describe('코바늘 코 바탕 크기', () => {
     expect(new Set(sizes).size).toBe(1);
   });
 
-  it('그 크기는 도안에서 가장 긴 기호를 따라간다', () => {
-    const ryOf = (rows: string[]) => Number(discSizes(rows)[0]!.split('x')[1]);
-    // 짧은뜨기 3.5 / 한길긴뜨기 10.5 / 세길긴뜨기 17.5 (+ 여유 2.5)
-    expect(ryOf(['6x', '12x'])).toBe(6);
-    expect(ryOf(['6x', '6x, 6f'])).toBe(13);
-    expect(ryOf(['6x', '6x, 6dtr'])).toBe(20);
+  it('최소 크기는 한 칸(24px) — 짧은뜨기만 있어도 칸을 꽉 채운다', () => {
+    const [rx, ry] = discSizes(['6x', '12x'])[0]!.split('x').map(Number);
+    // 짧은뜨기 반높이는 3.5 뿐이지만 칸 절반(12)이 바닥이 된다
+    expect(rx).toBe(12);
+    expect(ry).toBe(12);
   });
 
-  it('가로는 이웃 코 바탕을 덮지 않도록 묶는다', () => {
-    const rxOf = (rows: string[]) => Number(discSizes(rows)[0]!.split('x')[0]);
-    expect(rxOf(['6x', '6x, 6dtr'])).toBeLessThanOrEqual(12);
+  it('그보다 긴 기호가 있으면 세로만 그만큼 늘어난다', () => {
+    const sizeOf = (rows: string[]) => discSizes(rows)[0]!.split('x').map(Number);
+    // 한길긴뜨기 10.5 / 세길긴뜨기 17.5 (+ 여유 2.5)
+    expect(sizeOf(['6x', '6x, 6f'])).toEqual([12, 13]);
+    expect(sizeOf(['6x', '6x, 6dtr'])).toEqual([12, 20]);
+  });
+
+  it('가로는 언제나 한 칸 — 이웃 코 바탕을 덮지 않는다', () => {
+    for (const rows of [['6x', '12x'], ['6x', '6x, 6f'], ['6x', '6x, 6dtr']]) {
+      expect(Number(discSizes(rows)[0]!.split('x')[0]), rows.join('/')).toBe(12);
+    }
   });
 });
 
