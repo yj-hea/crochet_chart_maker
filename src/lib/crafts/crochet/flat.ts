@@ -449,8 +449,6 @@ function placeRow(
     const vSlots = rowClaims[opIdx]!;
     let px: number;
     let py = y;
-    /** 이 코가 차지하는 칸 (배색 바탕용) — 자리를 차지하지 않는 장식 op 은 undefined */
-    let cellSpan: { cells: number; offsetX: number } | undefined;
     if (vSlots === 0) {
       // 장식 op (samehole chain cont, tc cont) — 부모 위치에 임시 배치.
       // 최종 위치는 후처리 (repositionChainArcs, repositionTurningChainColumns) 에서 결정.
@@ -466,7 +464,6 @@ function placeRow(
       if (align === 'L') px = startSlotX;
       else if (align === 'R') px = endSlotX;
       else px = (startSlotX + endSlotX) / 2;
-      cellSpan = { cells: vSlots, offsetX: (startSlotX + endSlotX) / 2 - px };
       slotCursor += vSlots;
     }
     // phantomAfter: 자식 단 chain 의 빈 칸 — 기호 위치 영향 X, slot 만 진행.
@@ -485,7 +482,6 @@ function placeRow(
       op, roundIndex: roundIdx,
       position: { x: px, y: py }, angle,
       parentIndices: parents, exposedSlots: op.produce,
-      ...(cellSpan ? { cellSpan } : {}),
     });
     thisStitchIndices.push(idx);
     // standalone CHAIN (samehole/turning chain 아님) 의 produce 를 chain queue 에 push.
