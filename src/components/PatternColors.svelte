@@ -6,25 +6,32 @@
    * 바뀐다. 소스 텍스트를 직접 치환하므로 `:A` 같은 별칭 문법이 필요 없다.
    */
   import { usedColors, uncoloredCount, replaceColorEverywhere } from '$stores/tabs';
-  import { mainColor } from '$stores/mode';
+  import { mainColor, emptyColor } from '$stores/mode';
   import ColorPalette from './ColorPalette.svelte';
-  import { DEFAULT_MAIN_COLOR } from '$lib/model/view-options';
+  import { DEFAULT_MAIN_COLOR, DEFAULT_EMPTY_COLOR } from '$lib/model/view-options';
 
-  /** 'main' = 색을 지정하지 않은 코들의 기본색 / 그 외 = 본문에 적힌 색 */
-  let editing = $state<{ kind: 'main' | 'yarn'; color: string; anchor: HTMLElement } | null>(null);
-  const palette = $derived([$mainColor, ...$usedColors.map((c) => c.color)]);
+  /**
+   * 'main'  = 색을 지정하지 않은 코들의 기본색 (표시 옵션)
+   * 'empty' = 코가 없는 자리의 색 (표시 옵션)
+   * 'yarn'  = 본문에 `:색` 으로 적힌 실 색 (소스를 치환한다)
+   */
+  type Target = 'main' | 'empty' | 'yarn';
+  let editing = $state<{ kind: Target; color: string; anchor: HTMLElement } | null>(null);
+  const palette = $derived([$mainColor, $emptyColor, ...$usedColors.map((c) => c.color)]);
 
   function pick(hex: string) {
     if (!editing) return;
     if (editing.kind === 'main') mainColor.set(hex);
+    else if (editing.kind === 'empty') emptyColor.set(hex);
     else replaceColorEverywhere(editing.color, hex);
     editing = null;
   }
 
   function clear() {
     if (!editing) return;
-    // 메인 색은 없앨 수 없다 — 기본값으로 되돌린다
+    // 메인·빈칸 색은 없앨 수 없다 — 기본값으로 되돌린다
     if (editing.kind === 'main') mainColor.set(DEFAULT_MAIN_COLOR);
+    else if (editing.kind === 'empty') emptyColor.set(DEFAULT_EMPTY_COLOR);
     else replaceColorEverywhere(editing.color, undefined);
     editing = null;
   }
@@ -43,6 +50,16 @@
   >
     <span class="dot" style="background: {$mainColor}"></span>
     <span class="count">기본 {$uncoloredCount}</span>
+  </button>
+  <!-- 빈칸 색 — 코가 없는 자리 -->
+  <button
+    type="button"
+    class="chip main"
+    onclick={(e) => (editing = { kind: 'empty', color: $emptyColor, anchor: e.currentTarget })}
+    title="빈칸 색 ({$emptyColor}) — 코가 없는 자리 (대바늘 빈칸 / 코바늘 바탕)"
+  >
+    <span class="dot" style="background: {$emptyColor}"></span>
+    <span class="count">빈칸</span>
   </button>
   {#each $usedColors as entry (entry.color)}
     <button

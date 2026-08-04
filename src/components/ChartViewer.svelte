@@ -2,11 +2,8 @@
   import { pattern } from '$stores/pattern';
   import {
     mode, currentRound, currentStitch, showGrid, showConnections,
-    flatFlipVertical, flatAlign, flatCascade, flatVAlign, colorMode, emptyColor,
+    flatFlipVertical, flatAlign, flatCascade, flatVAlign, colorMode,
   } from '$stores/mode';
-  import ColorPalette from './ColorPalette.svelte';
-  import { usedColors } from '$stores/tabs';
-  import { DEFAULT_EMPTY_COLOR } from '$lib/model/view-options';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
   import { isValidGauge, stitchesToCm, rowsToCm } from '$lib/model/gauge';
@@ -244,9 +241,6 @@
   const effectiveFill = $derived(
     $colorMode === 'auto' ? isKnit : $colorMode === 'fill',
   );
-  let bgBtn: HTMLButtonElement | undefined = $state();
-  let bgPaletteOpen = $state(false);
-  const paletteColors = $derived($usedColors.map((c) => c.color));
 </script>
 
 <div class="chart-viewer">
@@ -295,15 +289,6 @@
       >
         <i class="fa-solid fa-{effectiveFill ? 'fill-drip' : 'pen-nib'}"></i>
         {effectiveFill ? '배경색' : '기호색'}
-      </button>
-      <button
-        type="button"
-        class="tool-btn toggle-btn"
-        bind:this={bgBtn}
-        onclick={() => (bgPaletteOpen = true)}
-        title="빈칸 색 바꾸기 — 코가 없는 자리 (현재 {$emptyColor})"
-      >
-        <span class="bg-dot" style="background: {$emptyColor}"></span> 빈칸
       </button>
       {#if showFlatTools}
         <button
@@ -379,18 +364,6 @@
   {/if}
 </div>
 
-{#if bgPaletteOpen}
-  <ColorPalette
-    anchor={bgBtn}
-    current={$emptyColor}
-    used={paletteColors}
-    allowClear={false}
-    onPick={(hex) => { emptyColor.set(hex); bgPaletteOpen = false; }}
-    onClear={() => { emptyColor.set(DEFAULT_EMPTY_COLOR); bgPaletteOpen = false; }}
-    onClose={() => (bgPaletteOpen = false)}
-  />
-{/if}
-
 {#if modalOpen && rendered}
   <ZoomModal
     svg={modalSvg || rendered.svg}
@@ -421,13 +394,6 @@
     justify-content: flex-end;
     align-items: center;
     background: var(--bg-warm);
-  }
-  .bg-dot {
-    display: inline-block;
-    width: 10px; height: 10px;
-    border-radius: 3px;
-    border: 1px solid rgba(0, 0, 0, 0.28);
-    vertical-align: middle;
   }
   .btn-group {
     display: inline-flex;

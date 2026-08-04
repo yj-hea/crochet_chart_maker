@@ -281,10 +281,18 @@ function renderConnections(stitches: PositionedStitch[]): string {
  * 코바늘엔 격자 칸이 없으므로 기호 자리에 원반을 깐다. 실 색을 지정하지 않은 코도
  * **메인 색**(기본 흰색)으로 깔아서, 바탕(빈칸 색)과 코가 있는 자리가 구분된다.
  *
- * 기호색 모드에서는 모든 원반이 메인 색이고 실 색은 기호 선에 들어간다.
- * 반지름은 기호 크기를 따라가되 상한을 둔다 — 긴뜨기 계열은 세로로 길어서
- * 그대로 쓰면 이웃 코를 덮는다.
+ * 기호색 모드에서도 메인 색으로 깔린다 — 실 색은 기호 선에 들어간다.
+ *
+ * 모양은 **기호보다 약간 큰 타원**이다. 원으로 하면 한길긴뜨기·두길긴뜨기처럼
+ * 세로로 긴 기호를 덮으려다 가로로도 그만큼 커져 이웃 코를 침범한다.
+ * 그래서 세로는 기호 높이를 따라가고 가로는 코 간격 안에서 묶어 둔다.
+ * 원형 도안에서는 기호와 같은 각도로 회전시킨다.
  */
+/** 기호 끝에서 바탕이 더 뻗는 여유 */
+const DISC_PAD = 2.5;
+/** 가로 반지름 상한 — 이웃 코를 침범하지 않는 선 */
+const DISC_RX = 7;
+
 function renderColorDiscs(
   stitches: PositionedStitch[],
   fillMode: boolean,
@@ -293,16 +301,29 @@ function renderColorDiscs(
   const discs: string[] = [];
   for (const s of stitches) {
     if (s.op.kind === 'MAGIC') continue; // 매직링은 코가 아니라 시작 표시
-    const meta = STITCH_META[s.op.kind];
-    const r = Math.min(Math.max(meta?.symbolHalfHeight ?? 5, 4.5), 8);
+    const ry = effectiveSymHalf(s.op) + DISC_PAD;
+    const rx = Math.min(DISC_RX, ry);
     const fill = fillMode ? (s.op.color ?? mainColor) : mainColor;
+    const x = fmt(s.position.x);
+    const y = fmt(s.position.y);
+    const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
     discs.push(
-      `<circle cx="${fmt(s.position.x)}" cy="${fmt(s.position.y)}" r="${fmt(r)}" ` +
-      `fill="${escapeAttr(fill)}"/>`,
+      `<ellipse cx="${x}" cy="${y}" rx="${fmt(rx)}" ry="${fmt(ry)}" ` +
+      `transform="rotate(${angleDeg} ${x} ${y})" fill="${escapeAttr(fill)}"/>`,
     );
   }
   if (discs.length === 0) return '';
   return `<g class="colorwork">${discs.join('')}</g>`;
+}
+
+/** 이 코 기호의 실제 반높이 — V/A 는 base 코, 긴뜨기 계열은 감은 수를 반영 */
+function effectiveSymHalf(op: PositionedStitch['op']): number {
+  const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
+  const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
+  if ((baseKind === 'TR' || baseKind === 'DTR') && op.yarnOverCount && op.yarnOverCount >= 2) {
+    return 9 + 2 * (op.yarnOverCount - 1);
+  }
+  return STITCH_META[baseKind]?.symbolHalfHeight ?? 5;
 }
 
 function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, mainColor: string): string {

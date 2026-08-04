@@ -21,6 +21,8 @@
   // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
   let focusedRoundId = $state<string | null>(null);
   let evenIncOpen = $state(false);
+  let gaugeOpen = $state(false);
+  let colorsOpen = $state(false);
   let shortRowOpen = $state(false);
 
   // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
@@ -168,10 +170,30 @@
 <div class="pattern-editor">
   <div class="editor-header">
     <ShapeSelector />
+    <!-- 게이지·배색은 자주 건드리지 않으므로 접어 둔다 -->
     {#if isKnit}
-      <GaugeInput />
+      <button
+        type="button"
+        class="disclosure"
+        class:on={gaugeOpen}
+        onclick={() => (gaugeOpen = !gaugeOpen)}
+        aria-expanded={gaugeOpen}
+        title="게이지 (10cm 당 코수·단수)"
+      >
+        <i class="fa-solid fa-ruler"></i> 게이지
+      </button>
     {/if}
-    <PatternColors />
+    <button
+      type="button"
+      class="disclosure"
+      class:on={colorsOpen}
+      onclick={() => (colorsOpen = !colorsOpen)}
+      aria-expanded={colorsOpen}
+      title="배색 — 실 색·기본 색·빈칸 색"
+    >
+      <i class="fa-solid fa-palette"></i> 배색
+      {#if $usedColors.length > 0}<span class="badge">{$usedColors.length}</span>{/if}
+    </button>
     <div class="header-spacer"></div>
     {#if patternComment}
       <CommentPin comment={patternComment} />
@@ -181,6 +203,12 @@
       </button>
     {/if}
   </div>
+  {#if isKnit && gaugeOpen}
+    <div class="disclosure-panel"><GaugeInput /></div>
+  {/if}
+  {#if colorsOpen}
+    <div class="disclosure-panel"><PatternColors /></div>
+  {/if}
   <div class="rounds-area">
   {#each $pattern.rounds as round, i (round.id)}
     <RoundLine
@@ -273,6 +301,39 @@
     background: var(--bg, #f5f5f5);
   }
   .header-spacer { flex: 1; }
+  /* 접었다 펴는 헤더 버튼 — 게이지·배색 */
+  .disclosure {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .disclosure:hover { background: var(--bg-hover); color: var(--text); }
+  .disclosure.on {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .badge {
+    min-width: 15px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--border-light);
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 15px;
+    text-align: center;
+  }
+  .disclosure-panel {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-warm, #f8f9fa);
+  }
   .pattern-comment-btn {
     padding: 4px 10px;
     border: 1px solid var(--border-light);
