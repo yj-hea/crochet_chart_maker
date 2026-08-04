@@ -18,7 +18,13 @@
  * opacity를 제어하는 방식이다 (렌더러는 전체 불투명으로 출력).
  */
 
-import type { LayoutResult, PositionedStitch, LayoutBounds, GridGuide } from '$lib/layout/types';
+import type {
+  LayoutResult,
+  PositionedStitch,
+  LayoutBounds,
+  GridGuide,
+  PositionedMarker,
+} from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
 import {
@@ -57,8 +63,55 @@ export function renderSvg(opts: RenderOptions): string {
     connections,
     roundGroups,
     markers,
+    renderStitchMarkers(layout.stitchMarkers ?? [], layout.gridGuide),
     `</svg>`,
   ].join('');
+}
+
+/** 마커 눈금 반길이 (px) */
+const MARKER_HALF = 10;
+/** 마커 선 굵기 — 격자선(0.5~0.6)보다 굵게, 볼드체 정도의 대비 */
+const MARKER_STROKE = 1.4;
+
+/**
+ * 편물 마커 — 코 **사이** 경계에 눈금을 긋는다.
+ *
+ * 원형은 반지름 방향(동심원 격자의 방사선과 같은 방향), 평면은 세로.
+ * 기본색은 격자와 같고 굵기만 올린다. `pm:fff` 로 색을 바꿀 수 있다.
+ */
+function renderStitchMarkers(
+  markers: readonly PositionedMarker[],
+  guide: GridGuide | undefined,
+): string {
+  if (markers.length === 0) return '';
+  const half = guide?.type === 'rect' ? Math.max(MARKER_HALF, guide.cellHeight / 2) : MARKER_HALF;
+
+  const parts = markers.map((m) => {
+    const color = m.color ? escapeAttr(m.color) : GRID_COLOR;
+    let x1: number, y1: number, x2: number, y2: number;
+    if (m.angle !== undefined) {
+      // 원형 — 반지름 방향으로 뻗는다
+      const r = Math.hypot(m.position.x, m.position.y);
+      const c = Math.cos(m.angle);
+      const s = Math.sin(m.angle);
+      x1 = (r - half) * c; y1 = (r - half) * s;
+      x2 = (r + half) * c; y2 = (r + half) * s;
+    } else {
+      x1 = m.position.x; y1 = m.position.y - half;
+      x2 = m.position.x; y2 = m.position.y + half;
+    }
+    const label = m.label
+      ? `<text x="${fmt(x2 + 2)}" y="${fmt(y2)}" font-size="6" ` +
+        `font-family="system-ui, sans-serif" fill="${color}" ` +
+        `dominant-baseline="central">${escapeAttr(m.label)}</text>`
+      : '';
+    return (
+      `<line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" ` +
+      `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
+      `vector-effect="non-scaling-stroke"/>` + label
+    );
+  });
+  return `<g class="stitch-markers">${parts.join('')}</g>`;
 }
 
 function renderRoundMarkers(markers: import('$lib/layout/types').RoundMarker[]): string {

@@ -19,6 +19,8 @@
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { LayoutResult, PositionedStitch, RoundMarker } from '$lib/layout/types';
 import { isRightSide, toDisplayOrder } from './flip';
+import { splitMarkers } from '$lib/layout/markers';
+import type { PositionedMarker } from '$lib/layout/types';
 import { cellRatio, type Gauge } from '$lib/model/gauge';
 
 /**
@@ -56,6 +58,8 @@ interface Cell {
   op?: Op;
   /** 단위 칸 수 */
   span: number;
+  /** 이 칸이 온 op 의 인덱스 (마커 경계 좌표 계산용) */
+  opIndex?: number;
 }
 
 /** 이 op 자체가 요구하는 최소 폭 — 만든 코 수(늘림)를 반영 */
@@ -248,7 +252,7 @@ function toCells(ops: Op[], plan: RowPlan): Cell[] {
   const out: Cell[] = [];
   for (let i = 0; i <= ops.length; i++) {
     for (const span of plan.gapsBefore.get(i) ?? []) out.push({ span });
-    if (i < ops.length) out.push({ op: ops[i]!, span: plan.spans[i]! });
+    if (i < ops.length) out.push({ op: ops[i]!, span: plan.spans[i]!, opIndex: i });
   }
   return out;
 }
@@ -265,9 +269,13 @@ export function layoutKnitGrid(
   const cellHeight = KNIT_CELL_WIDTH * cellRatio(opts.gauge);
 
   // 1) 단별 표시 ops (좌→우)
+  //    마커는 표시 순서로 뒤집은 **뒤에** 분리한다 — 겉면 단은 순서가 반전되므로
+  //    "앞에 몇 코" 도 함께 뒤집혀야 화면상 위치가 맞는다.
   const meta = rounds.map((round) => {
     const rightSide = isRightSide(shape, round.index, round.direction);
-    return { round, ops: toDisplayOrder(round, rightSide, flipSymbols), rightSide };
+    const display = toDisplayOrder(round, rightSide, flipSymbols);
+    const { ops, markers } = splitMarkers(display, round.index);
+    return { round, ops, markers, rightSide };
   });
   const opRows = meta.map((m) => m.ops);
 
@@ -283,6 +291,7 @@ export function layoutKnitGrid(
   const stitches: PositionedStitch[] = [];
   const fillerCells: NonNullable<LayoutResult['fillerCells']> = [];
   const roundMarkers: RoundMarker[] = [];
+  const stitchMarkers: PositionedMarker[] = [];
 
   for (let r = 0; r < rowCount; r++) {
     const cells = cellRows[r]!;
@@ -308,8 +317,12 @@ export function layoutKnitGrid(
 
     for (let c = 0; c < leftPad; c++) emitFiller(1);
 
+    // op 인덱스 i 의 **왼쪽 경계** x 좌표 (단위). 마커를 여기에 놓는다.
+    const boundary = new Array<number>(opRows[r]!.length + 1).fill(cursor);
+
     for (const cell of cells) {
       if (!cell.op) { emitGap(cell.span); continue; }
+      if (cell.opIndex !== undefined) boundary[cell.opIndex] = cursor;
       stitches.push({
         op: cell.op,
         roundIndex: meta[r]!.round.index,
@@ -319,6 +332,18 @@ export function layoutKnitGrid(
         cell: { row: rowFromTop, col: cursor, span: cell.span },
       });
       cursor += cell.span;
+    }
+
+    // 단 맨 뒤 경계 — 마지막 코의 오른쪽 끝 (좌우 여백 앞)
+    boundary[opRows[r]!.length] = cursor;
+    for (const m of meta[r]!.markers) {
+      const at = boundary[Math.min(m.before, boundary.length - 1)] ?? cursor;
+      stitchMarkers.push({
+        roundIndex: m.roundIndex,
+        position: { x: at * KNIT_CELL_WIDTH, y: yCenter },
+        color: m.op.color,
+        label: m.op.comment,
+      });
     }
 
     for (let c = 0; c < rightPad; c++) emitFiller(1);
@@ -351,5 +376,6 @@ export function layoutKnitGrid(
     roundMarkers,
     cellSize: { width: KNIT_CELL_WIDTH, height: cellHeight },
     fillerCells,
+    stitchMarkers,
   };
 }

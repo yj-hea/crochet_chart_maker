@@ -170,6 +170,22 @@
           </tbody>
         </table>
       </section>
+
+      <section>
+        <h3>마커 (place marker)</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>pm</code></td><td>마커 — 코가 아니라 <b>코와 코 사이</b>를 가리킨다. 코를 소비/생성하지 않아 코 수 검증에 영향이 없다.
+              별칭 <code>sm</code>, <code>marker</code></td></tr>
+            <tr><td>표시</td><td>칸 경계의 격자선을 <b>굵게</b> 덧그린다</td></tr>
+            <tr><td><code>pm:fff</code></td><td>마커 색 지정. 기본은 격자와 같은 색</td></tr>
+            <tr><td><code>pm "옆선"</code></td><td>마커 위에 라벨 표시</td></tr>
+            <tr><td>단마다 다시</td><td>마커는 <b>위 단으로 자동으로 이어지지 않는다</b>. 필요한 단마다 적는다<br>
+              예) <code>3: k4, pm, k8, pm, k4</code></td></tr>
+            <tr><td>방향 주의</td><td>마커도 <b>뜨는 순서</b>대로 적으므로, 안면 단에서는 반대쪽 끝에서부터 센다 (<code>unw</code> 와 같다)</td></tr>
+          </tbody>
+        </table>
+      </section>
       {:else}
       <section>
         <h3>기본 문법</h3>
@@ -180,6 +196,9 @@
             <tr><td><code>[...]</code></td><td>같은 부모 코에 여러 기호 적용. 예: <code>[f, t]</code></td></tr>
             <tr><td><code>tc(...)</code></td><td>기둥코 — 내부를 세로 스택으로 쌓고 1슬롯 차지. 예: <code>tc(3ch)</code>, <code>[tc(3ch), 1f]</code></td></tr>
             <tr><td><code>skip(N)</code></td><td>바늘 비우기 — 부모 N개 건너뜀</td></tr>
+            <tr><td><code>pm</code></td><td>마커 — 코와 코 <b>사이</b>를 가리킨다. 코 수에 영향 없음. 원형은 반지름 방향 눈금으로 표시<br>
+              색·라벨: <code>pm:fff</code>, <code>pm "옆선"</code>. 단마다 다시 적는다 (위 단으로 이어지지 않음)<br>
+              예) <code>3: pm, (3x, 1v), pm, (3x, 1v)</code> — 늘림이 마커 기준으로 맞는지 확인</td></tr>
             <tr><td><code>,</code></td><td>코 구분자 (필수)</td></tr>
           </tbody>
         </table>

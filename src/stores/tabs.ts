@@ -23,6 +23,14 @@ import {
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
+import {
+  normalizeViewOptions,
+  readViewSeed,
+  writeViewSeed,
+  DEFAULT_VIEW_OPTIONS,
+  type ViewOptions,
+  type ViewOptionKey,
+} from '$lib/model/view-options';
 
 /** 도형 id — 코바늘: circular/flat, 대바늘: round/flat */
 export type ShapeKind = 'circular' | 'flat' | 'round';
@@ -59,6 +67,11 @@ export interface Tab {
   craft: CraftId;
   /** 게이지 (10cm 당 코수/단수). 대바늘 전용 — 셀 종횡비·실측 치수에 사용 */
   gauge?: Gauge;
+  /**
+   * 미리보기 표시 옵션 — **도안마다 따로** 기억한다.
+   * 없으면(구버전 데이터) 마지막으로 쓴 값을 복사해 채운다.
+   */
+  view?: ViewOptions;
   shape: ShapeKind;
   rounds: PatternRoundState[];
   comments: Comment[];
@@ -108,6 +121,8 @@ function defaultTab(name = '도안 1', craft: CraftId = DEFAULT_CRAFT): Tab {
     name,
     craft,
     shape: getCraft(craft).defaultShape as ShapeKind,
+    // 새 탭은 마지막으로 쓰던 화면 설정으로 시작 — 이후로는 이 탭에서만 바뀐다
+    view: readViewSeed(),
     rounds: reparseAll([{ id: makeRoundId(), source: '' }], craft),
     comments: [],
   };
@@ -127,6 +142,9 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     name: saved.name,
     craft,
     ...(gauge ? { gauge } : {}),
+    // 표시 옵션이 없는 구버전 탭은 마지막으로 쓴 값으로 **한 번** 채운다.
+    // 이렇게 해두면 이후 다른 탭에서 토글해도 이 탭이 따라 변하지 않는다.
+    view: normalizeViewOptions(saved.view) ?? readViewSeed(),
     shape: saved.shape,
     rounds: reparseAll(rounds, craft),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
@@ -213,6 +231,7 @@ workspace.subscribe((ws) => {
       name: t.name,
       craft: t.craft ?? DEFAULT_CRAFT,
       ...(t.gauge ? { gauge: t.gauge } : {}),
+      ...(t.view ? { view: t.view } : {}),
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: { source: string; direction?: RoundDirection } = { source: r.source };
@@ -281,6 +300,8 @@ export function createTab(craft: CraftId = DEFAULT_CRAFT): string {
       name: nextTabName(ws.tabs),
       craft,
       shape: getCraft(craft).defaultShape as ShapeKind,
+      // 새 탭은 마지막으로 쓰던 화면 설정으로 시작 — 이후로는 이 탭에서만 바뀐다
+      view: readViewSeed(),
       rounds: reparseAll([{ id: makeRoundId(), source: '' }], craft),
       comments: [],
     };
@@ -408,6 +429,26 @@ export function setGauge(gauge: Gauge | undefined): void {
   });
 }
 
+/**
+ * 활성 탭의 표시 옵션 하나를 바꾼다.
+ *
+ * 값은 그 탭에만 저장하고, 동시에 seed 도 갱신해서 **다음에 만드는 탭**이
+ * 이 설정으로 시작하게 한다 (기존 탭들은 영향받지 않는다).
+ */
+export function setViewOption<K extends ViewOptionKey>(key: K, value: ViewOptions[K]): void {
+  updateActiveTab((t) => {
+    const view = { ...(t.view ?? DEFAULT_VIEW_OPTIONS), [key]: value };
+    writeViewSeed(view);
+    return { ...t, view };
+  });
+}
+
+/** 활성 탭의 표시 옵션 (없으면 기본값) */
+export const viewOptions = derived(workspace, ($ws): ViewOptions => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  return active?.view ?? DEFAULT_VIEW_OPTIONS;
+});
+
 export function setShape(shape: ShapeKind): void {
   updateActiveTab((t) => ({ ...t, shape }));
 }
@@ -466,6 +507,7 @@ export function exportToFile(): void {
     {
       craft: active.craft ?? DEFAULT_CRAFT,
       ...(active.gauge ? { gauge: active.gauge } : {}),
+      ...(active.view ? { view: active.view } : {}),
       shape: active.shape,
       rounds: active.rounds.map((r) => ({ id: r.id, source: r.source, direction: r.direction })),
       comments: active.comments,
@@ -538,10 +580,13 @@ export async function importFromFile(file: File): Promise<void> {
     })), craft);
     const newComments = remapSavedComments(saved.comments ?? [], newRoundIds, true);
     const clampedProgress = clampProgress(saved.progress, newRounds);
+    const importedGauge = normalizeGauge(saved.gauge);
     const newTab: Tab = {
       id: tabId,
       name,
       craft,
+      ...(importedGauge ? { gauge: importedGauge } : {}),
+      view: normalizeViewOptions(saved.view) ?? readViewSeed(),
       shape: saved.shape,
       rounds: newRounds,
       comments: newComments,

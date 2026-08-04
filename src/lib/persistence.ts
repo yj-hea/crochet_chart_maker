@@ -10,6 +10,7 @@
 import type { ShapeKind } from '$stores/pattern';
 import type { CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
+import { normalizeViewOptions, type ViewOptions } from '$lib/model/view-options';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
 /** v2: `craft` 필드 추가 (코바늘/대바늘). v1 파일은 코바늘로 마이그레이션. */
@@ -52,6 +53,8 @@ export interface SavedPattern {
   craft: CraftId;
   /** 게이지 (10cm 당 코수/단수). 대바늘 전용 */
   gauge?: Gauge;
+  /** 미리보기 표시 옵션 — 도안마다 따로 기억한다 */
+  view?: ViewOptions;
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
@@ -61,6 +64,7 @@ export interface SavedPattern {
 export interface SerializeInput {
   craft?: CraftId;
   gauge?: Gauge;
+  view?: ViewOptions;
   shape: ShapeKind;
   /** id 는 옵션 — 코멘트의 round 참조를 직렬화 시 index 로 정규화하는 데 사용 */
   rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
@@ -85,6 +89,7 @@ export function serialize(state: SerializeInput): SavedPattern {
     savedAt: new Date().toISOString(),
     craft: state.craft ?? 'crochet',
     ...(state.gauge ? { gauge: state.gauge } : {}),
+    ...(state.view ? { view: state.view } : {}),
     shape: state.shape,
     rounds: state.rounds.map((r) => {
       const out: SavedRound = { source: r.source };
@@ -139,11 +144,13 @@ export function validate(data: unknown): SavedPattern {
   const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
   const progress = validateProgress(d.progress);
   const gauge = normalizeGauge(d.gauge);
+  const view = normalizeViewOptions(d.view);
   return {
     version: 2,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : '',
     craft,
     ...(gauge ? { gauge } : {}),
+    ...(view ? { view } : {}),
     shape: d.shape,
     rounds,
     ...(comments ? { comments } : {}),
@@ -234,6 +241,8 @@ export interface SavedWorkspaceTab {
   craft: CraftId;
   /** 게이지 (10cm 당 코수/단수). 대바늘 전용 */
   gauge?: Gauge;
+  /** 미리보기 표시 옵션 — 도안마다 따로 기억한다 */
+  view?: ViewOptions;
   shape: ShapeKind;
   rounds: SavedRound[];
   comments?: SavedComment[];
@@ -260,6 +269,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
       name: t.name,
       craft: t.craft ?? 'crochet',
       ...(t.gauge ? { gauge: t.gauge } : {}),
+      ...(t.view ? { view: t.view } : {}),
       shape: t.shape,
       rounds: t.rounds.map((r) => {
         const out: SavedRound = { source: r.source };
@@ -301,11 +311,13 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
     }
     const craft = validateCraft(tt.craft);
     const gauge = normalizeGauge(tt.gauge);
+    const view = normalizeViewOptions(tt.view);
     tabs.push({
       id: typeof tt.id === 'string' && tt.id ? tt.id : `tab_restored_${i}`,
       name: typeof tt.name === 'string' && tt.name ? tt.name : `도안 ${i + 1}`,
       craft,
       ...(gauge ? { gauge } : {}),
+      ...(view ? { view } : {}),
       // 모르는 도형 id 는 크래프트 기본값으로 — 탭을 통째로 버리지 않는다
       shape: isKnownShape(tt.shape) ? tt.shape : defaultShapeFor(craft),
       rounds: rounds.length > 0 ? rounds : [{ source: '' }],

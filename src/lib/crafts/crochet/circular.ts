@@ -14,6 +14,7 @@ import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/la
 import { FIRST_RING_RADIUS } from '$lib/layout/constants';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
 import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
+import { extractMarkers, placeCircularMarkers } from '$lib/layout/markers';
 
 const MARKER_SIDE_OFFSET = 11;
 /** 사슬 위 한 코 그룹 멤버 사이 최소 간격 (px) — 기호 폭(약 10px)보다 넉넉하게 */
@@ -55,9 +56,11 @@ function meanAngle(angles: number[]): number {
 }
 
 export function layoutCircular(
-  rounds: ExpandedRound[],
+  inputRounds: ExpandedRound[],
   opts: CircularOptions = {},
 ): LayoutResult {
+  // 마커는 코가 아니라 코 사이 경계 — 슬롯을 차지하지 않도록 먼저 분리한다
+  const { rounds, markers: markerSlots } = extractMarkers(inputRounds);
   const vAlign: 'same' | 'even' = opts.vAlign ?? 'same';
   const cascade: boolean = opts.cascade ?? true;
 
@@ -172,6 +175,7 @@ export function layoutCircular(
     bounds,
     gridGuide: { type: 'concentric', ringRadii, sectorCount },
     roundMarkers,
+    stitchMarkers: placeCircularMarkers(markerSlots, stitches),
   };
 }
 

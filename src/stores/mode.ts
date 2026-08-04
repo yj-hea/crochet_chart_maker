@@ -1,18 +1,19 @@
 /**
- * Edit / Read 모드 상태 + Read 모드 단 진행 추적.
+ * Edit / Read 모드 상태 + Read 모드 단 진행 추적 + 미리보기 표시 옵션.
  *
  * 진행(round/stitch)은 활성 탭에 embed 됨 (tabs store). 여기 `currentRound`/`currentStitch` 는
  * UI 가 직접 다루는 writable 이고, `App.svelte` 에서 활성 탭 progress 와 양방향 동기화된다.
+ *
+ * 표시 옵션(그리드·연결선·정렬·cascade…)도 **활성 탭**에 저장된다.
+ * 도형·기법에 따라 알맞은 표시가 다르므로 도안마다 따로 기억해야 하기 때문이다.
+ * 여기 노출되는 스토어들은 활성 탭의 값을 읽고, 쓰면 그 탭에만 반영된다.
  */
 
-import { writable } from 'svelte/store';
-import { persisted, isBoolean, isOneOf } from '$lib/persisted-store';
+import { writable, derived, get } from 'svelte/store';
+import { viewOptions, setViewOption } from '$stores/tabs';
+import type { ViewOptions, ViewOptionKey } from '$lib/model/view-options';
 
-/**
- * 미리보기 표시 옵션은 마지막 설정을 기억한다 (localStorage).
- * 도안마다 다시 맞출 필요 없이 사용자가 쓰던 화면 그대로 열리도록.
- */
-const PREFIX = 'crochet-chart:view.';
+export type { FlatAlign, FlatVAlign } from '$lib/model/view-options';
 
 export type AppMode = 'edit' | 'read';
 
@@ -27,37 +28,36 @@ export const currentRound = writable<number>(1);
  */
 export const currentStitch = writable<number | null>(null);
 
+/**
+ * 활성 탭의 표시 옵션 하나를 읽고 쓰는 스토어.
+ *
+ * 읽기는 활성 탭에서 파생되므로 탭을 바꾸면 자동으로 그 탭의 값이 보이고,
+ * 쓰기는 활성 탭에만 반영된다 — 다른 도안은 영향받지 않는다.
+ */
+function tabViewOption<K extends ViewOptionKey>(key: K) {
+  const inner = derived(viewOptions, ($v) => $v[key]);
+  const set = (value: ViewOptions[K]) => setViewOption(key, value);
+  return {
+    subscribe: inner.subscribe,
+    set,
+    update: (fn: (value: ViewOptions[K]) => ViewOptions[K]) => set(fn(get(inner))),
+  };
+}
+
 /** 미리보기 그리드 표시 여부. 사용자가 토글 버튼으로 제어. */
-export const showGrid = persisted<boolean>(`${PREFIX}showGrid`, true, isBoolean);
+export const showGrid = tabViewOption('showGrid');
 
 /** 부모-자식 연결선 표시 여부. */
-export const showConnections = persisted<boolean>(`${PREFIX}showConnections`, true, isBoolean);
+export const showConnections = tabViewOption('showConnections');
 
-/**
- * 평면 도안을 상하 반전해서 표시. 기본값 false (1단이 아래).
- * true 면 1단이 위, 이후 단이 아래로.
- */
-export const flatFlipVertical = persisted<boolean>(`${PREFIX}flatFlipVertical`, false, isBoolean);
+/** 평면 도안을 상하 반전해서 표시. 기본값 false (1단이 아래). */
+export const flatFlipVertical = tabViewOption('flatFlipVertical');
 
-/**
- * 평면 도안에서 단마다 코 수가 다를 때 좁은 단을 max 폭 안에서 어디에 정렬할지.
- *  - 'L': 좌측 끝. 자식 그룹이 부모 우측으로 펼쳐짐.
- *  - 'R': 우측 끝. 자식 그룹이 부모 좌측으로 펼쳐짐.
- *  - 'C': 가운데.
- */
-export type FlatAlign = 'L' | 'R' | 'C';
-export const flatAlign = persisted<FlatAlign>(`${PREFIX}flatAlign`, 'L', isOneOf('L', 'R', 'C'));
+/** 좁은 단을 max 폭 안에서 어디에 정렬할지 (L/R/C). */
+export const flatAlign = tabViewOption('flatAlign');
 
-/**
- * 평면 cascade — 부모 행을 자식 행의 첫 자식 x 로 이동시켜 정렬.
- * true (기본): cascade 적용. false: 각 단을 자기 cell 위치에 그대로 두고 연결선이 슬랜트.
- */
-export const flatCascade = persisted<boolean>(`${PREFIX}flatCascade`, true, isBoolean);
+/** 부모-자식 폭·위치 맞춤. */
+export const flatCascade = tabViewOption('flatCascade');
 
-/**
- * 평면 세로 정렬 모드.
- *  - 'same': 같은 단의 모든 코가 같은 y (현재 기본 동작).
- *  - 'even': 각 코가 부모 코로부터 일정 간격 떨어져 배치 — 부모/자기 높이 따라 같은 단도 다른 y 가능.
- */
-export type FlatVAlign = 'same' | 'even';
-export const flatVAlign = persisted<FlatVAlign>(`${PREFIX}flatVAlign`, 'same', isOneOf('same', 'even'));
+/** 세로 정렬 모드 (same/even). */
+export const flatVAlign = tabViewOption('flatVAlign');

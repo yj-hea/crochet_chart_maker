@@ -54,8 +54,17 @@ export type KnitStitchKind =
   | 'SSP'      // ssp 안뜨기 오른코겹치기
   | 'CABLE';   // 2/2rc 등 교차뜨기 (span 으로 칸 수 표현)
 
+/**
+ * 두 크래프트가 함께 쓰는 코 종류.
+ *
+ * `MARKER` 는 코가 아니라 **코와 코 사이의 경계**를 가리킨다 (편물 마커, place marker).
+ * 코를 소비하지도 만들지도 않으므로(0 → 0) 코 수 검증에 영향을 주지 않고,
+ * 레이아웃에서는 칸/슬롯을 차지하지 않고 경계 좌표만 계산한다.
+ */
+export type CommonStitchKind = 'MARKER';
+
 /** 두 크래프트의 코 종류 합집합. Op·AST·레이아웃 등 공용 자료구조에서 사용. */
-export type StitchKind = CrochetStitchKind | KnitStitchKind;
+export type StitchKind = CrochetStitchKind | KnitStitchKind | CommonStitchKind;
 
 /** 변형자. 현재는 코바늘 전용 (blo 뒤이랑뜨기). */
 export type ModifierKind = 'BLO';
@@ -75,6 +84,29 @@ export interface StitchMeta {
   /** SVG 심볼의 중심에서 끝까지 거리 (px). 레이아웃에서 기호 하단 정렬에 사용 */
   symbolHalfHeight: number;
 }
+
+/**
+ * 마커 메타 — 두 크래프트의 메타 테이블에 그대로 펼쳐 넣는다.
+ * 코를 소비/생성하지 않으므로 baseConsume/baseProduce 모두 0.
+ */
+export const MARKER_META: StitchMeta = {
+  kind: 'MARKER',
+  canonical: 'pm',
+  korean: '마커',
+  english: 'place marker',
+  baseConsume: 0,
+  baseProduce: 0,
+  expandable: false,
+  symbolHalfHeight: 0,
+};
+
+/** 마커 입력 별칭 — 두 크래프트 공용 */
+export const MARKER_ALIASES = Object.freeze({
+  pm: 'MARKER',
+  PM: 'MARKER',
+  sm: 'MARKER',
+  marker: 'MARKER',
+} as const satisfies Record<string, StitchKind>);
 
 /** 입력 별칭 → 정규화된 코/변형자. 토크나이저가 longest-match 로 사용. */
 export type AliasTable = Readonly<Record<string, StitchKind | ModifierKind>>;
