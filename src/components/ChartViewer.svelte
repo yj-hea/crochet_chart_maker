@@ -301,9 +301,9 @@
         class="tool-btn toggle-btn"
         bind:this={bgBtn}
         onclick={() => (bgPaletteOpen = true)}
-        title="빈칸·바탕색 바꾸기 (현재 {$emptyColor})"
+        title="빈칸 색 바꾸기 — 코가 없는 자리 (현재 {$emptyColor})"
       >
-        <span class="bg-dot" style="background: {$emptyColor}"></span> 바탕
+        <span class="bg-dot" style="background: {$emptyColor}"></span> 빈칸
       </button>
       {#if showFlatTools}
         <button

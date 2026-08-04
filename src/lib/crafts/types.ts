@@ -44,8 +44,10 @@ export interface CraftRenderOptions {
   showConnections?: boolean;
   /** 실 색을 기호에 칠할지, 코 자리를 채울지 ('auto' = 크래프트 기본) */
   colorMode?: ColorMode;
-  /** 코 없는 자리·차트 바탕색 */
+  /** 코가 없는 자리의 색 */
   emptyColor?: string;
+  /** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러) */
+  mainColor?: string;
 }
 
 export interface CraftDefinition {

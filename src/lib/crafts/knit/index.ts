@@ -46,6 +46,7 @@ export const knit: CraftDefinition = {
       showGrid: opts.showGrid ?? true,
       colorMode: opts.colorMode,
       emptyColor: opts.emptyColor,
+      mainColor: opts.mainColor,
     });
   },
 

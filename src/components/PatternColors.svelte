@@ -5,39 +5,65 @@
    * 색 하나를 클릭해 다른 색을 고르면 **도안 전체**에서 그 색으로 칠한 코가 한 번에
    * 바뀐다. 소스 텍스트를 직접 치환하므로 `:A` 같은 별칭 문법이 필요 없다.
    */
-  import { usedColors, replaceColorEverywhere } from '$stores/tabs';
+  import { usedColors, uncoloredCount, replaceColorEverywhere } from '$stores/tabs';
+  import { mainColor } from '$stores/mode';
   import ColorPalette from './ColorPalette.svelte';
+  import { DEFAULT_MAIN_COLOR } from '$lib/model/view-options';
 
-  let editing = $state<{ color: string; anchor: HTMLElement } | null>(null);
-  const palette = $derived($usedColors.map((c) => c.color));
+  /** 'main' = 색을 지정하지 않은 코들의 기본색 / 그 외 = 본문에 적힌 색 */
+  let editing = $state<{ kind: 'main' | 'yarn'; color: string; anchor: HTMLElement } | null>(null);
+  const palette = $derived([$mainColor, ...$usedColors.map((c) => c.color)]);
+
+  function pick(hex: string) {
+    if (!editing) return;
+    if (editing.kind === 'main') mainColor.set(hex);
+    else replaceColorEverywhere(editing.color, hex);
+    editing = null;
+  }
+
+  function clear() {
+    if (!editing) return;
+    // 메인 색은 없앨 수 없다 — 기본값으로 되돌린다
+    if (editing.kind === 'main') mainColor.set(DEFAULT_MAIN_COLOR);
+    else replaceColorEverywhere(editing.color, undefined);
+    editing = null;
+  }
 </script>
 
-{#if $usedColors.length > 0}
-  <div class="pattern-colors">
-    <span class="label" title="도안에 쓰인 실 색. 클릭하면 그 색을 전부 바꿉니다">
-      <i class="fa-solid fa-palette"></i> 배색
-    </span>
-    {#each $usedColors as entry (entry.color)}
-      <button
-        type="button"
-        class="chip"
-        onclick={(e) => (editing = { color: entry.color, anchor: e.currentTarget })}
-        title="{entry.color} — {entry.count}코. 클릭하여 도안 전체에서 이 색 바꾸기"
-      >
-        <span class="dot" style="background: {entry.color}"></span>
-        <span class="count">{entry.count}</span>
-      </button>
-    {/each}
-  </div>
-{/if}
+<div class="pattern-colors">
+  <span class="label" title="도안에 쓰인 실 색. 클릭하면 그 색을 전부 바꿉니다">
+    <i class="fa-solid fa-palette"></i> 배색
+  </span>
+  <!-- 메인 색 — 실 색을 따로 지정하지 않은 코들이 쓰는 기본색 -->
+  <button
+    type="button"
+    class="chip main"
+    onclick={(e) => (editing = { kind: 'main', color: $mainColor, anchor: e.currentTarget })}
+    title="기본 색 ({$mainColor}) — 색을 지정하지 않은 {$uncoloredCount}코가 이 색으로 그려집니다"
+  >
+    <span class="dot" style="background: {$mainColor}"></span>
+    <span class="count">기본 {$uncoloredCount}</span>
+  </button>
+  {#each $usedColors as entry (entry.color)}
+    <button
+      type="button"
+      class="chip"
+      onclick={(e) => (editing = { kind: 'yarn', color: entry.color, anchor: e.currentTarget })}
+      title="{entry.color} — {entry.count}코. 클릭하여 도안 전체에서 이 색 바꾸기"
+    >
+      <span class="dot" style="background: {entry.color}"></span>
+      <span class="count">{entry.count}</span>
+    </button>
+  {/each}
+</div>
 
 {#if editing}
   <ColorPalette
     anchor={editing.anchor}
     current={editing.color}
     used={palette}
-    onPick={(hex) => { replaceColorEverywhere(editing!.color, hex); editing = null; }}
-    onClear={() => { replaceColorEverywhere(editing!.color, undefined); editing = null; }}
+    onPick={pick}
+    onClear={clear}
     onClose={() => (editing = null)}
   />
 {/if}
@@ -67,6 +93,7 @@
     font-size: 10.5px;
     color: var(--text-secondary, #666);
   }
+  .chip.main { border-style: dashed; }
   .chip:hover {
     background: var(--bg-hover, #f4f1ec);
     border-color: var(--border, #e2e2e2);

@@ -46,12 +46,19 @@ export interface ViewOptions {
   flatVAlign: FlatVAlign;
   /** 실 색을 기호에 칠할지, 코 자리를 채울지 */
   colorMode: ColorMode;
-  /** 코가 없는 자리(대바늘 빈칸)와 차트 바탕색 */
+  /** 코가 **없는** 자리의 색 (대바늘 빈칸 / 코바늘 바탕) */
   emptyColor: string;
+  /**
+   * 코가 **있는** 자리의 기본 색 — 실 색을 따로 지정하지 않은 코에 쓴다.
+   * 도안의 메인 컬러. 배색 팔레트에서 바꿀 수 있다.
+   */
+  mainColor: string;
 }
 
 /** 코 없는 자리의 기본색 — 종이 도안의 무채색 칸 느낌 */
 export const DEFAULT_EMPTY_COLOR = '#e8e5e0';
+/** 실 색을 지정하지 않은 코의 기본색 */
+export const DEFAULT_MAIN_COLOR = '#ffffff';
 
 export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   showGrid: true,
@@ -62,6 +69,7 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   flatVAlign: 'same',
   colorMode: 'auto',
   emptyColor: DEFAULT_EMPTY_COLOR,
+  mainColor: DEFAULT_MAIN_COLOR,
 });
 
 export type ViewOptionKey = keyof ViewOptions;
@@ -93,6 +101,7 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
       ? (v.colorMode as ColorMode)
       : DEFAULT_VIEW_OPTIONS.colorMode,
     emptyColor: resolveColorValue(String(v.emptyColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.emptyColor,
+    mainColor: resolveColorValue(String(v.mainColor ?? '')) ?? DEFAULT_VIEW_OPTIONS.mainColor,
   };
 }
 

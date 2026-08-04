@@ -10,7 +10,7 @@ import { derived } from 'svelte/store';
 import { pattern } from './tabs';
 import {
   showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign,
-  colorMode, emptyColor,
+  colorMode, emptyColor, mainColor,
 } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
 import { getCraft } from '$lib/crafts';
@@ -27,9 +27,9 @@ export interface RenderedChart {
 
 export const renderedChart = derived(
   [pattern, showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatVAlign,
-   colorMode, emptyColor],
+   colorMode, emptyColor, mainColor],
   ([$pattern, $showGrid, $showConnections, $flatFlipVertical, $flatAlign, $flatCascade, $flatVAlign,
-    $colorMode, $emptyColor]): RenderedChart | null => {
+    $colorMode, $emptyColor, $mainColor]): RenderedChart | null => {
     const validRounds: ExpandedRound[] = [];
     for (const r of $pattern.rounds) {
       if (!r.expanded) break;
@@ -53,6 +53,7 @@ export const renderedChart = derived(
         showConnections: $showConnections,
         colorMode: $colorMode,
         emptyColor: $emptyColor,
+        mainColor: $mainColor,
       }),
       width: layout.bounds.width,
       height: layout.bounds.height,

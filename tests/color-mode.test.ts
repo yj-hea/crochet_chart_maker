@@ -10,73 +10,87 @@ import { renderKnitSvg } from '../src/lib/crafts/knit/svg';
 import { normalizeViewOptions, DEFAULT_VIEW_OPTIONS } from '../src/lib/model/view-options';
 
 const NAVY = '#0d47a1';
+const EMPTY = '#e8e5e0';
+const MAIN = '#ffffff';
 
-function crochetSvg(opts: { colorMode?: 'auto' | 'symbol' | 'fill'; emptyColor?: string } = {}) {
-  const rounds = ['6x', '3x:navy, 3x:cream'].map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
-  return renderSvg({ layout: layoutCircular(rounds), ...opts });
+interface Opts { colorMode?: 'auto' | 'symbol' | 'fill'; emptyColor?: string; mainColor?: string }
+
+/** 1단 6코, 2단 = 네이비 3코 + 색 없는 3코 */
+function crochetSvg(opts: Opts = {}) {
+  const rounds = ['6x', '3x:navy, 3x'].map((s, i) => expand(parseRound(i + 1, s).body!, i + 1));
+  return renderSvg({ layout: layoutCircular(rounds), emptyColor: EMPTY, mainColor: MAIN, ...opts });
 }
 
-function knitSvg(opts: { colorMode?: 'auto' | 'symbol' | 'fill'; emptyColor?: string } = {}) {
-  const rounds = ['co6', 'k3:navy, k3:cream'].map((s, i) =>
+/** 8코 코잡기 위에 네이비 3코 + 색 없는 3코 → 좌우에 빈칸 2개 */
+function knitSvg(opts: Opts = {}) {
+  const rounds = ['co8', 'k3:navy, k3'].map((s, i) =>
     expandKnit(parseKnitRound(i + 1, s).body!, i + 1));
-  return renderKnitSvg({ layout: layoutKnitGrid(rounds, { shape: 'flat' }), ...opts });
+  return renderKnitSvg({
+    layout: layoutKnitGrid(rounds, { shape: 'flat' }),
+    emptyColor: EMPTY, mainColor: MAIN, ...opts,
+  });
 }
 
-/** 색 원반(코바늘) 개수 */
-const discCount = (svg: string) => (svg.match(/<circle[^>]*class=|<g class="colorwork">/g) ?? []).length;
+const count = (svg: string, re: RegExp) => (svg.match(re) ?? []).length;
+
+describe('코가 있는 자리 vs 없는 자리', () => {
+  it('대바늘 — 색 없는 코는 메인 색, 빈칸만 빈칸 색', () => {
+    const svg = knitSvg();
+    // 코가 있는 칸은 16 중 14개(1단 8 + 2단 6). 그중 3개는 네이비를 지정했으므로
+    // 메인 색(흰색)은 11개, 좌우 여백 2칸만 빈칸 색이다.
+    expect(count(svg, /fill="#ffffff"/g)).toBe(11);
+    expect(count(svg, new RegExp(`fill="${EMPTY}"`, 'g'))).toBe(2);
+  });
+
+  it('코바늘 — 코 자리엔 메인 색 원반, 바탕만 빈칸 색', () => {
+    const svg = crochetSvg();
+    expect(count(svg, /<circle[^>]*fill="#ffffff"/g)).toBeGreaterThan(0);
+    // 바탕은 rect 한 장
+    expect(count(svg, new RegExp(`<rect[^>]*fill="${EMPTY}"`, 'g'))).toBe(1);
+  });
+
+  it('빈칸 색을 바꿔도 코가 있는 자리는 그대로 메인 색', () => {
+    const svg = knitSvg({ emptyColor: '#223344' });
+    expect(count(svg, /fill="#ffffff"/g)).toBe(11);
+    expect(count(svg, /fill="#223344"/g)).toBe(2);
+  });
+
+  it('메인 색을 바꾸면 색 없는 코만 따라 바뀐다', () => {
+    const svg = knitSvg({ mainColor: '#ffe0b2' });
+    expect(count(svg, /fill="#ffe0b2"/g)).toBe(11);
+    expect(svg).toContain(`fill="${NAVY}"`); // 지정한 실 색은 그대로
+  });
+});
 
 describe('실 색을 어디에 칠할지', () => {
-  it('코바늘 기본은 기호 선 색 — 원반을 깔지 않는다', () => {
+  it('코바늘 기본은 기호 선 색 — 원반은 전부 메인 색', () => {
     for (const colorMode of ['auto', 'symbol'] as const) {
       const svg = crochetSvg({ colorMode });
-      expect(svg, colorMode).not.toContain('class="colorwork"');
       expect(svg, colorMode).toContain(`color: ${NAVY}`);
+      expect(count(svg, new RegExp(`<circle[^>]*fill="${NAVY}"`, 'g')), colorMode).toBe(0);
     }
   });
 
-  it('코바늘 배경색 모드는 기호 뒤에 실 색 원반을 깔고 기호를 대비색으로', () => {
+  it('코바늘 배경색 모드는 원반이 실 색, 기호는 대비색', () => {
     const svg = crochetSvg({ colorMode: 'fill' });
-    expect(svg).toContain('class="colorwork"');
-    expect(discCount(svg)).toBeGreaterThan(0);
-    // navy 는 어두우므로 흰 기호, cream 은 밝으므로 어두운 기호
-    expect(svg).toContain('color: #ffffff');
+    expect(count(svg, new RegExp(`<circle[^>]*fill="${NAVY}"`, 'g'))).toBe(3);
+    expect(svg).toContain('color: #ffffff');       // 어두운 네이비 위엔 흰 기호
     expect(svg).not.toContain(`color: ${NAVY}`);
   });
 
   it('대바늘 기본은 칸 채우기 — 기호는 대비색', () => {
     for (const colorMode of ['auto', 'fill'] as const) {
       const svg = knitSvg({ colorMode });
-      expect(svg, colorMode).toContain('class="colorwork"');
+      expect(count(svg, new RegExp(`fill="${NAVY}"`, 'g')), colorMode).toBeGreaterThan(1);
       expect(svg, colorMode).not.toContain(`color: ${NAVY}`);
     }
   });
 
-  it('대바늘 기호색 모드는 칸을 채우지 않고 기호를 실 색으로', () => {
+  it('대바늘 기호색 모드는 칸을 메인 색으로 두고 기호를 실 색으로', () => {
     const svg = knitSvg({ colorMode: 'symbol' });
-    expect(svg).not.toContain('class="colorwork"');
     expect(svg).toContain(`color: ${NAVY}`);
-  });
-});
-
-describe('빈칸·바탕색', () => {
-  it('두 크래프트 모두 지정한 색이 바탕에 깔린다', () => {
-    expect(crochetSvg({ emptyColor: '#223344' })).toContain('fill="#223344"');
-    expect(knitSvg({ emptyColor: '#223344' })).toContain('fill="#223344"');
-  });
-
-  it('대바늘은 코 없는 칸도 같은 색으로 칠한다', () => {
-    // 단마다 코 수가 달라 좌우 여백(코 없는 칸)이 생기는 도안
-    const rounds = ['co8', 'k4'].map((s, i) => expandKnit(parseKnitRound(i + 1, s).body!, i + 1));
-    const svg = renderKnitSvg({
-      layout: layoutKnitGrid(rounds, { shape: 'flat' }),
-      emptyColor: '#223344',
-    });
-    // 바탕 1개 + 여백 칸들
-    expect((svg.match(/fill="#223344"/g) ?? []).length).toBeGreaterThan(1);
-  });
-
-  it('코바늘은 바탕색을 안 주면 칠하지 않는다 (기존 동작)', () => {
-    expect(crochetSvg()).not.toContain('<rect');
+    // 네이비 칸은 없고 (범례 견본만 남는다) 칸은 전부 흰색
+    expect(count(svg, /fill="#ffffff"/g)).toBe(14);
   });
 });
 
@@ -86,11 +100,11 @@ describe('표시 옵션 검증', () => {
     expect(normalizeViewOptions({ colorMode: 'fill' })!.colorMode).toBe('fill');
   });
 
-  it('바탕색은 색 문법을 그대로 받아들이고, 이상하면 기본값', () => {
+  it('빈칸 색·메인 색은 색 문법을 그대로 받고, 이상하면 기본값', () => {
     expect(normalizeViewOptions({ emptyColor: 'aaf' })!.emptyColor).toBe('#aaf');
-    expect(normalizeViewOptions({ emptyColor: 'navy' })!.emptyColor).toBe(NAVY);
+    expect(normalizeViewOptions({ mainColor: 'navy' })!.mainColor).toBe(NAVY);
     expect(normalizeViewOptions({ emptyColor: 'nope' })!.emptyColor)
       .toBe(DEFAULT_VIEW_OPTIONS.emptyColor);
-    expect(normalizeViewOptions({})!.emptyColor).toBe(DEFAULT_VIEW_OPTIONS.emptyColor);
+    expect(normalizeViewOptions({})!.mainColor).toBe(DEFAULT_VIEW_OPTIONS.mainColor);
   });
 });

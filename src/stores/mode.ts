@@ -65,5 +65,8 @@ export const flatVAlign = tabViewOption('flatVAlign');
 /** 실 색을 기호에 칠할지, 코 자리를 채울지. */
 export const colorMode = tabViewOption('colorMode');
 
-/** 코 없는 자리·차트 바탕색. */
+/** 코가 없는 자리의 색 (빈칸·바탕). */
 export const emptyColor = tabViewOption('emptyColor');
+
+/** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러). */
+export const mainColor = tabViewOption('mainColor');

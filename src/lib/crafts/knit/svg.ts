@@ -18,7 +18,7 @@ import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
 
-import { DEFAULT_EMPTY_COLOR, type ColorMode } from '$lib/model/view-options';
+import { DEFAULT_EMPTY_COLOR, DEFAULT_MAIN_COLOR, type ColorMode } from '$lib/model/view-options';
 /** 마커 선 굵기 — 격자선(0.8)보다 굵게, 볼드체 정도의 대비 */
 const MARKER_STROKE = 1.6;
 
@@ -30,8 +30,10 @@ export interface KnitRenderOptions {
   showLegend?: boolean;
   /** 실 색을 어디에 칠할지. 대바늘 기본은 칸 채우기 */
   colorMode?: ColorMode;
-  /** 코 없는 칸·바탕색 */
+  /** 코가 **없는** 칸의 색 */
   emptyColor?: string;
+  /** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러) */
+  mainColor?: string;
 }
 
 const LEGEND_ROW_HEIGHT = 13;
@@ -44,6 +46,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   // 대바늘 기본은 칸 채우기 (기호는 명도 대비로 반전)
   const fillMode = (opts.colorMode ?? 'auto') !== 'symbol';
   const emptyColor = opts.emptyColor ?? DEFAULT_EMPTY_COLOR;
+  const mainColor = opts.mainColor ?? DEFAULT_MAIN_COLOR;
   const { bounds } = layout;
   const pad = 4;
   const cell = layout.cellSize ?? { width: 20, height: 14 };
@@ -68,14 +71,10 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
-    // 바탕 — 코 없는 칸과 같은 색이라야 격자 밖이 겉돌지 않는다
-    `<rect x="${fmt(bounds.minX - pad)}" y="${fmt(bounds.minY - pad)}" ` +
-      `width="${fmt(bounds.width + pad * 2)}" height="${fmt(bounds.height + legendHeight + pad * 2)}" ` +
-      `fill="${escapeAttr(emptyColor)}"/>`,
     renderFillers(greyCells, cell, emptyColor),
-    fillMode ? renderColorCells(layout.stitches, cell) : '',
+    renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
     showGrid ? renderCellBorders(layout, cell) : '',
-    renderRoundGroups(layout.stitches, fillMode),
+    renderRoundGroups(layout.stitches, fillMode, mainColor),
     renderRoundNumbers(layout.roundMarkers),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
@@ -119,7 +118,7 @@ function renderCellBorders(layout: LayoutResult, cell: { width: number; height: 
   return `<g class="grid">${rects.join('')}</g>`;
 }
 
-function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, mainColor: string): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -128,33 +127,45 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   }
   const groups: string[] = [];
   for (const roundIdx of [...byRound.keys()].sort((a, b) => a - b)) {
-    const items = byRound.get(roundIdx)!.map((s) => renderStitchUse(s, fillMode)).join('');
+    const items = byRound.get(roundIdx)!
+      .map((s) => renderStitchUse(s, fillMode, mainColor)).join('');
     groups.push(`<g class="round" data-round="${roundIdx}" style="color: ${STITCH_COLOR}">${items}</g>`);
   }
   return groups.join('');
 }
 
-function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
-  // 칸 채우기 모드면 기호를 배경 대비색으로, 기호색 모드면 실 색 그대로
-  const colorStyle = s.op.color
-    ? ` style="color: ${escapeAttr(fillMode ? contrastInk(s.op.color) : s.op.color)}"`
-    : '';
+function renderStitchUse(s: PositionedStitch, fillMode: boolean, mainColor: string): string {
+  // 칸 채우기 모드: 기호는 칸 배경의 대비색 / 기호색 모드: 기호가 실 색
+  const ink = fillMode
+    ? contrastInk(s.op.color ?? mainColor)
+    : s.op.color;
+  const colorStyle = ink ? ` style="color: ${escapeAttr(ink)}"` : '';
   // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
   return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
 }
 
-/** 색이 지정된 칸의 배경 채움 */
+/**
+ * 코가 있는 칸의 배경 채움.
+ *
+ * 실 색을 지정하지 않은 코도 **메인 색**으로 칠한다 — 그래야 빈칸(회색)과
+ * 코가 있는 칸(기본 흰색)이 구분된다.
+ * `force` 가 주어지면(기호색 모드) 모든 칸을 그 색으로 칠한다 — 실 색은 기호에 들어간다.
+ */
 function renderColorCells(
   stitches: PositionedStitch[],
   cell: { width: number; height: number },
+  force: string | undefined,
+  mainColor: string,
 ): string {
   const rects: string[] = [];
   for (const s of stitches) {
-    if (!s.op.color) continue;
+    // 미작업 코는 빈칸으로 그린다 (renderFillers 가 이미 회색으로 칠했다)
+    if (s.op.kind === 'UNWORKED') continue;
+    const fill = force ?? s.op.color ?? mainColor;
     const w = (s.cell?.span ?? 1) * cell.width;
     rects.push(
       `<rect x="${fmt(s.position.x - w / 2)}" y="${fmt(s.position.y - cell.height / 2)}" ` +
-      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${escapeAttr(s.op.color)}"/>`
+      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${escapeAttr(fill)}"/>`
     );
   }
   if (rects.length === 0) return '';

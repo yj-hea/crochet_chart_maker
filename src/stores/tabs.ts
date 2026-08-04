@@ -23,7 +23,7 @@ import {
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
-import { replaceColorInRound, colorsInRound } from '$lib/color-edit';
+import { replaceColorInRound, colorsInRound, collectStitches } from '$lib/color-edit';
 import {
   normalizeViewOptions,
   readViewSeed,
@@ -478,6 +478,21 @@ export function replaceColorEverywhere(from: string, to: string | undefined): vo
     return changed ? { ...t, rounds: reparseAll(rounds, t.craft) } : t;
   });
 }
+
+/**
+ * 실 색을 따로 지정하지 않은 코의 수.
+ * 배색 팔레트에서 **메인 색** 항목의 코 수로 보여준다.
+ */
+export const uncoloredCount = derived(workspace, ($ws): number => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  let total = 0;
+  for (const r of active?.rounds ?? []) {
+    for (const s of collectStitches(r.parsed?.body ?? r.parsed?.lastValid)) {
+      if (!s.color) total += s.count;
+    }
+  }
+  return total;
+});
 
 /** 활성 탭에서 쓰인 색 — 많이 쓰인 순 */
 export const usedColors = derived(workspace, ($ws): Array<{ color: string; count: number }> => {

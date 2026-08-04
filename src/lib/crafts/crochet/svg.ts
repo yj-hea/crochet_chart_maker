@@ -19,7 +19,7 @@
  */
 
 import { contrastInk } from '$lib/render/contrast';
-import type { ColorMode } from '$lib/model/view-options';
+import { DEFAULT_MAIN_COLOR, type ColorMode } from '$lib/model/view-options';
 import type {
   LayoutResult,
   PositionedStitch,
@@ -46,8 +46,10 @@ export interface RenderOptions {
    * 실이 진할 때 기호가 묻히지 않고 배색이 덩어리로 읽힌다.
    */
   colorMode?: ColorMode;
-  /** 차트 바탕색. 미지정이면 투명 */
+  /** 코가 **없는** 자리(바탕)의 색. 미지정이면 투명 */
   emptyColor?: string;
+  /** 실 색을 지정하지 않은 코의 색 (도안 메인 컬러) */
+  mainColor?: string;
   /** 배경 그리드 표시 여부 (디버깅·확인용) */
   showGrid?: boolean;
   /** 부모-자식 연결선 표시 여부 (기본 true) */
@@ -60,12 +62,13 @@ export function renderSvg(opts: RenderOptions): string {
   const showConnections = opts.showConnections ?? true;
   // 코바늘 기본은 기호 선 색
   const fillMode = opts.colorMode === 'fill';
+  const mainColor = opts.mainColor ?? DEFAULT_MAIN_COLOR;
   const { bounds, stitches } = layout;
   const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
 
   const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
   const connections = showConnections ? renderConnections(stitches) : '';
-  const roundGroups = renderRoundGroups(stitches, fillMode);
+  const roundGroups = renderRoundGroups(stitches, fillMode, mainColor);
   const markers = renderRoundMarkers(layout.roundMarkers);
   const background = opts.emptyColor
     ? `<rect x="${fmt(bounds.minX)}" y="${fmt(bounds.minY)}" ` +
@@ -77,7 +80,7 @@ export function renderSvg(opts: RenderOptions): string {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
     `<defs>${SYMBOL_DEFS}</defs>`,
     background,
-    fillMode ? renderColorDiscs(stitches) : '',
+    renderColorDiscs(stitches, fillMode, mainColor),
     grid,
     connections,
     roundGroups,
@@ -273,28 +276,36 @@ function renderConnections(stitches: PositionedStitch[]): string {
 }
 
 /**
- * 배경색 모드 — 색이 지정된 코 뒤에 실 색 원반을 깐다.
+ * 코 자리에 깔리는 색 원반 — 대바늘의 "코가 있는 칸" 에 해당한다.
  *
- * 코바늘 도안엔 격자 칸이 없어서 대바늘처럼 칸을 채울 수 없다. 대신 기호 자리에
- * 원반을 깔면 배색 블록이 덩어리로 읽힌다. 반지름은 기호 크기(symbolHalfHeight)
- * 를 따라가되 너무 커지지 않게 상한을 둔다 — 긴뜨기 계열은 세로로 길기 때문.
+ * 코바늘엔 격자 칸이 없으므로 기호 자리에 원반을 깐다. 실 색을 지정하지 않은 코도
+ * **메인 색**(기본 흰색)으로 깔아서, 바탕(빈칸 색)과 코가 있는 자리가 구분된다.
+ *
+ * 기호색 모드에서는 모든 원반이 메인 색이고 실 색은 기호 선에 들어간다.
+ * 반지름은 기호 크기를 따라가되 상한을 둔다 — 긴뜨기 계열은 세로로 길어서
+ * 그대로 쓰면 이웃 코를 덮는다.
  */
-function renderColorDiscs(stitches: PositionedStitch[]): string {
+function renderColorDiscs(
+  stitches: PositionedStitch[],
+  fillMode: boolean,
+  mainColor: string,
+): string {
   const discs: string[] = [];
   for (const s of stitches) {
-    if (!s.op.color) continue;
+    if (s.op.kind === 'MAGIC') continue; // 매직링은 코가 아니라 시작 표시
     const meta = STITCH_META[s.op.kind];
     const r = Math.min(Math.max(meta?.symbolHalfHeight ?? 5, 4.5), 8);
+    const fill = fillMode ? (s.op.color ?? mainColor) : mainColor;
     discs.push(
       `<circle cx="${fmt(s.position.x)}" cy="${fmt(s.position.y)}" r="${fmt(r)}" ` +
-      `fill="${escapeAttr(s.op.color)}"/>`,
+      `fill="${escapeAttr(fill)}"/>`,
     );
   }
   if (discs.length === 0) return '';
   return `<g class="colorwork">${discs.join('')}</g>`;
 }
 
-function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): string {
+function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean, mainColor: string): string {
   const byRound = new Map<number, PositionedStitch[]>();
   for (const s of stitches) {
     const arr = byRound.get(s.roundIndex) ?? [];
@@ -306,7 +317,8 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   const groups: string[] = [];
 
   for (const roundIdx of sortedRounds) {
-    const items = byRound.get(roundIdx)!.map((s) => renderStitchUse(s, fillMode)).join('');
+    const items = byRound.get(roundIdx)!
+      .map((s) => renderStitchUse(s, fillMode, mainColor)).join('');
     groups.push(
       `<g class="round" data-round="${roundIdx}" style="color: ${STITCH_COLOR}">${items}</g>`
     );
@@ -315,14 +327,13 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   return groups.join('');
 }
 
-function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
+function renderStitchUse(s: PositionedStitch, fillMode: boolean, mainColor: string): string {
   const x = fmt(s.position.x);
   const y = fmt(s.position.y);
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
-  // 원반 위에 그릴 때는 기호를 대비색으로 (진한 실 위에서 묻히지 않도록)
-  const colorStyle = s.op.color
-    ? ` style="color: ${escapeAttr(fillMode ? contrastInk(s.op.color) : s.op.color)}"`
-    : '';
+  // 원반 위에 그리므로 기호는 그 원반의 대비색 (진한 실 위에서 묻히지 않도록)
+  const ink = fillMode ? contrastInk(s.op.color ?? mainColor) : s.op.color;
+  const colorStyle = ink ? ` style="color: ${escapeAttr(ink)}"` : '';
 
   // INC/DEC는 fan 형태(다리 여러 개)로 출력
   if (s.op.kind === 'INC' || s.op.kind === 'DEC') {

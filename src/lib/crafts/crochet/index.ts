@@ -49,6 +49,7 @@ export const crochet: CraftDefinition = {
       showConnections: opts.showConnections,
       colorMode: opts.colorMode,
       emptyColor: opts.emptyColor,
+      mainColor: opts.mainColor,
     });
   },
 
