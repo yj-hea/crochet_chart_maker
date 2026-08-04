@@ -22,7 +22,7 @@ import {
   type SavedWorkspaceTab,
   type SavedWorkspace,
 } from '$lib/persistence';
-import { workspace } from './tabs';
+import { workspace, toSavedTab } from './tabs';
 
 export const WORKSPACE_FOLDER = '/workspaces';
 const ACTIVE_KEY = 'crochet-chart:dropbox-active-workspace';
@@ -131,19 +131,8 @@ async function runSync(): Promise<void> {
   syncStatus.set('syncing');
   try {
     const ws = get(workspace);
-    const tabs: SavedWorkspaceTab[] = ws.tabs.map((t) => ({
-      id: t.id,
-      name: t.name,
-      craft: t.craft ?? 'crochet',
-      ...(t.gauge ? { gauge: t.gauge } : {}),
-      shape: t.shape,
-      rounds: t.rounds.map((r) => {
-        const out: { source: string; direction?: 'forward' | 'reverse' } = { source: r.source };
-        if (r.direction) out.direction = r.direction;
-        return out;
-      }),
-      ...(t.progress ? { progress: t.progress } : {}),
-    }));
+    // 자동 저장과 **같은** 직렬화를 쓴다 — 따로 만들면 필드가 조용히 누락된다
+    const tabs: SavedWorkspaceTab[] = ws.tabs.map(toSavedTab);
     const list = get(workspaceList);
     const meta = list.find((w) => w.id === id);
     const named: NamedWorkspace = {
@@ -375,18 +364,7 @@ export async function createWorkspace(opts: {
   let activeTabId: string;
   if (opts.source === 'current') {
     const ws = get(workspace);
-    tabs = ws.tabs.map((t) => ({
-      id: t.id,
-      name: t.name,
-      craft: t.craft ?? 'crochet',
-      ...(t.gauge ? { gauge: t.gauge } : {}),
-      shape: t.shape,
-      rounds: t.rounds.map((r) => ({
-        source: r.source,
-        ...(r.direction ? { direction: r.direction } : {}),
-      })),
-      ...(t.progress ? { progress: t.progress } : {}),
-    }));
+    tabs = ws.tabs.map(toSavedTab);
     activeTabId = ws.activeTabId;
   } else {
     const tabId = `tab_${Date.now().toString(36)}`;

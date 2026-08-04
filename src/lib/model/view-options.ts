@@ -90,11 +90,39 @@ function storage(): Storage | undefined {
  */
 let seedCache: ViewOptions | undefined;
 
+/**
+ * 표시 옵션이 전역이던 시절의 키(`crochet-chart:view.showGrid` 등)를 읽어 온다.
+ * 탭 단위로 옮기면서 이 키들을 더 이상 쓰지 않게 됐는데, 그냥 두면 업데이트 직후
+ * 모든 사용자의 설정이 기본값으로 돌아간다. 한 번만 seed 로 옮겨 준다.
+ */
+function readLegacySeed(): ViewOptions | undefined {
+  const s = storage();
+  if (!s) return undefined;
+  const raw: Record<string, unknown> = {};
+  let found = false;
+  for (const key of Object.keys(DEFAULT_VIEW_OPTIONS) as ViewOptionKey[]) {
+    const item = s.getItem(`crochet-chart:view.${key}`);
+    if (item === null) continue;
+    try {
+      raw[key] = JSON.parse(item);
+      found = true;
+    } catch { /* 못 읽는 값은 건너뛴다 */ }
+  }
+  return found ? normalizeViewOptions(raw) : undefined;
+}
+
 /** 새 탭·복원된 탭의 초기 표시 옵션 */
 export function readViewSeed(): ViewOptions {
   if (seedCache) return { ...seedCache };
   const raw = storage()?.getItem(SEED_KEY);
-  if (!raw) return { ...DEFAULT_VIEW_OPTIONS };
+  if (!raw) {
+    const legacy = readLegacySeed();
+    if (legacy) {
+      writeViewSeed(legacy); // 다음부터는 새 키에서 바로 읽힌다
+      return { ...legacy };
+    }
+    return { ...DEFAULT_VIEW_OPTIONS };
+  }
   try {
     const parsed = normalizeViewOptions(JSON.parse(raw));
     if (parsed) seedCache = parsed;

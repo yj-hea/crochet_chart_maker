@@ -224,24 +224,36 @@ function initialState(): WorkspaceState {
 export const workspace = writable<WorkspaceState>(initialState());
 export const lastSavedAt = writable<Date | null>(null);
 
+/**
+ * 탭 → 저장용 객체.
+ *
+ * localStorage 자동 저장과 Dropbox 업로드가 **반드시 같은 함수**를 써야 한다.
+ * 예전에는 세 곳에 같은 매핑이 복사돼 있었고, Dropbox 쪽 사본에 `comments` 와
+ * `view` 가 빠져 있어서 기기 간 동기화 때 메모와 표시 옵션이 사라졌다.
+ * 필드를 새로 추가할 때는 여기만 고치면 된다.
+ */
+export function toSavedTab(t: Tab): SavedWorkspaceTab {
+  return {
+    id: t.id,
+    name: t.name,
+    craft: t.craft ?? DEFAULT_CRAFT,
+    ...(t.gauge ? { gauge: t.gauge } : {}),
+    ...(t.view ? { view: t.view } : {}),
+    shape: t.shape,
+    rounds: t.rounds.map((r) => {
+      const out: { source: string; direction?: RoundDirection } = { source: r.source };
+      if (r.direction) out.direction = r.direction;
+      return out;
+    }),
+    ...(t.comments.length > 0 ? { comments: t.comments } : {}),
+    ...(t.progress ? { progress: t.progress } : {}),
+  };
+}
+
 // 자동 저장 — 매 변경마다
 workspace.subscribe((ws) => {
   saveWorkspace({
-    tabs: ws.tabs.map((t) => ({
-      id: t.id,
-      name: t.name,
-      craft: t.craft ?? DEFAULT_CRAFT,
-      ...(t.gauge ? { gauge: t.gauge } : {}),
-      ...(t.view ? { view: t.view } : {}),
-      shape: t.shape,
-      rounds: t.rounds.map((r) => {
-        const out: { source: string; direction?: RoundDirection } = { source: r.source };
-        if (r.direction) out.direction = r.direction;
-        return out;
-      }),
-      comments: t.comments,
-      ...(t.progress ? { progress: t.progress } : {}),
-    })),
+    tabs: ws.tabs.map(toSavedTab),
     activeTabId: ws.activeTabId,
   });
   lastSavedAt.set(new Date());
