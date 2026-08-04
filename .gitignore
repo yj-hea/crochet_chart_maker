@@ -29,3 +29,6 @@ preview_*.svg
 
 # Vite temp config builds
 vite.config.ts.timestamp-*.mjs
+
+# 저장한 도안 파일 (앱에서 내보낸 것 — 저장소에 넣지 않는다)
+*.crochet.json
