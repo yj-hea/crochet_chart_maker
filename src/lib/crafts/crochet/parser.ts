@@ -416,6 +416,7 @@ class Parser {
     // 선택적 annotation: STRING(코멘트) | COLON HEX_COLOR(색상). 순서 무관, 여러 개 가능
     let comment: string | undefined;
     let color: string | undefined;
+    let colorRange: SourceRange | undefined;
     while (true) {
       const tok = this.peek();
       if (tok?.type === 'STRING') {
@@ -424,6 +425,7 @@ class Parser {
         continue;
       }
       if (tok?.type === 'COLON') {
+        const colonStart = tok.range.start;
         this.advance();
         const val = this.peek();
         if (!val || (val.type !== 'HEX_COLOR' && val.type !== 'COLOR_VALUE')) {
@@ -444,6 +446,7 @@ class Parser {
           return undefined;
         }
         color = resolved;
+        colorRange = { start: colonStart, end: val.range.end };
         this.advance();
         continue;
       }
@@ -460,6 +463,7 @@ class Parser {
       yarnOverCount,
       comment,
       color,
+      colorRange,
       range: { start: startPos, end: (this.peek(-1)?.range.end) ?? startPos },
     };
   }

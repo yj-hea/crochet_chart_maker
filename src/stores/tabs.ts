@@ -23,6 +23,7 @@ import {
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
+import { replaceColorInRound, colorsInRound } from '$lib/color-edit';
 import {
   normalizeViewOptions,
   readViewSeed,
@@ -447,6 +448,37 @@ export function setViewOption<K extends ViewOptionKey>(key: K, value: ViewOption
 export const viewOptions = derived(workspace, ($ws): ViewOptions => {
   const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
   return active?.view ?? DEFAULT_VIEW_OPTIONS;
+});
+
+/**
+ * 활성 탭 전체에서 `from` 색을 `to` 로 바꾼다 (배색 바꿔보기).
+ * `to` 가 undefined 면 그 색을 없앤다. 소스 텍스트를 직접 치환하므로 별칭 문법이 필요 없다.
+ */
+export function replaceColorEverywhere(from: string, to: string | undefined): void {
+  updateActiveTab((t) => {
+    let changed = false;
+    const rounds = t.rounds.map((r) => {
+      const next = replaceColorInRound(r.source, r.parsed, from, to);
+      if (next === r.source) return r;
+      changed = true;
+      return { ...r, source: next };
+    });
+    return changed ? { ...t, rounds: reparseAll(rounds, t.craft) } : t;
+  });
+}
+
+/** 활성 탭에서 쓰인 색 — 많이 쓰인 순 */
+export const usedColors = derived(workspace, ($ws): Array<{ color: string; count: number }> => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  const totals = new Map<string, number>();
+  for (const r of active?.rounds ?? []) {
+    for (const [color, n] of colorsInRound(r.parsed)) {
+      totals.set(color, (totals.get(color) ?? 0) + n);
+    }
+  }
+  return [...totals.entries()]
+    .map(([color, count]) => ({ color, count }))
+    .sort((a, b) => b.count - a.count);
 });
 
 export function setShape(shape: ShapeKind): void {

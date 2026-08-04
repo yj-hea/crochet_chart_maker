@@ -17,6 +17,9 @@ export const NAMED_COLORS: Record<string, string> = Object.freeze({
   purple:  '#8e24aa',
   pink:    '#ec407a',
   brown:   '#6d4c41',
+  // 실 색으로 자주 쓰는 톤 — 배색 도안 예시(`k2:cream`)에서 참조한다
+  cream:   '#f5efe0',
+  beige:   '#d7c4a3',
   black:   '#212121',
   white:   '#ffffff',
   gray:    '#757575',

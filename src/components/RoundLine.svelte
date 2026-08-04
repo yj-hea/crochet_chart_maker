@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
+  import { EditorView, keymap, Decoration, WidgetType, type DecorationSet } from '@codemirror/view';
   import { EditorState, StateField, StateEffect } from '@codemirror/state';
   import { history, historyKeymap } from '@codemirror/commands';
   import type { ParseError, ValidationError } from '$lib/model/errors';
+  import type { ParsedRound } from '$lib/parser/ast';
   import type { Comment } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
+  import ColorPalette from './ColorPalette.svelte';
+  import { collectStitches, setColorAt, setColorInRange } from '$lib/color-edit';
 
   export interface FocusRequest {
     token: number;
@@ -17,6 +20,10 @@
     index: number;
     errors?: ParseError[];
     validationErrors?: ValidationError[];
+    /** 이 단의 파싱 결과 — 색 스와치 위치·색 편집에 사용 */
+    parsed?: ParsedRound;
+    /** 도안 전체에서 쓰인 색 (팔레트에 먼저 보여준다) */
+    usedColors?: readonly string[];
     stitchCount?: number;
     canDelete?: boolean;
     /** 이 단에 연결된 코멘트 (없으면 []) */
@@ -48,6 +55,8 @@
     index,
     errors = [],
     validationErrors = [],
+    parsed,
+    usedColors = [],
     stitchCount,
     canDelete = true,
     roundComment,
@@ -92,6 +101,95 @@
     provide: (f) => EditorView.decorations.from(f),
   });
 
+  // ── 인라인 색 스와치 ────────────────────────────────────────────
+  // 색 코드(`:navy`) 바로 뒤에 실제 색 동그라미를 끼워 넣는다. 텍스트는 건드리지 않고
+  // 위젯만 얹으므로 소스는 그대로다. 클릭하면 그 코의 색을 바꾸는 팔레트가 열린다.
+
+  /** 스와치 위젯 — 어떤 코의 색인지 알 수 있도록 소스 위치를 data 속성에 담는다 */
+  class SwatchWidget extends WidgetType {
+    color: string;
+    stitchStart: number;
+    constructor(color: string, stitchStart: number) {
+      super();
+      this.color = color;
+      this.stitchStart = stitchStart;
+    }
+    // 같은 색·같은 코면 DOM 을 재사용 (매 타이핑마다 새로 만들지 않도록)
+    eq(other: SwatchWidget) {
+      return other.color === this.color && other.stitchStart === this.stitchStart;
+    }
+    toDOM() {
+      const el = document.createElement('span');
+      el.className = 'cm-color-swatch';
+      el.style.backgroundColor = this.color;
+      el.dataset.stitchStart = String(this.stitchStart);
+      el.dataset.color = this.color;
+      el.title = `${this.color} — 클릭하여 색 바꾸기`;
+      return el;
+    }
+    ignoreEvent() { return false; }
+  }
+
+  const setSwatches = StateEffect.define<Array<{ at: number; color: string; stitchStart: number }>>();
+  const swatchField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(deco, tr) {
+      let updated = deco.map(tr.changes);
+      for (const eff of tr.effects) {
+        if (eff.is(setSwatches)) {
+          const docLen = tr.state.doc.length;
+          updated = Decoration.set(
+            eff.value
+              .filter((s) => s.at <= docLen)
+              .map((s) =>
+                Decoration.widget({ widget: new SwatchWidget(s.color, s.stitchStart), side: 1 })
+                  .range(s.at),
+              )
+              .sort((a, b) => a.from - b.from),
+          );
+        }
+      }
+      return updated;
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+
+  function applySwatches(v: EditorView, p: ParsedRound | undefined) {
+    const items = collectStitches(p?.body ?? p?.lastValid)
+      .filter((s) => s.color && s.colorRange)
+      .map((s) => ({ at: s.colorRange!.end, color: s.color!, stitchStart: s.range.start }));
+    v.dispatch({ effects: setSwatches.of(items) });
+  }
+
+  // ── 팔레트 열기 상태 ────────────────────────────────────────────
+  /** 'swatch' = 특정 코 하나 / 'selection' = 현재 선택 범위 */
+  let paletteFor = $state<
+    | { kind: 'swatch'; stitchStart: number; color: string; anchor: HTMLElement }
+    | { kind: 'selection'; from: number; to: number; anchor: HTMLElement }
+    | null
+  >(null);
+  let paletteBtn: HTMLButtonElement | undefined = $state();
+
+  const paletteCurrent = $derived(paletteFor?.kind === 'swatch' ? paletteFor.color : undefined);
+
+  function openSelectionPalette() {
+    if (!view || !paletteBtn) return;
+    const sel = view.state.selection.main;
+    paletteFor = { kind: 'selection', from: sel.from, to: sel.to, anchor: paletteBtn };
+  }
+
+  /** 팔레트에서 고른 색(또는 제거)을 소스에 반영 */
+  function applyColor(hex: string | undefined) {
+    const target = paletteFor;
+    if (!target || !view) return;
+    const src = view.state.doc.toString();
+    const next = target.kind === 'swatch'
+      ? setColorAt(src, parsed, target.stitchStart, hex)
+      : setColorInRange(src, parsed, { start: target.from, end: target.to }, hex);
+    paletteFor = null;
+    if (next !== src) onChange(next);
+  }
+
   // 붙여넣기·드래그 등으로 들어오는 개행은 허용하되 Enter 키 기본 동작은 별도 제어.
   // (Alt-Enter 로 명시 삽입. 붙여넣은 \n 은 그대로 유지하여 파싱 시 공백으로 취급)
 
@@ -132,6 +230,7 @@
         extensions: [
           history(),
           errorField,
+          swatchField,
           EditorView.lineWrapping,
           keymap.of([
             ...historyKeymap,
@@ -196,12 +295,37 @@
           }),
           EditorView.domEventHandlers({
             focus: () => { onFocus?.(); },
+            mousedown: (e) => {
+              const el = (e.target as HTMLElement | null)?.closest?.('.cm-color-swatch');
+              if (!(el instanceof HTMLElement)) return false;
+              e.preventDefault(); // 스와치 클릭으로 커서가 튀지 않도록
+              const stitchStart = Number(el.dataset.stitchStart);
+              if (!Number.isFinite(stitchStart)) return false;
+              paletteFor = {
+                kind: 'swatch',
+                stitchStart,
+                color: el.dataset.color ?? '',
+                anchor: el,
+              };
+              return true;
+            },
           }),
           EditorView.theme({
             '&': { fontSize: '14px', fontFamily: "'Noto Sans KR', system-ui, sans-serif" },
             '.cm-content': { padding: '6px 8px' },
             '.cm-line': { padding: '0' },
             '&.cm-focused': { outline: 'none' },
+            '.cm-color-swatch': {
+              display: 'inline-block',
+              width: '10px',
+              height: '10px',
+              marginLeft: '2px',
+              borderRadius: '50%',
+              border: '1px solid rgba(0,0,0,0.25)',
+              verticalAlign: 'baseline',
+              cursor: 'pointer',
+            },
+            '.cm-color-swatch:hover': { transform: 'scale(1.3)' },
             '.cm-error': {
               textDecoration: 'underline wavy #d33',
               textDecorationThickness: '2px',
@@ -216,6 +340,7 @@
     });
     view = v;
     applyDecorations(v, errors, validationErrors);
+    applySwatches(v, parsed);
     // 마운트 시점에 포커스 요청이 이미 걸려있으면 즉시 포커스.
     if (focusRequest !== undefined) {
       lastSeenFocusToken = focusRequest.token;
@@ -237,6 +362,11 @@
   // 에러 변화 시 데코레이션 갱신
   $effect(() => {
     if (view) applyDecorations(view, errors, validationErrors);
+  });
+
+  // 파싱 결과가 바뀌면 색 스와치 갱신
+  $effect(() => {
+    if (view) applySwatches(view, parsed);
   });
 
   // 외부 포커스 요청 — 토큰이 실제로 증가했을 때만 포커스
@@ -279,6 +409,16 @@
   <span class="stitch-count" title="이 단의 총 코 수">
     {stitchCount ?? '—'}<span class="unit">코</span>
   </span>
+  <button
+    type="button"
+    class="color-btn"
+    bind:this={paletteBtn}
+    onclick={openSelectionPalette}
+    title="선택한 코에 색 칠하기 (선택 없으면 커서가 놓인 코)"
+    aria-label="색 칠하기"
+  >
+    <i class="fa-solid fa-palette"></i>
+  </button>
   {#if onToggleDirection && directionIcon && directionLabel}
     <button
       type="button"
@@ -300,7 +440,37 @@
   >×</button>
 </div>
 
+{#if paletteFor}
+  <ColorPalette
+    anchor={paletteFor.anchor}
+    current={paletteCurrent}
+    used={usedColors}
+    onPick={(hex) => applyColor(hex)}
+    onClear={() => applyColor(undefined)}
+    onClose={() => (paletteFor = null)}
+  />
+{/if}
+
 <style>
+  .color-btn {
+    align-self: flex-start;
+    margin-top: 4px;
+    width: 26px; height: 26px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 4px);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s, color 0.15s;
+    flex: none;
+  }
+  .color-btn:hover {
+    opacity: 1;
+    color: var(--text);
+    background: var(--bg-hover);
+  }
   .round-line {
     display: flex;
     align-items: stretch;

@@ -150,6 +150,10 @@
             <tr><td>기호 색</td><td>배경 밝기에 따라 자동으로 흰색/검정 전환 (어두운 실 위에서도 기호가 보이도록)</td></tr>
             <tr><td>범례</td><td>차트 아래에 쓰인 색과 코 수를 자동 표시</td></tr>
             <tr><td>예</td><td><code>3: k2:navy, (k2:cream, k2:navy)*5</code></td></tr>
+            <tr><td>마우스로 고르기</td><td>색 코드 뒤의 <b>색 동그라미</b>를 클릭하면 팔레트가 열린다.
+              여러 코를 드래그로 선택한 뒤 단 오른쪽 팔레트 버튼을 누르면 한꺼번에 칠해진다</td></tr>
+            <tr><td>배색 바꿔보기</td><td>편집 화면 위쪽 <b>배색</b> 목록에서 색을 클릭하면
+              <b>도안 전체</b>에서 그 색으로 칠한 코가 한 번에 바뀐다</td></tr>
           </tbody>
         </table>
       </section>
@@ -250,7 +254,9 @@
         <h3>주석</h3>
         <table class="syntax-table">
           <tbody>
-            <tr><td><code>:색</code></td><td>색상 (배색 도안). <code>#</code> 있/없음 hex 또는 키워드. 예: <code>x:#ff6a6a</code>, <code>x:ff6a6a</code>, <code>x:efd</code>, <code>x:red</code></td></tr>
+            <tr><td><code>:색</code></td><td>색상 (배색 도안). <code>#</code> 있/없음 hex 또는 키워드. 예: <code>x:#ff6a6a</code>, <code>x:ff6a6a</code>, <code>x:efd</code>, <code>x:red</code><br>
+              색 코드 뒤의 <b>색 동그라미</b>를 클릭하면 팔레트가 열린다. 여러 코를 선택한 뒤 단 오른쪽
+              팔레트 버튼으로 한꺼번에 칠할 수도 있고, 편집 화면 위 <b>배색</b> 목록에서 도안 전체의 색을 바꿀 수도 있다</td></tr>
             <tr><td>키워드</td><td><code>red, orange, yellow, green, teal, cyan, blue, indigo, purple, pink, brown, black, white, gray, silver, navy</code></td></tr>
             <tr><td><code>"..."</code></td><td>인라인 코멘트 — 서술 도안에 각주 <code>*1, *2…</code> 로 표시. 같은 텍스트는 같은 번호를 공유. <code>:색</code> 과 순서 무관. 예: <code>x"조심":red</code> = <code>x:red"조심"</code></td></tr>
             {#if !isKnit}
