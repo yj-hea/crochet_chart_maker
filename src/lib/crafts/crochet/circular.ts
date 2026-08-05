@@ -127,6 +127,9 @@ export function layoutCircular(
   // 4) 사슬 호: 연속된 CHAIN 만 대상, top-to-top anchor (기둥코는 제외)
   repositionChainArcs(stitches);
 
+  // 4-b) 독립 사슬(`1ch`)을 양옆 코 사이 가운데로 — 겹침 보정이 끝난 뒤여야 한다
+  recenterStandaloneChains(stitches);
+
   // 5) 마커 위치 재계산 (후처리로 stitch 위치가 바뀌었을 수 있음)
   for (const m of roundMarkers) {
     const mExt = m as RoundMarker & { _stitchIdx?: number };
@@ -849,6 +852,132 @@ function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
     }
 
     i = groupIndices[groupIndices.length - 1]!;
+  }
+}
+
+// ============================================================
+// 독립 사슬 재배치 — 양옆 코 사이 가운데로
+// ============================================================
+
+/**
+ * 독립 사슬 (`1ch` — 부모 없이 그 단에서 새로 만드는 사슬).
+ * `[...]` 안의 장식 사슬과 기둥코는 각자 전용 재배치가 있으므로 제외한다.
+ */
+function isStandaloneChain(s: PositionedStitch): boolean {
+  return s.op.kind === 'CHAIN' && !s.op.inSameHoleGroup && !s.op.turningChain;
+}
+
+/**
+ * 독립 사슬을 **양옆 코 사이 가운데**로 옮긴다 — 반경은 두 이웃 중심 반경의 평균,
+ * 각도는 두 이웃 사이 균등 분배.
+ *
+ * 왜 후처리인가: 배치 단계의 사슬은 부모가 없어 갈 곳이 정해져 있지 않다. 직전 코의
+ * *그때의* 위치에서 16px 떨어뜨리는 게 전부인데(`placeRound` 의 부모 없는 분기),
+ * 그 직후 같은 단의 겹침 보정 베지어가 이웃들을 바깥 호로 밀어낸다. 사슬만 낡은 기준에
+ * 남아 이웃 위로 올라타는 것이 원형 도안 사슬 겹침의 실제 원인이다. 이웃이 다 자리를
+ * 잡은 뒤 그 사이에 끼워 넣으면 기준이 최신이 된다.
+ *
+ * 반경 평균은 사슬 높이(halfH 3.5)만으로 링 바닥에 놓이던 것을 이웃 사이로 올린다 —
+ * 두길긴뜨기(halfH 14) 옆에서 연결선이 꺾여 보이던 것도 같이 풀린다.
+ *
+ * 사슬 위에 얹힌 코(`3ch, 5f` 의 F, `1ch, skip(1)` 의 SKIP)는 사슬을 부모로 삼으므로
+ * 같은 변화량만큼 따라 옮기고, 이웃 기준을 고를 때는 제외한다 — 사슬을 따라다니는
+ * 코를 기준으로 삼으면 사슬이 자기 자신을 기준으로 삼는 셈이 된다.
+ */
+function recenterStandaloneChains(stitches: PositionedStitch[]): void {
+  const byRound = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    const arr = byRound.get(stitches[i]!.roundIndex) ?? [];
+    arr.push(i);
+    byRound.set(stitches[i]!.roundIndex, arr);
+  }
+
+  for (const indices of byRound.values()) {
+    // 사슬 위에 얹힌 op — 사슬이 움직이면 같이 움직여야 한다.
+    const ridersOf = new Map<number, number[]>();
+    for (const i of indices) {
+      for (const p of stitches[i]!.parentIndices) {
+        if (stitches[p]!.roundIndex !== stitches[i]!.roundIndex) continue;
+        const arr = ridersOf.get(p) ?? [];
+        arr.push(i);
+        ridersOf.set(p, arr);
+      }
+    }
+
+    /** 기준이 되는 이웃: 사슬도 SKIP 도 아닌 실제 코 */
+    const isNeighborRef = (s: PositionedStitch): boolean =>
+      s.op.kind !== 'CHAIN' && s.op.kind !== 'SKIP' && s.op.kind !== 'MAGIC' && !s.op.turningChain;
+
+    let k = 0;
+    while (k < indices.length) {
+      if (!isStandaloneChain(stitches[indices[k]!]!)) { k++; continue; }
+      // 연속된 사슬 run 은 한 덩어리로 — 사이에 낀 SKIP 은 run 을 끊지 않는다.
+      const runStart = k;
+      let runEnd = k;
+      for (let j = k; j < indices.length; j++) {
+        const s = stitches[indices[j]!]!;
+        if (isStandaloneChain(s)) { runEnd = j; continue; }
+        if (s.op.kind === 'SKIP') continue;
+        break;
+      }
+      k = runEnd + 1;
+
+      // run 양옆의 실제 코 (원형이므로 wrap-around).
+      // 이 사슬들 **위에 얹힌** 코는 이웃이 아니다 — 사슬을 따라 움직이므로 기준이 못 된다.
+      const runMembers = new Set<number>();
+      for (let j = runStart; j <= runEnd; j++) runMembers.add(indices[j]!);
+      const n = indices.length;
+      const pick = (from: number, dir: 1 | -1): PositionedStitch | undefined => {
+        for (let step = 1; step <= n; step++) {
+          const idx = indices[(((from + dir * step) % n) + n) % n]!;
+          const s = stitches[idx]!;
+          if (s.parentIndices.some((p) => runMembers.has(p))) continue;
+          if (isNeighborRef(s)) return s;
+        }
+        return undefined;
+      };
+      const prev = pick(runStart, -1);
+      const next = pick(runEnd, 1);
+      if (!prev || !next) continue;
+
+      const radiusOf = (s: PositionedStitch) => Math.hypot(s.position.x, s.position.y);
+      const target = (radiusOf(prev) + radiusOf(next)) / 2;
+
+      // 각도: 두 이웃 사이를 (사슬 수 + 1) 등분한 자리에 하나씩
+      const angOf = (s: PositionedStitch) => Math.atan2(s.position.y, s.position.x);
+      const aPrev = angOf(prev);
+      let span = angOf(next) - aPrev;
+      while (span > Math.PI) span -= 2 * Math.PI;
+      while (span < -Math.PI) span += 2 * Math.PI;
+      const members: number[] = [];
+      for (let j = runStart; j <= runEnd; j++) {
+        if (isStandaloneChain(stitches[indices[j]!]!)) members.push(indices[j]!);
+      }
+      const stepA = span / (members.length + 1);
+      let memberNo = 0;
+
+      for (let j = runStart; j <= runEnd; j++) {
+        const idx = indices[j]!;
+        const s = stitches[idx]!;
+        if (!isStandaloneChain(s)) continue;
+        const r = radiusOf(s);
+        if (r < 0.001) continue;
+        const delta = target - r;
+        memberNo++;
+        const ang = aPrev + stepA * memberNo;
+        const angDelta = ang - Math.atan2(s.position.y, s.position.x);
+        s.position = polarToCartesian(target, ang);
+        if (s.angle !== undefined) s.angle = ang + Math.PI / 2;
+        // 이 사슬 위에 얹힌 코(SKIP 포함)도 같은 변화량만큼 따라 이동
+        for (const rider of ridersOf.get(idx) ?? []) {
+          const rs = stitches[rider]!;
+          const rr = Math.hypot(rs.position.x, rs.position.y);
+          if (rr < 0.001) continue;
+          rs.position = polarToCartesian(rr + delta, Math.atan2(rs.position.y, rs.position.x) + angDelta);
+          if (rs.angle !== undefined) rs.angle += angDelta;
+        }
+      }
+    }
   }
 }
 
