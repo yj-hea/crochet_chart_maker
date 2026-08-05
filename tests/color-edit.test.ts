@@ -326,8 +326,13 @@ describe('색 없는 코에 실 색 일괄 지정', () => {
     expect(assignColorToUncolored(src, cro(src), '#000000')).toBe(src);
   });
 
+  /**
+   * 한때 "다수 색은 본문에서 빼고 칸 색으로 내린다" 를 넣었다가 취소했다 —
+   * 칸 색은 기호색 모드의 **종이색**이지 실 색이 아니라서, 배색을 할당할 때마다
+   * 종이색이 바뀌고 기존 배색 칩이 사라졌다. 그 회귀를 막는다.
+   */
   it('지정 후에는 배색 목록에 칩이 하나 생기고, 이후 일괄 교체된다', async () => {
-    const { createTab, assignDefaultColorEverywhere, replaceColorEverywhere, usedColors, uncoloredCount, pattern } =
+    const { createTab, assignDefaultColorEverywhere, replaceColorEverywhere, usedColors, uncoloredCount, viewOptions, pattern } =
       await import('../src/stores/tabs');
     const { updateRoundSource, addRoundAtEnd } = await import('../src/stores/pattern');
     const { get } = await import('svelte/store');
@@ -337,6 +342,7 @@ describe('색 없는 코에 실 색 일괄 지정', () => {
     updateRoundSource(addRoundAtEnd(), '6x');
     expect(get(uncoloredCount)).toBe(9);
 
+    const paperBefore = get(viewOptions).mainColor;
     assignDefaultColorEverywhere('#f5efe0');
 
     // 본문에 그대로 들어가고, 목록에 칩이 하나 늘어난다
@@ -346,6 +352,8 @@ describe('색 없는 코에 실 색 일괄 지정', () => {
       { color: '#f5efe0', count: 9 },
       { color: '#0d47a1', count: 3 },
     ]);
+    // 기존 배색(navy)은 그대로 남고, 표시 색인 칸(종이) 색은 건드리지 않는다
+    expect(get(viewOptions).mainColor).toBe(paperBefore);
 
     // 이제 다른 실 색 칩과 똑같이 일괄 교체된다
     replaceColorEverywhere('#f5efe0', '#e53935');
