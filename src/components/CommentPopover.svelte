@@ -12,6 +12,21 @@
   let draftText = $state('');
   let draftColor = $state('#FFE066');
 
+  // 내용이 비어 있으면 바로 편집 모드로 연다 — 방금 만든 메모는 보여줄 게 없는데
+  // "(내용 없음)" 을 띄우고 편집 버튼을 한 번 더 누르게 할 이유가 없다.
+  // 메모 하나당 한 번만 판단한다 (저장 후 text 가 바뀌어도 다시 열리지 않도록).
+  let openedFor: string | undefined;
+  $effect(() => {
+    if (openedFor === comment.id) return;
+    openedFor = comment.id;
+    if (comment.text.trim() === '') startEdit();
+  });
+
+  // 편집 모드가 되면 바로 칠 수 있게 입력란에 포커스
+  $effect(() => {
+    if (editing) textareaEl?.focus();
+  });
+
   const palette = [
     '#FFE066', // yellow
     '#FFB3B3', // pink
@@ -36,6 +51,14 @@
   }
 
   function cancelEdit() {
+    // 아직 한 번도 내용이 채워지지 않은 메모라면 취소는 "안 만들래" 에 가깝다 —
+    // 빈 핀만 남기지 말고 메모째 지운다. 지울 내용이 없으니 확인도 묻지 않는다.
+    // 이미 내용이 있는 메모는 초안만 버린다 (취소가 원본을 지우면 안 된다).
+    if (comment.text.trim() === '') {
+      deleteComment(comment.id);
+      onClose();
+      return;
+    }
     editing = false;
   }
 
