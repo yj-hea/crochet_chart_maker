@@ -295,3 +295,16 @@ describe('독립 사슬 재배치', () => {
     }
   });
 });
+
+describe('사슬 위 SKIP', () => {
+  it('SKIP 기호가 그 사슬에 붙어 있다', () => {
+    const res = layoutFromSources(['@, 12X', '12X', '3X, 1ch, skip(1), 4F, 3X']);
+    const skip = res.stitches.find((s) => s.op.kind === 'SKIP' && s.roundIndex === 3)!;
+    const chainIdx = skip.parentIndices.find((p) => res.stitches[p]!.op.kind === 'CHAIN')!;
+    const chain = res.stitches[chainIdx]!;
+    const d = Math.hypot(skip.position.x - chain.position.x, skip.position.y - chain.position.y);
+    const minGap = STITCH_META['CHAIN'].symbolHalfHeight + STITCH_META['SKIP'].symbolHalfHeight;
+    expect(d).toBeGreaterThanOrEqual(minGap); // 기호끼리 포개지지는 않고
+    expect(d).toBeLessThan(minGap + 5);       // 어느 사슬인지 읽힐 만큼 붙어 있다
+  });
+});

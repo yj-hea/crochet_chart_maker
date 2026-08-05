@@ -44,6 +44,14 @@ export interface CircularOptions {
 }
 
 const RADIAL_GAP = 12; // 'even' 모드에서 부모 바깥 끝 ↔ 자식 안쪽 끝 사이 빈 반경 간격.
+/**
+ * 사슬 위 SKIP 기호가 그 사슬에서 떨어지는 간격.
+ *
+ * `RADIAL_GAP` 은 사슬에 **실제로 뜬 코**를 위한 값이라 SKIP 에는 너무 멀다 — SKIP 은
+ * 새 코가 아니라 "이 사슬은 건너뛴다"는 표시이므로 사슬에 붙어 있어야 어느 사슬을
+ * 가리키는지 읽힌다. 기호가 겹치지 않을 만큼만 띄운다.
+ */
+const SKIP_ON_CHAIN_GAP = 2;
 
 interface SlotPos { angle: number; width: number; }
 
@@ -296,9 +304,9 @@ function placeRound(
       const prevBase = baseRadiusByRound.get(roundIdx - 1) ?? 0;
       let midR: number;
       if (consumedFromChainQueue && skipParents.length > 0) {
-        // chain 위에 SKIP — X-on-chain 과 동일 layer (chain outerR + gap + halfH).
+        // chain 위에 SKIP — 그 사슬 바로 위에 붙인다 (chain outerR + 작은 gap + halfH).
         const parent = stitches[skipParents[0]!]!;
-        midR = stitchOuterRadius(parent) + RADIAL_GAP + effectiveSymH(op);
+        midR = stitchOuterRadius(parent) + SKIP_ON_CHAIN_GAP + effectiveSymH(op);
       } else {
         midR = nParents > 0 ? (prevBase + baseRadius) / 2 : baseRadius;
       }
