@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
 import { layoutCircular } from '../src/lib/crafts/crochet/circular';
+import { STITCH_META } from '../src/lib/crafts/crochet/stitch';
 
 function layoutFromSources(sources: string[]) {
   const expandedRounds = sources.map((src, i) => {
@@ -230,5 +231,168 @@ describe('사슬 위 한 코 그룹', () => {
     const ca = Math.atan2(chain.position.y, chain.position.x);
     const sa = Math.atan2(sc.position.y, sc.position.x);
     expect(Math.abs(ca - sa)).toBeLessThan(1e-9);
+  });
+});
+
+describe('독립 사슬 재배치', () => {
+  it('사슬이 양옆 코 중심 반경의 평균에 놓인다', () => {
+    // 4X, 3ch, 5F, 4X — 사슬 양옆은 SC(안쪽)와 DC(바깥쪽)
+    const res = layoutFromSources(['@, 12X', '4X, 3ch, 5F, 4X']);
+    const r2 = res.stitches.filter((s) => s.roundIndex === 2);
+    const rad = (s: (typeof r2)[number]) => Math.hypot(s.position.x, s.position.y);
+    const chains = r2.filter((s) => s.op.kind === 'CHAIN');
+    const sc = r2.filter((s) => s.op.kind === 'SC');
+    // 사슬 위에 얹히지 않은 DC (= 이전 단을 부모로 갖는 DC)
+    const chainIdx = new Set(res.stitches.map((s, i) => [s, i] as const)
+      .filter(([s]) => s.op.kind === 'CHAIN' && s.roundIndex === 2).map(([, i]) => i));
+    const groundDc = r2.filter(
+      (s) => s.op.kind === 'DC' && !s.parentIndices.some((p) => chainIdx.has(p)),
+    );
+    expect(chains).toHaveLength(3);
+    expect(groundDc.length).toBeGreaterThan(0);
+    const expected = (rad(sc[sc.length - 1]!) + rad(groundDc[0]!)) / 2;
+    for (const c of chains) expect(rad(c)).toBeCloseTo(expected, 3);
+  });
+
+  it('사슬 위에 얹힌 코는 사슬을 따라 같이 움직인다', () => {
+    const res = layoutFromSources(['@, 12X', '4X, 3ch, 5F, 4X']);
+    const r2 = res.stitches.filter((s) => s.roundIndex === 2);
+    const chains = r2.filter((s) => s.op.kind === 'CHAIN');
+    const ang = (s: (typeof r2)[number]) => Math.atan2(s.position.y, s.position.x);
+    const chainIdxSet = new Set(res.stitches.map((s, i) => [s, i] as const)
+      .filter(([s]) => s.op.kind === 'CHAIN' && s.roundIndex === 2).map(([, i]) => i));
+    const riders = r2.filter((s) => s.parentIndices.some((p) => chainIdxSet.has(p)));
+    expect(riders).toHaveLength(3);
+    // 각 사슬과 그 위 코의 각도가 일치 (연결선이 비스듬해지지 않음)
+    for (let i = 0; i < 3; i++) expect(ang(riders[i]!)).toBeCloseTo(ang(chains[i]!), 6);
+  });
+
+  it('`1ch, skip(1)` 의 사슬이 이웃 기호와 겹치지 않는다', () => {
+    const res = layoutFromSources([
+      '@, 12X',
+      '12X',
+      '3X, 1ch, skip(1), 4F, 1ch, skip(1), 3X',
+    ]);
+    const r3 = res.stitches.filter((s) => s.roundIndex === 3 && s.op.kind !== 'MAGIC');
+    // 기호 반폭 (SVG 정의 기준) — 접선 방향 최소 간격
+    const halfW: Record<string, number> = { CHAIN: 5, SKIP: 5, SC: 5, DC: 5 };
+    for (let i = 0; i < r3.length; i++) {
+      for (let j = i + 1; j < r3.length; j++) {
+        const A = r3[i]!, B = r3[j]!;
+        const dx = B.position.x - A.position.x, dy = B.position.y - A.position.y;
+        const ra = Math.hypot(A.position.x, A.position.y);
+        const dTan = Math.abs((dx * -A.position.y + dy * A.position.x) / ra);
+        const dRad = Math.abs((dx * A.position.x + dy * A.position.y) / ra);
+        const needTan = (halfW[A.op.kind] ?? 5) + (halfW[B.op.kind] ?? 5);
+        const needRad = STITCH_META[A.op.kind].symbolHalfHeight
+          + STITCH_META[B.op.kind].symbolHalfHeight;
+        // 접선·반경 두 방향 모두 겹치면 기호가 실제로 포개진다
+        expect(
+          dTan >= needTan || dRad >= needRad,
+          `${A.op.kind}[${i}] ↔ ${B.op.kind}[${j}] tan=${dTan.toFixed(1)}/${needTan} rad=${dRad.toFixed(1)}/${needRad}`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
+describe('사슬 위 SKIP', () => {
+  it('SKIP 기호가 그 사슬에 붙어 있다', () => {
+    const res = layoutFromSources(['@, 12X', '12X', '3X, 1ch, skip(1), 4F, 3X']);
+    const skip = res.stitches.find((s) => s.op.kind === 'SKIP' && s.roundIndex === 3)!;
+    const chainIdx = skip.parentIndices.find((p) => res.stitches[p]!.op.kind === 'CHAIN')!;
+    const chain = res.stitches[chainIdx]!;
+    const d = Math.hypot(skip.position.x - chain.position.x, skip.position.y - chain.position.y);
+    const minGap = STITCH_META['CHAIN'].symbolHalfHeight + STITCH_META['SKIP'].symbolHalfHeight;
+    expect(d).toBeGreaterThanOrEqual(minGap); // 기호끼리 포개지지는 않고
+    expect(d).toBeLessThan(minGap + 5);       // 어느 사슬인지 읽힐 만큼 붙어 있다
+  });
+});
+
+describe('각도 완화 (겹침 해소)', () => {
+  /** 기호 반폭 — symbols.ts 의 SVG 정의 기준 */
+  const HALF_W: Record<string, number> = {
+    MAGIC: 7, CHAIN: 5, SLIP: 2.2, SC: 5, HDC: 5, DC: 5, TR: 5, DTR: 5,
+    INC: 5, DEC: 5, POPCORN: 7, BUBBLE: 7, SKIP: 5, TC: 0,
+  };
+
+  /** 기호가 실제로 포개진 쌍 — 접선·반경 두 방향 모두 걸릴 때만 겹침이다 */
+  function overlappingPairs(res: ReturnType<typeof layoutFromSources>): string[] {
+    const all = res.stitches.filter((s) => s.op.kind !== 'MAGIC' && s.op.kind !== 'TC');
+    const hits: string[] = [];
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const A = all[i]!, B = all[j]!;
+        if (A.roundIndex !== B.roundIndex) continue;
+        const dx = B.position.x - A.position.x, dy = B.position.y - A.position.y;
+        const ra = Math.hypot(A.position.x, A.position.y);
+        if (ra < 1) continue;
+        const dTan = Math.abs((dx * -A.position.y + dy * A.position.x) / ra);
+        const dRad = Math.abs((dx * A.position.x + dy * A.position.y) / ra);
+        const needTan = (HALF_W[A.op.kind] ?? 5) + (HALF_W[B.op.kind] ?? 5);
+        const needRad = STITCH_META[A.op.kind].symbolHalfHeight
+          + STITCH_META[B.op.kind].symbolHalfHeight;
+        if (dTan < needTan && dRad < needRad) {
+          hits.push(`R${A.roundIndex} ${A.op.kind}↔${B.op.kind} tan=${dTan.toFixed(1)}/${needTan}`);
+        }
+      }
+    }
+    return hits;
+  }
+
+  const CASES: Record<string, string[]> = {
+    '사슬 + skip': ['@, 12X', '12X', '3X, 1ch, skip(1), 4F, 1ch, skip(1), 3X'],
+    '사슬 브릿지': ['@, 12X', '4X, 3ch, 5F, 4X', '12X'],
+    '사슬망': ['@, 12X', '(1X, 2ch, skip(1))*6', '(1X, 2ch, skip(1))*6'],
+    '한 코 그룹': ['@, 12X', '(1X, [3F], 1X)*4'],
+    '키 큰 코 + 사슬': [
+      '@, 12X', '12X',
+      '2X, [1F, 1E], 1ch, skip(1), [1E, 1F], 2X, 4sl',
+    ],
+  };
+
+  for (const [name, src] of Object.entries(CASES)) {
+    for (const vAlign of ['same', 'even'] as const) {
+      it(`${name} — 기호가 겹치지 않는다 (${vAlign})`, () => {
+        const res = layoutCircular(
+          src.map((s, i) => {
+            const r = parseRound(i + 1, s);
+            if (!r.body) throw new Error(`parse: ${s}`);
+            return expand(r.body, i + 1);
+          }),
+          { vAlign, cascade: true },
+        );
+        expect(overlappingPairs(res)).toEqual([]);
+      });
+    }
+  }
+
+  it('겹치지 않는 도안은 한 코도 움직이지 않는다', () => {
+    // 완화 패스는 제약이 걸린 구간에만 개입한다. 여유가 있으면 cascade 결과 그대로 —
+    // 즉 1:1 코는 부모 각도에 **정확히** 남아 있어야 한다.
+    const res = layoutFromSources(['@, 6X', '6V', '12X', '12X', '12X']);
+    expect(overlappingPairs(res)).toEqual([]); // 전제: 애초에 겹침이 없는 도안
+    const ang = (i: number) => {
+      const s = res.stitches[i]!;
+      return Math.atan2(s.position.y, s.position.x);
+    };
+    let checked = 0;
+    for (let i = 0; i < res.stitches.length; i++) {
+      const s = res.stitches[i]!;
+      if (s.op.produce !== 1 || s.op.consume !== 1) continue;
+      if (s.parentIndices.length !== 1) continue;
+      // 부모가 V 면 자식은 부모 기호가 아니라 그 하위 슬롯에 놓인다 — 비교 대상이 아니다
+      if (res.stitches[s.parentIndices[0]!]!.op.produce !== 1) continue;
+      expect(ang(i)).toBeCloseTo(ang(s.parentIndices[0]!), 9);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+
+  it('원주에 담을 수 없는 단은 손대지 않는다', () => {
+    // 반지름에 비해 코가 지나치게 많으면 밀어봐야 순서만 뒤집힌다 — 그대로 둔다.
+    const res = layoutFromSources(['@, 6X', '6V^12']);
+    expect(res.stitches.filter((s) => s.roundIndex === 2).length).toBeGreaterThan(0);
+    expect(res.bounds.width).toBeGreaterThan(0);
   });
 });
