@@ -10,6 +10,7 @@
  */
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
+import type { StitchKind } from '$lib/model/stitch-kind';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/layout/types';
 import { FIRST_RING_RADIUS } from '$lib/layout/constants';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
@@ -138,6 +139,9 @@ export function layoutCircular(
   // 4-b) 독립 사슬(`1ch`)을 양옆 코 사이 가운데로 — 겹침 보정이 끝난 뒤여야 한다
   recenterStandaloneChains(stitches);
 
+  // 4-c) 남은 겹침을 각도 재분배로 해소 — 모든 위치가 확정된 뒤 마지막에
+  relaxAngularOverlaps(stitches);
+
   // 5) 마커 위치 재계산 (후처리로 stitch 위치가 바뀌었을 수 있음)
   for (const m of roundMarkers) {
     const mExt = m as RoundMarker & { _stitchIdx?: number };
@@ -198,6 +202,24 @@ function effectiveSymH(op: Op): number {
     return 9 + 2 * (op.yarnOverCount - 1);
   }
   return STITCH_META[baseKind].symbolHalfHeight;
+}
+
+/**
+ * 기호의 반폭 (px) — `symbols.ts` 의 SVG 정의에서 읽은 값.
+ *
+ * 기호는 접선 방향으로 눕혀 그려지므로 (`angle = midAngle + π/2`), 로컬 x 범위가 곧
+ * **원주 방향** 폭이다. 반높이(`symbolHalfHeight`)가 반경 방향인 것과 짝을 이룬다.
+ * 겹침 판정은 두 방향 모두 걸릴 때만 성립한다 — 반경 대역이 갈리면 각도가 붙어도 안 겹친다.
+ */
+const SYMBOL_HALF_WIDTH: Partial<Record<StitchKind, number>> = {
+  MAGIC: 7, CHAIN: 5, SLIP: 2.2, SC: 5, HDC: 5, DC: 5, TR: 5, DTR: 5,
+  INC: 5, DEC: 5, POPCORN: 7, BUBBLE: 7, SKIP: 5, TC: 0, MARKER: 0,
+};
+
+function effectiveSymW(op: Op): number {
+  const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
+  const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
+  return SYMBOL_HALF_WIDTH[baseKind] ?? 5;
 }
 
 /**
@@ -984,6 +1006,245 @@ function recenterStandaloneChains(stitches: PositionedStitch[]): void {
           rs.position = polarToCartesian(rr + delta, Math.atan2(rs.position.y, rs.position.x) + angDelta);
           if (rs.angle !== undefined) rs.angle += angDelta;
         }
+      }
+    }
+  }
+}
+
+// ============================================================
+// 각도 완화 — 겹치는 곳만 최소한으로 벌린다
+// ============================================================
+
+/** 겹침 판정에 더하는 시각적 여유 (px) */
+const RELAX_MARGIN = 1;
+
+/**
+ * 각도상 함께 움직여야 하는 코 묶음.
+ *
+ * 부모-자식이 같은 단에 있으면 (사슬 위에 뜬 코, 사슬 위 SKIP) 각도가 붙어 있어야
+ * 연결선이 비스듬해지지 않는다. 기둥코 세로 스택과 `[...]` 안 사슬 호도 내부 배치가
+ * 이미 확정된 덩어리라 통째로 돈다.
+ */
+interface AngleCluster {
+  members: number[];
+  /** 대표 각도 — 멤버 각도의 원형 평균 */
+  ref: number;
+  /** 멤버별: ref 기준 상대 각도, 반폭/반높이, 반경 */
+  rel: { da: number; hw: number; hh: number; r: number }[];
+}
+
+function normTwoPi(a: number): number {
+  const t = a % (2 * Math.PI);
+  return t < 0 ? t + 2 * Math.PI : t;
+}
+
+function normPi(a: number): number {
+  let t = a;
+  while (t > Math.PI) t -= 2 * Math.PI;
+  while (t < -Math.PI) t += 2 * Math.PI;
+  return t;
+}
+
+/** 한 단의 코들을 "같이 움직여야 하는" 묶음으로 나눈다 */
+function buildAngleClusters(stitches: PositionedStitch[], indices: number[]): AngleCluster[] {
+  const parentOf = new Map<number, number>(); // union-find
+  const find = (x: number): number => {
+    let r = x;
+    while (parentOf.has(r)) r = parentOf.get(r)!;
+    return r;
+  };
+  const union = (a: number, b: number): void => {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parentOf.set(rb, ra);
+  };
+
+  const inRound = new Set(indices);
+  for (const i of indices) {
+    // 같은 단 부모 위에 얹힌 코 — 부모와 각도를 공유한다
+    for (const p of stitches[i]!.parentIndices) {
+      if (inRound.has(p)) union(p, i);
+    }
+  }
+  // 기둥코 세로 스택 / `[...]` 안 사슬 호 — 연속 구간을 한 덩어리로
+  for (let k = 1; k < indices.length; k++) {
+    const a = stitches[indices[k - 1]!]!, b = stitches[indices[k]!]!;
+    if (a.op.turningChain && b.op.turningChain) union(indices[k - 1]!, indices[k]!);
+    if (isSameholeArcChain(a) && isSameholeArcChain(b)) union(indices[k - 1]!, indices[k]!);
+  }
+
+  const groups = new Map<number, number[]>();
+  for (const i of indices) {
+    const s = stitches[i]!;
+    if (s.op.kind === 'MAGIC' || s.op.kind === 'MARKER') continue;
+    if (effectiveSymW(s.op) <= 0) continue; // tc 마커 등 그려지지 않는 op
+    if (Math.hypot(s.position.x, s.position.y) < 1) continue; // 중심
+    const root = find(i);
+    const arr = groups.get(root) ?? [];
+    arr.push(i);
+    groups.set(root, arr);
+  }
+
+  const out: AngleCluster[] = [];
+  for (const members of groups.values()) {
+    let sx = 0, sy = 0;
+    for (const i of members) {
+      const s = stitches[i]!;
+      const a = Math.atan2(s.position.y, s.position.x);
+      sx += Math.cos(a); sy += Math.sin(a);
+    }
+    const ref = Math.atan2(sy, sx);
+    out.push({
+      members,
+      ref,
+      rel: members.map((i) => {
+        const s = stitches[i]!;
+        const r = Math.hypot(s.position.x, s.position.y);
+        return {
+          da: normPi(Math.atan2(s.position.y, s.position.x) - ref),
+          hw: effectiveSymW(s.op),
+          hh: effectiveSymH(s.op),
+          r,
+        };
+      }),
+    });
+  }
+  return out;
+}
+
+/**
+ * 앞선 묶음 A 와 뒤따르는 묶음 B 의 **대표 각도 사이** 최소 간격 (rad).
+ *
+ * 반경 대역이 겹치지 않는 멤버 쌍은 각도가 붙어도 기호가 안 겹치므로 제약이 없다 —
+ * 사슬 위에 얹힌 코가 아래쪽 이웃을 밀어내지 않게 하는 것이 이 조건이다.
+ */
+function requiredAngularGap(a: AngleCluster, b: AngleCluster): number {
+  let need = 0;
+  for (const ma of a.rel) {
+    for (const mb of b.rel) {
+      if (Math.abs(ma.r - mb.r) >= ma.hh + mb.hh) continue; // 반경 대역이 갈린다
+      const rMin = Math.max(1, Math.min(ma.r, mb.r));
+      const g = ma.da + ma.hw / ma.r + (mb.hw / mb.r - mb.da) + RELAX_MARGIN / rMin;
+      if (g > need) need = g;
+    }
+  }
+  return need;
+}
+
+/**
+ * 단조 제약 하의 최소제곱 근사 (PAVA).
+ * `x[i] ≤ x[i+1]` 를 만족하면서 `Σ(x-y)²` 를 최소로 하는 x 를 O(n) 에 구한다.
+ */
+function isotonic(y: number[]): number[] {
+  const sum: number[] = [], cnt: number[] = [];
+  for (const v of y) {
+    sum.push(v); cnt.push(1);
+    while (sum.length > 1) {
+      const n = sum.length;
+      if (sum[n - 2]! / cnt[n - 2]! <= sum[n - 1]! / cnt[n - 1]!) break;
+      sum[n - 2] = sum[n - 2]! + sum[n - 1]!;
+      cnt[n - 2] = cnt[n - 2]! + cnt[n - 1]!;
+      sum.pop(); cnt.pop();
+    }
+  }
+  const out: number[] = [];
+  for (let b = 0; b < sum.length; b++) {
+    const v = sum[b]! / cnt[b]!;
+    for (let k = 0; k < cnt[b]!; k++) out.push(v);
+  }
+  return out;
+}
+
+/**
+ * 한 단 안에서 기호가 겹치는 곳만 최소한으로 벌린다.
+ *
+ * cascade 는 자식을 부모 각도에 그대로 놓는다. 대부분은 그게 옳지만, 같은 단에 코가
+ * 새로 끼어들거나(`1ch`) 한 구멍에 여러 코가 들어가면 그 자리만 각도가 모자란다.
+ * 반면 빼뜨기 구간처럼 여유가 남아도는 곳이 같은 단 안에 있다 — 6단 기준 원주 1445px
+ * 중 필요한 최소 간격의 합은 600px 남짓이다. 전체로는 남는데 국소적으로만 몰린 것이다.
+ *
+ * 그래서 "원하는 자리(= cascade 가 정한 각도)에서 최소한만 벗어나되 이웃과 겹치지 않는"
+ * 배치를 푼다:
+ *
+ *     minimize  Σ (θᵢ - θᵢ_cascade)²
+ *     s.t.      θᵢ₊₁ - θᵢ ≥ gapᵢ
+ *
+ * 제약을 누적 간격만큼 평행이동하면 단조 제약이 되고, PAVA 로 정확해가 O(n) 에 나온다.
+ * 탐색도 반복도 없고, **여유가 있는 구간은 한 톨도 움직이지 않는다** (제약이 비활성이면
+ * 해가 곧 원래 값). 반경은 건드리지 않으므로 도안 크기도 그대로다.
+ *
+ * 원형이라 어딘가는 끊어야 한다 — 여유가 가장 큰 틈에서 끊는다. 원주에 다 못 담는
+ * 단이면 (필요 간격 합 > 2π) 손대지 않는다. 억지로 밀면 오히려 순서가 뒤집힌다.
+ */
+function relaxAngularOverlaps(stitches: PositionedStitch[]): void {
+  const byRound = new Map<number, number[]>();
+  for (let i = 0; i < stitches.length; i++) {
+    const arr = byRound.get(stitches[i]!.roundIndex) ?? [];
+    arr.push(i);
+    byRound.set(stitches[i]!.roundIndex, arr);
+  }
+
+  for (const indices of byRound.values()) {
+    const clusters = buildAngleClusters(stitches, indices);
+    if (clusters.length < 2) continue;
+    clusters.sort((p, q) => normTwoPi(p.ref) - normTwoPi(q.ref));
+    const n = clusters.length;
+
+    // gap[i] = clusters[i] → clusters[i+1] (마지막은 wrap)
+    const gap: number[] = [];
+    const cur: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      gap.push(requiredAngularGap(clusters[i]!, clusters[j]!));
+      cur.push(normTwoPi(clusters[j]!.ref - clusters[i]!.ref));
+    }
+    // 마지막 wrap 간격은 나머지의 나머지 — normTwoPi 로는 한 바퀴가 안 맞는다
+    let acc = 0;
+    for (let i = 0; i < n - 1; i++) acc += cur[i]!;
+    cur[n - 1] = 2 * Math.PI - acc;
+
+    let total = 0;
+    for (const g of gap) total += g;
+    if (total > 2 * Math.PI) continue; // 원주에 못 담는다
+
+    let worst = 0;
+    for (let i = 0; i < n; i++) worst = Math.min(worst, cur[i]! - gap[i]!);
+    if (worst >= -1e-9) continue; // 이미 충분하다 — 아무것도 안 한다
+
+    // 여유가 가장 큰 틈에서 끊는다
+    let cut = 0, bestSlack = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const s = cur[i]! - gap[i]!;
+      if (s > bestSlack) { bestSlack = s; cut = i; }
+    }
+
+    // cut+1 부터 한 바퀴를 직선으로 편다
+    const order: number[] = [];
+    for (let k = 0; k < n; k++) order.push((cut + 1 + k) % n);
+    const pref: number[] = [clusters[order[0]!]!.ref];
+    for (let k = 1; k < n; k++) pref.push(pref[k - 1]! + cur[order[k - 1]!]!);
+    const g: number[] = [];
+    for (let k = 0; k < n - 1; k++) g.push(gap[order[k]!]!);
+
+    // θ 를 누적 간격만큼 당겨 단조 문제로 바꾼다
+    const shift: number[] = [0];
+    for (let k = 1; k < n; k++) shift.push(shift[k - 1]! + g[k - 1]!);
+    const solved = isotonic(pref.map((p, k) => p - shift[k]!));
+
+    // 끊은 자리의 wrap 제약이 깨지면 (드물다) 적용하지 않는다
+    const first = solved[0]! + shift[0]!;
+    const last = solved[n - 1]! + shift[n - 1]!;
+    if (last + gap[cut]! > first + 2 * Math.PI + 1e-9) continue;
+
+    for (let k = 0; k < n; k++) {
+      const c = clusters[order[k]!]!;
+      const delta = solved[k]! + shift[k]! - pref[k]!;
+      if (Math.abs(delta) < 1e-9) continue;
+      for (const i of c.members) {
+        const s = stitches[i]!;
+        const r = Math.hypot(s.position.x, s.position.y);
+        const a = Math.atan2(s.position.y, s.position.x);
+        s.position = polarToCartesian(r, a + delta);
+        if (s.angle !== undefined) s.angle += delta;
       }
     }
   }
