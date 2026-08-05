@@ -149,8 +149,8 @@
   /**
    * 접힌 코멘트 자리에 그리는 쪽지 아이콘.
    *
-   * 도안 메모·단 메모(`CommentPin`)와 같은 ● 기호를 쓰고, 누르면 같은 모양의 팝오버가
-   * 열린다 — 셋 다 "메모"라는 점에서 같으므로 생김새와 조작이 갈릴 이유가 없다.
+   * 메모 아이콘(말풍선)을 쓰고, 누르면 도안 메모·단 메모와 같은 모양의 팝오버가 열린다 —
+   * 셋 다 "메모"라는 점에서 같으므로 생김새와 조작이 갈릴 이유가 없다.
    */
   class CommentWidget extends WidgetType {
     text: string;
@@ -168,7 +168,10 @@
     toDOM() {
       const el = document.createElement('span');
       el.className = 'cm-comment-note';
-      el.textContent = '\u25cf'; // 도안 메모·단 메모 핀과 같은 기호
+      // 메모를 뜻하는 말풍선 — 메모 추가 버튼과 같은 아이콘
+      const icon = document.createElement('i');
+      icon.className = 'fa-regular fa-comment';
+      el.appendChild(icon);
       el.dataset.from = String(this.from);
       el.dataset.to = String(this.to);
       el.dataset.text = this.text;
@@ -207,8 +210,8 @@
   });
 
   // ── 코 메모 팝오버 ──────────────────────────────────────────────
-  /** 도안 메모·단 메모의 기본 색과 맞춘다 — 셋 다 같은 "메모"로 읽히도록 */
-  const STITCH_COMMENT_PIN_COLOR = '#e0a800';
+  /** 메모를 뜻하는 노랑 — 본문 글자를 가리지 않도록 연하게 */
+  const STITCH_COMMENT_PIN_COLOR = '#e8c25c';
 
   let commentFor = $state<
     { from: number; to: number; text: string; top: number; left: number } | null
@@ -485,9 +488,8 @@
               display: 'inline-block',
               margin: '0 2px',
               color: STITCH_COMMENT_PIN_COLOR,
-              fontSize: '13px',
+              fontSize: '12px',
               lineHeight: '1',
-              textShadow: '0 0 1px rgba(0, 0, 0, 0.3)',
               verticalAlign: 'middle',
               cursor: 'pointer',
               transition: 'transform 0.1s',
