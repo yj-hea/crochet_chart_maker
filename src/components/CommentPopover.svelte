@@ -51,6 +51,14 @@
   }
 
   function cancelEdit() {
+    // 아직 한 번도 내용이 채워지지 않은 메모라면 취소는 "안 만들래" 에 가깝다 —
+    // 빈 핀만 남기지 말고 메모째 지운다. 지울 내용이 없으니 확인도 묻지 않는다.
+    // 이미 내용이 있는 메모는 초안만 버린다 (취소가 원본을 지우면 안 된다).
+    if (comment.text.trim() === '') {
+      deleteComment(comment.id);
+      onClose();
+      return;
+    }
     editing = false;
   }
 
