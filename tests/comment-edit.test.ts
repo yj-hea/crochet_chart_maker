@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { scanComments, foldableComments } from '../src/lib/comment-edit';
+import {
+  scanComments,
+  foldableComments,
+  replaceComment,
+  commentLiteral,
+} from '../src/lib/comment-edit';
 import { scanColorTokens } from '../src/lib/color-edit';
 
 describe('코멘트 스캔', () => {
@@ -78,5 +83,31 @@ describe('색 스캔과의 관계', () => {
   it('코멘트 뒤에 오는 색은 정상적으로 잡는다', () => {
     const found = scanColorTokens('2x "메모", 1v:navy');
     expect(found.map((t) => t.color)).toEqual(['#0d47a1']);
+  });
+});
+
+describe('코멘트 고쳐쓰기', () => {
+  const src = '1x "가", 2v';
+  const token = scanComments(src)[0]!;
+
+  it('알맹이를 바꾼다', () => {
+    expect(replaceComment(src, token, '나')).toBe('1x "나", 2v');
+  });
+
+  it('따옴표·역슬래시를 이스케이프한다', () => {
+    const out = replaceComment(src, token, '3" 여유\\끝');
+    expect(out).toBe('1x "3\\" 여유\\\\끝", 2v');
+    // 다시 읽으면 원래 값이 나온다 (왕복)
+    expect(scanComments(out)[0]!.value).toBe('3" 여유\\끝');
+  });
+
+  it('지우면 앞 공백도 같이 걷어낸다', () => {
+    expect(replaceComment(src, token, undefined)).toBe('1x, 2v');
+  });
+
+  it('commentLiteral 은 그대로 다시 파싱된다', () => {
+    for (const t of ['평범', '따옴표 " 하나', '역슬래시 \\ 하나', '']) {
+      expect(scanComments(commentLiteral(t))[0]!.value).toBe(t);
+    }
   });
 });

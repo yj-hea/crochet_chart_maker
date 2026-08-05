@@ -15,7 +15,8 @@
     replaceColorToken,
     setColorInRange,
   } from '$lib/color-edit';
-  import { foldableComments } from '$lib/comment-edit';
+  import { foldableComments, replaceComment } from '$lib/comment-edit';
+  import StitchCommentPopover from './StitchCommentPopover.svelte';
 
   export interface FocusRequest {
     token: number;
@@ -148,8 +149,8 @@
   /**
    * 접힌 코멘트 자리에 그리는 쪽지 아이콘.
    *
-   * 색과 달리 고를 값이 없으므로 팝오버를 띄우지 않는다 — 누르면 그 자리에 커서가
-   * 들어가고, 커서가 들어가면 접기 규칙이 풀려 원래 글자가 나온다.
+   * 도안 메모·단 메모(`CommentPin`)와 같은 ● 기호를 쓰고, 누르면 같은 모양의 팝오버가
+   * 열린다 — 셋 다 "메모"라는 점에서 같으므로 생김새와 조작이 갈릴 이유가 없다.
    */
   class CommentWidget extends WidgetType {
     text: string;
@@ -167,11 +168,11 @@
     toDOM() {
       const el = document.createElement('span');
       el.className = 'cm-comment-note';
+      el.textContent = '\u25cf'; // 도안 메모·단 메모 핀과 같은 기호
       el.dataset.from = String(this.from);
       el.dataset.to = String(this.to);
-      el.title = this.text
-        ? `${this.text} — 클릭하여 고치기`
-        : '빈 코멘트 — 클릭하여 고치기';
+      el.dataset.text = this.text;
+      el.title = this.text || '코 메모';
       return el;
     }
     ignoreEvent() { return false; }
@@ -204,6 +205,50 @@
     },
     provide: (f) => EditorView.decorations.from(f),
   });
+
+  // ── 코 메모 팝오버 ──────────────────────────────────────────────
+  /** 도안 메모·단 메모의 기본 색과 맞춘다 — 셋 다 같은 "메모"로 읽히도록 */
+  const STITCH_COMMENT_PIN_COLOR = '#e0a800';
+
+  let commentFor = $state<
+    { from: number; to: number; text: string; top: number; left: number } | null
+  >(null);
+
+  function openCommentPopover(from: number, to: number, text: string, anchor: HTMLElement) {
+    const rect = anchor.getBoundingClientRect();
+    const popW = 260;
+    const margin = 8;
+    let left = rect.left;
+    let top = rect.bottom + 4;
+    if (left + popW + margin > window.innerWidth) {
+      left = Math.max(margin, window.innerWidth - popW - margin);
+    }
+    if (top + 150 > window.innerHeight) top = Math.max(margin, rect.top - 150 - 4);
+    commentFor = { from, to, text, top, left };
+  }
+
+  /** 팝오버 밖을 누르면 닫는다 (도안 메모·단 메모와 같은 동작) */
+  function handleWindowClickForComment(e: MouseEvent) {
+    if (!commentFor) return;
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.('.stitch-comment-fixed')) return;
+    if (t?.closest?.('.cm-comment-note')) return;
+    commentFor = null;
+  }
+
+  /** 팝오버 결과를 소스에 반영 — `undefined` 면 메모를 지운다 */
+  function applyCommentEdit(text: string | undefined) {
+    const target = commentFor;
+    if (!target || !view) return;
+    const next = replaceComment(
+      view.state.doc.toString(),
+      { start: target.from, end: target.to },
+      text,
+    );
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } });
+    onChange(next);
+    commentFor = null;
+  }
 
   // ── 팔레트 열기 상태 ────────────────────────────────────────────
   /**
@@ -397,15 +442,14 @@
           }),
           EditorView.domEventHandlers({
             focus: () => { onFocus?.(); },
-            mousedown: (e, v) => {
+            mousedown: (e) => {
               const note = (e.target as HTMLElement | null)?.closest?.('.cm-comment-note');
               if (note instanceof HTMLElement) {
-                // 코멘트는 고를 값이 없다 — 글자 안으로 커서를 넣으면 접기가 풀린다
-                e.preventDefault();
-                const at = Number(note.dataset.from);
-                if (!Number.isFinite(at)) return false;
-                v.dispatch({ selection: { anchor: at + 1 } });
-                v.focus();
+                e.preventDefault(); // 클릭으로 커서가 튀지 않도록
+                const from = Number(note.dataset.from);
+                const to = Number(note.dataset.to);
+                if (!Number.isFinite(from) || !Number.isFinite(to)) return false;
+                openCommentPopover(from, to, note.dataset.text ?? '', note);
                 return true;
               }
               const el = (e.target as HTMLElement | null)?.closest?.('.cm-color-swatch');
@@ -436,22 +480,19 @@
               cursor: 'pointer',
             },
             '.cm-color-swatch:hover': { transform: 'scale(1.25)' },
-            // 코멘트(`"..."`)를 대신 그리는 쪽지 — 내용은 툴팁으로 본다
+            // 코 메모(`"..."`)를 대신 그리는 핀 — 도안 메모·단 메모와 같은 모양
             '.cm-comment-note': {
               display: 'inline-block',
-              width: '10px',
-              height: '9px',
               margin: '0 2px',
-              borderRadius: '2px 2px 2px 0',
-              border: '1px solid rgba(0,0,0,0.3)',
-              backgroundColor: 'rgba(0,0,0,0.05)',
+              color: STITCH_COMMENT_PIN_COLOR,
+              fontSize: '13px',
+              lineHeight: '1',
+              textShadow: '0 0 1px rgba(0, 0, 0, 0.3)',
               verticalAlign: 'middle',
               cursor: 'pointer',
+              transition: 'transform 0.1s',
             },
-            '.cm-comment-note:hover': {
-              backgroundColor: 'rgba(0,0,0,0.14)',
-              transform: 'scale(1.2)',
-            },
+            '.cm-comment-note:hover': { transform: 'scale(1.2)' },
             '.cm-error': {
               textDecoration: 'underline wavy #d33',
               textDecorationThickness: '2px',
@@ -561,6 +602,8 @@
   >×</button>
 </div>
 
+<svelte:window onclick={handleWindowClickForComment} />
+
 <div class="caret-anchor" bind:this={caretAnchor}></div>
 
 {#if paletteFor}
@@ -574,7 +617,23 @@
   />
 {/if}
 
+{#if commentFor}
+  <div class="stitch-comment-fixed" style="top: {commentFor.top}px; left: {commentFor.left}px;">
+    <StitchCommentPopover
+      text={commentFor.text}
+      onSave={(t) => applyCommentEdit(t)}
+      onDelete={() => applyCommentEdit(undefined)}
+      onClose={() => (commentFor = null)}
+    />
+  </div>
+{/if}
+
 <style>
+  .stitch-comment-fixed {
+    position: fixed;
+    z-index: 1000;
+  }
+
   /* `:` 입력 시 팝오버를 캐럿 위치에 띄우기 위한 0×0 기준점 */
   .caret-anchor {
     position: fixed;

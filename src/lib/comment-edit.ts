@@ -46,6 +46,30 @@ export function scanComments(source: string): CommentToken[] {
   return out;
 }
 
+/** 소스에 적어 넣을 코멘트 표기 — 따옴표와 역슬래시를 이스케이프한다 */
+export function commentLiteral(text: string): string {
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * 코멘트 하나를 고쳐 쓰거나(문자열) 지운다(undefined).
+ *
+ * 지울 때는 앞의 공백도 같이 걷어낸다 — `1v "메모"` 에서 코멘트만 빼면
+ * `1v ` 처럼 꼬리 공백이 남는다.
+ */
+export function replaceComment(
+  source: string,
+  token: { start: number; end: number },
+  text: string | undefined,
+): string {
+  if (text === undefined) {
+    let at = token.start;
+    while (at > 0 && (source[at - 1] === ' ' || source[at - 1] === '\t')) at--;
+    return source.slice(0, at) + source.slice(token.end);
+  }
+  return source.slice(0, token.start) + commentLiteral(text) + source.slice(token.end);
+}
+
 /**
  * 화면에서 쪽지 아이콘으로 접을 코멘트들.
  *
