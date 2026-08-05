@@ -15,6 +15,7 @@
     replaceColorToken,
     setColorInRange,
   } from '$lib/color-edit';
+  import { foldableComments } from '$lib/comment-edit';
 
   export interface FocusRequest {
     token: number;
@@ -144,23 +145,62 @@
     ignoreEvent() { return false; }
   }
 
-  /** 현재 문서·커서 상태에서 접을 색 표기들을 계산 */
-  function buildSwatches(state: EditorState): DecorationSet {
-    const sel = state.selection.main;
-    const ranges = foldableColorTokens(state.doc.toString(), sel.from, sel.to)
-      .map((t) =>
-        Decoration.replace({ widget: new SwatchWidget(t.color!, t.start, t.end) })
-          .range(t.start, t.end),
-      );
-    return Decoration.set(ranges);
+  /**
+   * 접힌 코멘트 자리에 그리는 쪽지 아이콘.
+   *
+   * 색과 달리 고를 값이 없으므로 팝오버를 띄우지 않는다 — 누르면 그 자리에 커서가
+   * 들어가고, 커서가 들어가면 접기 규칙이 풀려 원래 글자가 나온다.
+   */
+  class CommentWidget extends WidgetType {
+    text: string;
+    from: number;
+    to: number;
+    constructor(text: string, from: number, to: number) {
+      super();
+      this.text = text;
+      this.from = from;
+      this.to = to;
+    }
+    eq(other: CommentWidget) {
+      return other.text === this.text && other.from === this.from && other.to === this.to;
+    }
+    toDOM() {
+      const el = document.createElement('span');
+      el.className = 'cm-comment-note';
+      el.dataset.from = String(this.from);
+      el.dataset.to = String(this.to);
+      el.title = this.text
+        ? `${this.text} — 클릭하여 고치기`
+        : '빈 코멘트 — 클릭하여 고치기';
+      return el;
+    }
+    ignoreEvent() { return false; }
   }
 
-  const swatchField = StateField.define<DecorationSet>({
-    create: (state) => buildSwatches(state),
+  /** 현재 문서·커서 상태에서 접을 것들(색 표기·코멘트)을 계산 */
+  function buildFolds(state: EditorState): DecorationSet {
+    const sel = state.selection.main;
+    const doc = state.doc.toString();
+    const ranges = [
+      ...foldableColorTokens(doc, sel.from, sel.to).map((t) =>
+        Decoration.replace({ widget: new SwatchWidget(t.color!, t.start, t.end) })
+          .range(t.start, t.end),
+      ),
+      ...foldableComments(doc, sel.from, sel.to).map((c) =>
+        Decoration.replace({ widget: new CommentWidget(c.value, c.start, c.end) })
+          .range(c.start, c.end),
+      ),
+    ];
+    // 색과 코멘트가 섞이므로 위치 순 정렬이 필요하다
+    return Decoration.set(ranges, true);
+  }
+
+  const foldField = StateField.define<DecorationSet>({
+    create: (state) => buildFolds(state),
     update(deco, tr) {
       // 글자나 커서가 움직였을 때만 다시 계산
       if (!tr.docChanged && !tr.selection) return deco;
-      return buildSwatches(tr.state);
+      return buildFolds(tr.state);
     },
     provide: (f) => EditorView.decorations.from(f),
   });
@@ -270,7 +310,7 @@
         extensions: [
           history(),
           errorField,
-          swatchField,
+          foldField,
           EditorView.lineWrapping,
           keymap.of([
             ...historyKeymap,
@@ -357,7 +397,17 @@
           }),
           EditorView.domEventHandlers({
             focus: () => { onFocus?.(); },
-            mousedown: (e) => {
+            mousedown: (e, v) => {
+              const note = (e.target as HTMLElement | null)?.closest?.('.cm-comment-note');
+              if (note instanceof HTMLElement) {
+                // 코멘트는 고를 값이 없다 — 글자 안으로 커서를 넣으면 접기가 풀린다
+                e.preventDefault();
+                const at = Number(note.dataset.from);
+                if (!Number.isFinite(at)) return false;
+                v.dispatch({ selection: { anchor: at + 1 } });
+                v.focus();
+                return true;
+              }
               const el = (e.target as HTMLElement | null)?.closest?.('.cm-color-swatch');
               if (!(el instanceof HTMLElement)) return false;
               e.preventDefault(); // 스와치 클릭으로 커서가 튀지 않도록
@@ -386,6 +436,22 @@
               cursor: 'pointer',
             },
             '.cm-color-swatch:hover': { transform: 'scale(1.25)' },
+            // 코멘트(`"..."`)를 대신 그리는 쪽지 — 내용은 툴팁으로 본다
+            '.cm-comment-note': {
+              display: 'inline-block',
+              width: '10px',
+              height: '9px',
+              margin: '0 2px',
+              borderRadius: '2px 2px 2px 0',
+              border: '1px solid rgba(0,0,0,0.3)',
+              backgroundColor: 'rgba(0,0,0,0.05)',
+              verticalAlign: 'middle',
+              cursor: 'pointer',
+            },
+            '.cm-comment-note:hover': {
+              backgroundColor: 'rgba(0,0,0,0.14)',
+              transform: 'scale(1.2)',
+            },
             '.cm-error': {
               textDecoration: 'underline wavy #d33',
               textDecorationThickness: '2px',

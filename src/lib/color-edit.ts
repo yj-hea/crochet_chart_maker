@@ -12,6 +12,7 @@
 import type { ParsedRound, SequenceNode, StitchNode, AstNode } from '$lib/parser/ast';
 import type { SourceRange } from '$lib/model/errors';
 import { NAMED_COLORS, resolveColorValue } from '$lib/model/colors';
+import { scanComments } from '$lib/comment-edit';
 
 /** 소스에 적어 넣을 색 표기 — 이름이 있으면 이름이 읽기 좋다 */
 export function colorLiteral(hex: string): string {
@@ -78,15 +79,16 @@ export interface ColorToken {
  */
 export function scanColorTokens(source: string): ColorToken[] {
   const out: ColorToken[] = [];
+  // 주석 구간은 토크나이저와 같은 규칙으로 구한다 — `\"` 이스케이프까지 맞아야
+  // `2x "3\" 여유"` 안의 `:` 를 색으로 오인하지 않는다.
+  const comments = scanComments(source);
+  let ci = 0;
   let i = 0;
   while (i < source.length) {
+    while (ci < comments.length && comments[ci]!.end <= i) ci++;
+    const c = comments[ci];
+    if (c && c.start <= i) { i = c.end; continue; }
     const ch = source[i]!;
-    if (ch === '"') {
-      // 주석 문자열 통째로 건너뛰기 (닫는 따옴표가 없으면 끝까지)
-      const close = source.indexOf('"', i + 1);
-      i = close < 0 ? source.length : close + 1;
-      continue;
-    }
     if (ch !== ':') { i++; continue; }
 
     const start = i;
