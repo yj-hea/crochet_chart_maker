@@ -168,9 +168,9 @@
     toDOM() {
       const el = document.createElement('span');
       el.className = 'cm-comment-note';
-      // 채운 말풍선 — 도안 메모·단 메모 핀과 같다 (빈 말풍선은 '메모 추가' 버튼)
+      // 선 말풍선 — 도안 메모·단 메모 핀과 같다. 메모가 있다는 신호는 선 색이다.
       const icon = document.createElement('i');
-      icon.className = 'fa-solid fa-comment';
+      icon.className = 'fa-regular fa-comment';
       el.appendChild(icon);
       el.dataset.from = String(this.from);
       el.dataset.to = String(this.to);

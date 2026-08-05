@@ -5,13 +5,14 @@
   interface Props {
     comment: Comment;
     /**
-     * 아이콘 클래스. 기본은 **채운** 말풍선 — 메모 추가 버튼(`fa-regular fa-comment`)이
-     * 빈 말풍선이라, 채움 여부로 "이미 메모가 있다 / 새로 단다" 가 구분된다.
+     * 아이콘 클래스. 기본은 **선** 말풍선 — 메모가 있다는 신호는 모양이 아니라
+     * **선 색**이다 (메모에 지정한 색이 그대로 테두리에 실린다).
+     * 메모 추가 버튼은 같은 모양에 기본 글자색이라, 색만으로 구분된다.
      */
     icon?: string;
     size?: number;
   }
-  let { comment, icon = 'fa-solid fa-comment', size = 13 }: Props = $props();
+  let { comment, icon = 'fa-regular fa-comment', size = 13 }: Props = $props();
 
   let open = $state(false);
   let pinEl: HTMLButtonElement | undefined = $state();
