@@ -4,16 +4,15 @@
    *
    * 두 묶음으로 나뉜다.
    *
-   * **기본 배경색** — 코를 칠하는 색이 아니라 도안의 바탕:
+   * **표시 색** (점선) — 실이 아니라 도안을 그리는 색. 본문을 건드리지 않는다:
    *   빈칸 — 코가 없는 자리
    *   칸   — 기호가 있는 모든 칸의 배경
+   *   기호 — 실 색을 지정하지 않은 코를 그리는 잉크
    *
-   * **배색** — 실 색:
-   *   기호 — 실 색을 지정하지 않은 코의 색 (= 기본 실 색)
-   *   그 뒤 — 본문에 `:색` 으로 적힌 실 색들. 바꾸면 **도안 전체**에서 그 색으로
-   *           칠한 코가 한 번에 바뀐다 (소스 텍스트를 직접 치환 — 별칭 문법 불필요)
-   *
-   * 점선 테두리 = 표시 옵션이라 본문을 건드리지 않는다는 뜻.
+   * **배색** — 본문에 `:색` 으로 적힌 실 색들. 바꾸면 **도안 전체**에서 그 색으로
+   * 칠한 코가 한 번에 바뀐다 (소스 텍스트를 직접 치환 — 별칭 문법 불필요).
+   * 앞의 🪣 칩은 **아직 배색이 없는 코들**이고, 색을 고르면 그 코들에 한꺼번에
+   * 배색이 붙어 이 목록에 칩이 하나 생긴다.
    */
   import {
     usedColors,
@@ -36,8 +35,8 @@
   type Target = 'empty' | 'main' | 'symbol' | 'yarn' | 'assign';
   let editing = $state<{ kind: Target; color: string; anchor: HTMLElement } | null>(null);
 
-  /** 도안의 바탕 — 코를 칠하는 색이 아니다 */
-  const backgroundChips = $derived([
+  /** 실이 아니라 도안을 그리는 색 — 본문을 건드리지 않는다 */
+  const displayChips = $derived([
     {
       kind: 'empty' as const, label: '빈칸', color: $emptyColor,
       title: `빈칸 색 (${$emptyColor}) — 코가 없는 자리 (대바늘 빈칸 / 코바늘 바탕)`,
@@ -45,6 +44,10 @@
     {
       kind: 'main' as const, label: '칸', color: $mainColor,
       title: `칸 색 (${$mainColor}) — 기호가 있는 모든 칸의 배경`,
+    },
+    {
+      kind: 'symbol' as const, label: '기호', color: $symbolColor,
+      title: `기호 색 (${$symbolColor}) — 실 색을 지정하지 않은 코를 그리는 잉크`,
     },
   ]);
 
@@ -83,8 +86,8 @@
 </script>
 
 <div class="pattern-colors">
-  <!-- 기본 배경색 -->
-  {#each backgroundChips as chip (chip.kind)}
+  <!-- 표시 색 — 빈칸 / 칸 / 기호 -->
+  {#each displayChips as chip (chip.kind)}
     <button
       type="button"
       class="chip fixed"
@@ -98,25 +101,16 @@
 
   <span class="divider" aria-hidden="true"></span>
 
-  <!-- 배색 — 기본 실 색(기호) 부터 -->
-  <button
-    type="button"
-    class="chip fixed"
-    onclick={(e) => (editing = { kind: 'symbol', color: $symbolColor, anchor: e.currentTarget })}
-    title="기본 실 색 ({$symbolColor}) — 실 색을 지정하지 않은 {$uncoloredCount}코"
-  >
-    <span class="dot" style="background: {$symbolColor}"></span>
-    <span class="count">기호 {$uncoloredCount}</span>
-  </button>
+  <!-- 배색 — 아직 색이 없는 코들. 색을 고르면 목록에 칩이 하나 생긴다 -->
   {#if $uncoloredCount > 0}
     <button
       type="button"
-      class="assign-btn"
+      class="chip assign"
       onclick={(e) => (editing = { kind: 'assign', color: $symbolColor, anchor: e.currentTarget })}
-      title="색 없는 {$uncoloredCount}코에 실 색 지정 — 본문에 :색 을 넣어 정식 실 색으로 만듭니다"
-      aria-label="색 없는 코에 실 색 지정"
+      title="아직 배색이 없는 {$uncoloredCount}코 — 색을 고르면 한꺼번에 배색이 붙습니다"
     >
-      <i class="fa-solid fa-fill-drip"></i>
+      <span class="dot empty-dot"></span>
+      <span class="count">{$uncoloredCount}</span>
     </button>
   {/if}
   {#each $usedColors as entry (entry.color)}
@@ -174,19 +168,15 @@
     background: var(--bg-hover, #f4f1ec);
     border-color: var(--border, #e2e2e2);
   }
-  /* 색 없는 코에 실 색을 넣는 동작 — 색을 고르는 칩이 아니라 버튼이다 */
-  .assign-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px;
-    margin-left: -2px;
-    border: none;
-    border-radius: 50%;
+  /* 아직 배색이 없는 코들 — 색이 안 채워진 빈 동그라미.
+     색을 고르면 이 자리가 채워진 원반으로 목록에 남는다. */
+  .chip.assign { border-style: dashed; }
+  .empty-dot {
     background: transparent;
-    color: var(--text-muted, #999);
-    font-size: 10px;
-    cursor: pointer;
+    border-style: dashed;
+    border-color: var(--text-muted, #999);
   }
-  .assign-btn:hover { background: var(--bg-hover, #f4f1ec); color: var(--text, #333); }
+  .chip.assign:hover .empty-dot { border-color: var(--text, #333); }
   .dot {
     width: 12px; height: 12px;
     border-radius: 50%;

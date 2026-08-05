@@ -284,7 +284,7 @@
           ? '실 색으로 코 자리를 채우는 중 (기호는 대비색). 클릭: 기호 선 색으로'
           : '실 색을 기호 선에 칠하는 중. 클릭: 코 자리 채우기로'}
       >
-        <i class="fa-solid fa-{$fillMode ? 'fill-drip' : 'pen-nib'}"></i>
+        <span class="mode-dot" class:filled={$fillMode}></span>
         {$fillMode ? '배경색' : '기호색'}
       </button>
       {#if showFlatTools}
@@ -392,6 +392,15 @@
     align-items: center;
     background: var(--bg-warm);
   }
+  /* 배경색(채운 사각) / 기호색(테두리만) — 아이콘 폰트에 의존하지 않는다 */
+  .mode-dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+  .mode-dot.filled { background: currentColor; }
   .btn-group {
     display: inline-flex;
     flex-wrap: nowrap;
