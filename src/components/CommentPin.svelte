@@ -4,10 +4,14 @@
 
   interface Props {
     comment: Comment;
+    /**
+     * 아이콘 클래스. 기본은 **채운** 말풍선 — 메모 추가 버튼(`fa-regular fa-comment`)이
+     * 빈 말풍선이라, 채움 여부로 "이미 메모가 있다 / 새로 단다" 가 구분된다.
+     */
     icon?: string;
     size?: number;
   }
-  let { comment, icon = '●', size = 14 }: Props = $props();
+  let { comment, icon = 'fa-solid fa-comment', size = 13 }: Props = $props();
 
   let open = $state(false);
   let pinEl: HTMLButtonElement | undefined = $state();
@@ -79,7 +83,7 @@
   onclick={toggle}
   aria-label="코멘트"
   title={comment.text.slice(0, 60) || '코멘트'}
->{icon}</button>
+><i class={icon}></i></button>
 
 {#if open}
   <div
