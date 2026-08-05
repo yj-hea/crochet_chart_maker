@@ -232,3 +232,45 @@ describe('사슬 위 한 코 그룹', () => {
     expect(Math.abs(ca - sa)).toBeLessThan(1e-9);
   });
 });
+
+describe('간격재 사슬의 순서', () => {
+  /** 각도를 소스 순서대로 편 값 — 한 바퀴 도는 것을 고려해 단조 증가하도록 unwrap */
+  function unwrappedAngles(layout: ReturnType<typeof layoutFromSources>, roundIndex: number) {
+    const row = layout.stitches.filter((s) => s.roundIndex === roundIndex);
+    const out: Array<{ kind: string; a: number }> = [];
+    for (const s of row) {
+      let a = Math.atan2(s.position.y, s.position.x);
+      const prev = out[out.length - 1]?.a;
+      if (prev !== undefined) {
+        while (a - prev > Math.PI) a -= 2 * Math.PI;
+        while (prev - a > Math.PI) a += 2 * Math.PI;
+      }
+      out.push({ kind: s.op.kind, a });
+    }
+    return out;
+  }
+
+  /**
+   * 사슬은 부모가 없어 배치 시점의 직전 코 기준으로 놓이는데, 그 뒤 한 코 그룹이
+   * 겹침 보정으로 바깥 호에 펼쳐지면서 사슬을 지나쳐 버렸다.
+   * 그러면 사슬이 그룹 한가운데에 박히고 그 위의 skip 이 그룹 기호를 침범한다.
+   */
+  it('그룹 뒤의 간격재 사슬이 그룹 안으로 끼어들지 않는다', () => {
+    const layout = layoutFromSources([
+      'mr, 10t', '10vt', '(1t, 1vt)*10',
+      '10sl, O, skip(1), [1f, 2e], [2e], O, skip(1), 10sl',
+    ]);
+    const seq = unwrappedAngles(layout, 4);
+    const groupEnd = seq.map((x, i) => ({ ...x, i })).filter((x) => x.kind === 'TR').pop()!;
+    const trailingChain = seq.map((x, i) => ({ ...x, i })).filter((x) => x.kind === 'CHAIN').pop()!;
+    // 소스 순서상 사슬이 그룹보다 뒤 → 각도도 그룹을 지나야 한다
+    expect(trailingChain.i).toBeGreaterThan(groupEnd.i);
+    expect(Math.abs(trailingChain.a)).not.toBeCloseTo(Math.abs(groupEnd.a), 3);
+    // 배열 순서와 각도 순서가 일치 (단조 진행)
+    const dir = Math.sign(seq[1]!.a - seq[0]!.a);
+    for (let i = 1; i < seq.length; i++) {
+      const step = (seq[i]!.a - seq[i - 1]!.a) * dir;
+      expect(step, `${seq[i - 1]!.kind}→${seq[i]!.kind} 순서 역전`).toBeGreaterThanOrEqual(-1e-9);
+    }
+  });
+});

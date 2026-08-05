@@ -127,6 +127,9 @@ export function layoutCircular(
   // 4) 사슬 호: 연속된 CHAIN 만 대상, top-to-top anchor (기둥코는 제외)
   repositionChainArcs(stitches);
 
+  // 4.5) 간격재 사슬을 이웃 사이로 되돌린다 (앞선 재배치로 순서가 어긋났을 수 있음)
+  repositionSpacerChains(stitches);
+
   // 5) 마커 위치 재계산 (후처리로 stitch 위치가 바뀌었을 수 있음)
   for (const m of roundMarkers) {
     const mExt = m as RoundMarker & { _stitchIdx?: number };
@@ -853,6 +856,84 @@ function repositionTurningChainColumns(stitches: PositionedStitch[]): void {
 }
 
 // ============================================================
+/**
+ * 간격재 사슬(뒤에 `skip` 만 붙는 standalone chain) 을 이웃 코 **사이**로 되돌린다.
+ *
+ * 사슬은 부모가 없어 배치 시점의 "직전 코 각도 + 한 칸" 으로 놓인다. 그런데 그 뒤에
+ * 한 코 그룹이 겹침 보정으로 바깥 호에 다시 펼쳐지면서 사슬을 **지나쳐** 버리는 일이
+ * 생긴다. 그러면 소스 순서와 화면 순서가 어긋나 사슬이 그룹 한가운데에 박히고,
+ * 사슬 위에 얹힌 skip 이 그룹의 긴 기호를 침범한다.
+ *
+ * 모든 재배치가 끝난 뒤 사슬을 앞뒤 이웃의 중간 각도로 옮겨 순서를 회복한다.
+ * 반지름은 건드리지 않는다 — 링 위치는 이미 맞다.
+ */
+function repositionSpacerChains(stitches: PositionedStitch[]): void {
+  const byRound = new Map<number, number[]>();
+  stitches.forEach((s, i) => {
+    const arr = byRound.get(s.roundIndex);
+    if (arr) arr.push(i);
+    else byRound.set(s.roundIndex, [i]);
+  });
+
+  for (const indices of byRound.values()) {
+    // 이 사슬을 소비하는 같은 단 코들 (skip 뿐이면 간격재로 본다)
+    const consumers = new Map<number, number[]>();
+    for (const i of indices) {
+      for (const p of stitches[i]!.parentIndices) {
+        if (stitches[p]!.roundIndex !== stitches[i]!.roundIndex) continue;
+        const arr = consumers.get(p);
+        if (arr) arr.push(i);
+        else consumers.set(p, [i]);
+      }
+    }
+
+    const isSpacer = (i: number): boolean => {
+      const s = stitches[i]!;
+      if (s.op.kind !== 'CHAIN' || s.op.inSameHoleGroup || s.op.turningChain) return false;
+      const users = consumers.get(i) ?? [];
+      // 소비자가 없거나 전부 SKIP 이면 "뜨지 않는 사슬" = 간격재
+      return users.every((u) => stitches[u]!.op.kind === 'SKIP');
+    };
+    /** 순서 기준이 되는 코 — 간격재 사슬과 그 위 skip 은 제외 */
+    const isAnchor = (i: number): boolean => {
+      const k = stitches[i]!.op.kind;
+      if (k === 'MAGIC' || k === 'SKIP') return false;
+      return !isSpacer(i);
+    };
+
+    for (let pos = 0; pos < indices.length; pos++) {
+      const ci = indices[pos]!;
+      if (!isSpacer(ci)) continue;
+
+      let prev: PositionedStitch | undefined;
+      for (let p = pos - 1; p >= 0; p--) {
+        if (isAnchor(indices[p]!)) { prev = stitches[indices[p]!]!; break; }
+      }
+      let next: PositionedStitch | undefined;
+      for (let n = pos + 1; n < indices.length; n++) {
+        if (isAnchor(indices[n]!)) { next = stitches[indices[n]!]!; break; }
+      }
+      if (!prev || !next) continue;
+
+      const a0 = Math.atan2(prev.position.y, prev.position.x);
+      let a1 = Math.atan2(next.position.y, next.position.x);
+      // 한 바퀴를 넘어가며 도는 각도라 ±π 안으로 펴고 중간값을 잡는다
+      while (a1 - a0 > Math.PI) a1 -= 2 * Math.PI;
+      while (a0 - a1 > Math.PI) a1 += 2 * Math.PI;
+      const mid = (a0 + a1) / 2;
+
+      const place = (s: PositionedStitch) => {
+        const r = Math.hypot(s.position.x, s.position.y);
+        s.position = { x: r * Math.cos(mid), y: r * Math.sin(mid) };
+        if (s.angle !== undefined) s.angle = mid + Math.PI / 2;
+      };
+      place(stitches[ci]!);
+      // 그 사슬 위에 얹힌 skip 도 같이 옮긴다
+      for (const u of consumers.get(ci) ?? []) place(stitches[u]!);
+    }
+  }
+}
+
 // 사슬 호(arc) 재배치 — 순수 CHAIN 연속만, top-to-top
 // ============================================================
 
