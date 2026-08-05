@@ -28,6 +28,7 @@ import type {
   PositionedMarker,
 } from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
+import type { StitchKind } from '$lib/model/stitch-kind';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
 import { FLAT_CELL_WIDTH } from '$lib/layout/constants';
 import {
@@ -439,14 +440,64 @@ function renderTallLegInline(n: number, fanAngleDeg: number, isInc: boolean): st
   return `<g transform="rotate(${fmt(fanAngleDeg)} 0 ${-symH}) scale(1 -1)">${parts.join('')}</g>`;
 }
 
-// V^2 의 각 leg 가 sym-INC 정적 기호와 비슷한 너비를 갖도록.
-// step 이 legs 간 각도. V^2 는 ±step/2, V^N 은 ±(N-1)*step/2.
-// 팁이 너무 벌어지지 않도록 total spread 를 90° 이하로 캡.
-function fanStep(expansion: number): number {
-  const base = 60; // V^2 의 양쪽 legs 간 각도 (≈ sym-INC 너비)
-  const maxTotal = 90; // V^N 의 최대 총 spread
-  if (expansion <= 2) return base;
-  return Math.min(base, maxTotal / (expansion - 1));
+/**
+ * V/A 부채의 leg 하나당 벌어지는 각도 (deg).
+ *
+ * leg 는 anchor 를 중심으로 회전하고 길이가 `2·symH` 이므로, **같은 각도라도 키가 큰
+ * 코일수록 팁이 훨씬 멀리 벌어진다.** 예전에는 60° 고정이라 짧은뜨기(symH 5)는 팁 폭
+ * 10px 로 알맞았지만 두길긴뜨기(symH 11)는 22px 까지 퍼져, V 로 모이지 않고 부채처럼
+ * 납작해졌다.
+ *
+ * 그래서 각도가 아니라 **팁 폭**을 기준으로 삼는다: 이웃 leg 팁 사이가 코 한 칸
+ * (`FAN_TIP_SPREAD`) 이 되도록 역산한다. 키와 무관하게 V 모양이 일정해지고,
+ * 짧은뜨기 V^2 는 예전 60° 와 정확히 같은 값이 나온다 (2·asin(5/10) = 60°).
+ */
+const FAN_TIP_SPREAD = 10;
+
+/**
+ * `leg-*` 기호가 실제로 그려지는 반길이 (`symbols.ts` 의 y 좌표).
+ *
+ * `STITCH_META.symbolHalfHeight` 와 **다르다** — 그쪽은 여백을 포함한 레이아웃용 값이다
+ * (SC 3.5 vs 5, DC 10.5 vs 9, TR 14 vs 11). 부채는 leg 의 **바닥 끝**을 중심으로 돌려야
+ * 끝이 한 점에 모여 V 가 되므로, 회전 중심과 각도 계산에는 이 값을 써야 한다.
+ */
+const LEG_HALF_LENGTH: Partial<Record<StitchKind, number>> = {
+  SC: 5, HDC: 7, DC: 9, TR: 11, DTR: 13,
+};
+
+function legHalfLength(baseKind: StitchKind, yarnOverCount?: number): number {
+  if ((baseKind === 'TR' || baseKind === 'DTR') && yarnOverCount !== undefined && yarnOverCount >= 4) {
+    return 9 + 2 * (yarnOverCount - 1); // 동적 렌더 leg 는 자기 길이가 곧 중심
+  }
+  return LEG_HALF_LENGTH[baseKind] ?? 5;
+}
+
+function fanStep(expansion: number, legHalf: number): number {
+  const n = Math.max(2, expansion);
+  const legLen = 2 * legHalf;
+  if (legLen < 0.001) return 0;
+  const halfSpread = ((n - 1) * FAN_TIP_SPREAD) / 2;
+  // 너무 짧은 leg 에서 팁이 뒤로 젖혀지지 않도록 바깥 leg 각도를 75° 로 캡
+  const outer = Math.min((75 * Math.PI) / 180, Math.asin(Math.min(1, halfSpread / legLen)));
+  return ((2 * outer) / (n - 1)) * (180 / Math.PI);
+}
+
+/**
+ * V/A 부채 기호의 반폭 (px) — 팁이 벌어진 만큼 + leg 상단 cap 의 절반.
+ * 겹침 계산이 쓰는 값이라 렌더러와 같은 기하에서 나와야 한다.
+ */
+export function fanHalfWidth(
+  expansion: number,
+  baseKind: StitchKind,
+  yarnOverCount?: number,
+): number {
+  const n = Math.max(2, expansion);
+  const legHalf = legHalfLength(baseKind, yarnOverCount);
+  const step = (fanStep(n, legHalf) * Math.PI) / 180;
+  const tip = 2 * legHalf * Math.sin((step * (n - 1)) / 2);
+  // 짧은뜨기 leg 는 민 선이지만 긴뜨기 계열은 상단에 ±4 가로 cap 이 있다
+  const cap = baseKind === 'SC' || baseKind === 'SLIP' ? 0 : 4;
+  return tip + cap;
 }
 
 function renderFanStitch(
@@ -456,11 +507,12 @@ function renderFanStitch(
   const base = s.op.baseKind ?? 'SC';
   const count = Math.max(2, s.op.expansion);
   const isInc = s.op.kind === 'INC';
-  const step = fanStep(count);
   const yoc = s.op.yarnOverCount;
   // TR/DTR 에서 yarn-over 수가 4 이상이면 leg 도 동적 렌더
   const useInlineLeg = (base === 'TR' || base === 'DTR') && yoc !== undefined && yoc >= 4;
-  const symH = useInlineLeg ? 9 + 2 * (yoc - 1) : STITCH_META[base].symbolHalfHeight;
+  // 회전 중심 = leg 의 바닥 끝. 여기서만 끝이 한 점에 모여 V 가 된다.
+  const symH = legHalfLength(base, yoc);
+  const step = fanStep(count, symH);
   const legSym = `leg-${base}`;
 
   const legs: string[] = [];

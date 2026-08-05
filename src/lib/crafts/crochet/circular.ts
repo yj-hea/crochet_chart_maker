@@ -14,6 +14,7 @@ import type { StitchKind } from '$lib/model/stitch-kind';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/layout/types';
 import { FIRST_RING_RADIUS } from '$lib/layout/constants';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
+import { fanHalfWidth } from '$lib/crafts/crochet/svg';
 import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
 import { extractMarkers, placeCircularMarkers } from '$lib/layout/markers';
 
@@ -219,6 +220,9 @@ const SYMBOL_HALF_WIDTH: Partial<Record<StitchKind, number>> = {
 function effectiveSymW(op: Op): number {
   const isIncDec = op.kind === 'INC' || op.kind === 'DEC';
   const baseKind = isIncDec && op.baseKind ? op.baseKind : op.kind;
+  // V/A 는 부채라 팁이 벌어진 만큼이 실제 폭이다 — 키가 큰 코일수록 넓다.
+  // 렌더러와 같은 기하를 써야 겹침 계산이 화면과 어긋나지 않는다.
+  if (isIncDec) return fanHalfWidth(op.expansion, baseKind, op.yarnOverCount);
   return SYMBOL_HALF_WIDTH[baseKind] ?? 5;
 }
 

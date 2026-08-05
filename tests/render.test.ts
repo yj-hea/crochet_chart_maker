@@ -3,7 +3,7 @@ import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
 import { layoutCircular } from '../src/lib/crafts/crochet/circular';
 import { layoutFlat } from '../src/lib/crafts/crochet/flat';
-import { renderSvg } from '../src/lib/crafts/crochet/svg';
+import { renderSvg, fanHalfWidth } from '../src/lib/crafts/crochet/svg';
 
 function render(sources: string[], shape: 'circular' | 'flat' = 'circular') {
   const rounds = sources.map((src, i) => {
@@ -117,5 +117,55 @@ describe('renderSvg', () => {
     const svg = render(['']);
     expect(svg).toContain('<svg');
     expect(svg).toContain('</svg>');
+  });
+});
+
+describe('V/A 부채 기호', () => {
+  function fanAngles(src: string): number[] {
+    const layout = layoutCircular(
+      ['@, 12X', src].map((s, i) => {
+        const r = parseRound(i + 1, s);
+        if (!r.body) throw new Error(`parse: ${s}`);
+        return expand(r.body, i + 1);
+      }),
+    );
+    const svg = renderSvg({ layout });
+    const rots = [...svg.matchAll(/rotate\((-?[\d.]+) 0 (-?[\d.]+)\)/g)].map((m) => Number(m[1]));
+    return [...new Set(rots)].sort((a, b) => a - b);
+  }
+
+  it('키가 커도 팁 폭이 일정하다 — 각도는 그만큼 좁아진다', () => {
+    // leg 는 바닥 끝을 중심으로 도므로 같은 각도면 키 큰 코일수록 팁이 멀리 벌어진다.
+    // 각도가 아니라 팁 폭을 고정해야 V 모양이 일정하다.
+    const spread = (a: number[]) => a[a.length - 1]! - a[0]!;
+    const vx = spread(fanAngles('6vx'));
+    const vt = spread(fanAngles('6vt'));
+    const vf = spread(fanAngles('6vf'));
+    const ve = spread(fanAngles('6ve'));
+    expect(vx).toBeCloseTo(60, 1);        // 짧은뜨기는 기존 60° 그대로
+    expect(vt).toBeLessThan(vx);
+    expect(vf).toBeLessThan(vt);
+    expect(ve).toBeLessThan(vf);
+    // 팁 폭은 모두 코 한 칸(10px)
+    for (const [src, base] of [['6vx', 'SC'], ['6vt', 'HDC'], ['6vf', 'DC'], ['6ve', 'TR']] as const) {
+      const half = spread(fanAngles(src)) / 2;
+      const legHalf = { SC: 5, HDC: 7, DC: 9, TR: 11 }[base];
+      expect(2 * legHalf * Math.sin((half * Math.PI) / 180)).toBeCloseTo(5, 1);
+    }
+  });
+
+  it('V^N 은 코 수만큼 넓어진다', () => {
+    const spread = (a: number[]) => a[a.length - 1]! - a[0]!;
+    // ve^3 은 팁이 2칸(20px) 벌어져야 한다 — 11px leg 기준 ±27°
+    const half = spread(fanAngles('3ve^3')) / 2;
+    expect(2 * 11 * Math.sin((half * Math.PI) / 180)).toBeCloseTo(10, 1);
+  });
+
+  it('fanHalfWidth 가 겹침 계산과 렌더를 같은 값으로 잇는다', () => {
+    // 팁(5) + 긴뜨기 계열 상단 cap(4)
+    expect(fanHalfWidth(2, 'SC')).toBeCloseTo(5, 1);
+    expect(fanHalfWidth(2, 'DC')).toBeCloseTo(9, 1);
+    expect(fanHalfWidth(2, 'TR')).toBeCloseTo(9, 1);
+    expect(fanHalfWidth(3, 'TR')).toBeCloseTo(14, 1);
   });
 });
