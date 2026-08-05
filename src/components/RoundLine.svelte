@@ -547,7 +547,8 @@
 <div class="round-line">
   <span class="round-index">{index}:</span>
   {#if roundComment}
-    <CommentPin comment={roundComment} />
+    <!-- 추가 버튼과 같은 크기의 상자에 담는다 — 메모가 생겨도 아이콘이 제자리에 -->
+    <span class="round-comment-pin"><CommentPin comment={roundComment} size={11} /></span>
   {:else if onAddComment}
     <button type="button" class="add-comment-btn" onclick={onAddComment} title="단 메모 추가" aria-label="단 메모 추가">
       <i class="fa-regular fa-comment"></i>
@@ -675,6 +676,18 @@
     color: var(--text-muted);
     padding-top: 8px;
     user-select: none;
+  }
+  /* 단 메모 핀 자리. `.round-line` 이 align-items: stretch 라 그냥 두면 핀 버튼이
+     줄 높이만큼 늘어나 아이콘이 세로 가운데로 내려간다. 추가 버튼과 같은 상자에
+     담아 단 번호 옆에 붙여 둔다. */
+  .round-comment-pin {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-top: 6px;
   }
   .add-comment-btn {
     flex-shrink: 0;
