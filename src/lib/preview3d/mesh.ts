@@ -173,8 +173,6 @@ function buildWireframe(
 ): { object: THREE.Object3D; disposables: { dispose: () => void }[] } {
   const points: number[] = [];
   for (const e of graph.edges) {
-    // 굽힘 저항은 실이 아니라 계산 장치라 그리지 않는다
-    if (e.kind === 'stiff') continue;
     const a = positions[e.a]!;
     const b = positions[e.b]!;
     points.push(a.x, a.y, a.z, b.x, b.y, b.z);

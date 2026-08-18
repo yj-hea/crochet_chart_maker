@@ -73,13 +73,12 @@ describe('3D 메시 (mesh)', () => {
     mesh.dispose();
   });
 
-  it('뼈대는 실에 해당하는 변만 그린다 — 굽힘 저항은 계산 장치다', () => {
+  it('뼈대는 코를 잇는 변을 모두 그린다', () => {
     const mesh = buildStitchMesh(solved, stitches, true);
     const lines = mesh.object.children.find(
       (c): c is THREE.LineSegments => c instanceof THREE.LineSegments,
     );
-    const yarnEdges = solved.graph.edges.filter((e) => e.kind !== 'stiff').length;
-    expect(lines?.geometry.getAttribute('position').count).toBe(yarnEdges * 2);
+    expect(lines?.geometry.getAttribute('position').count).toBe(solved.graph.edges.length * 2);
     mesh.dispose();
   });
 

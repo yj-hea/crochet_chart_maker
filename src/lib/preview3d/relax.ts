@@ -29,7 +29,10 @@ export interface RelaxOptions {
   iterations?: number;
   /** 속 채우기 세기 (코 폭 단위/회). 0 이면 평면 해를 그대로 둔다 */
   stuffing?: number;
-  /** 굽힘 저항 세기 (0~1). 크면 뻣뻣하고 각지게, 작으면 흐물흐물하게 나온다 */
+  /**
+   * 굽힘 저항 세기 (0~1). 크면 뻣뻣하고, 작으면 흐물흐물하게 나온다.
+   * 너무 키우면 원래 휘어 있어야 할 고리까지 펴 버려 단이 쪼그라든다.
+   */
   stiffness?: number;
   /** 이보다 가까운 남남끼리 밀어낸다 (코 폭 단위). 0 이면 밀어내기를 끈다 */
   repulsion?: number;
@@ -47,7 +50,7 @@ export interface RelaxResult {
 const DEFAULTS: Required<RelaxOptions> = {
   iterations: 200,
   stuffing: 0.02,
-  stiffness: 0.08,
+  stiffness: 0.02,
   repulsion: 0.7,
   jitter: 0.05,
 };
@@ -94,7 +97,8 @@ export function relax(graph: StitchGraph, options: RelaxOptions = {}): RelaxResu
       applyStuffing(px, py, pz, n, opts.stuffing * (1 - phase / STUFFING_PHASE));
     }
 
-    residual = projectEdges(px, py, pz, edges, opts.stiffness);
+    applyBending(px, py, pz, graph.chains, opts.stiffness);
+    residual = projectEdges(px, py, pz, edges);
 
     if (opts.repulsion > 0) applyRepulsion(px, py, pz, n, opts.repulsion, linked);
   }
@@ -117,10 +121,8 @@ function projectEdges(
   py: Float64Array,
   pz: Float64Array,
   edges: readonly StitchGraph['edges'][number][],
-  stiffness: number,
 ): number {
   let sum = 0;
-  let count = 0;
   for (const e of edges) {
     const dx = px[e.b]! - px[e.a]!;
     const dy = py[e.b]! - py[e.a]!;
@@ -128,22 +130,85 @@ function projectEdges(
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (len < 1e-9) continue;
 
-    // 굽힘 저항은 하한이다 — 목표보다 멀면 그대로 둔다. 등식으로 걸면 곡면이 못 나온다.
-    if (e.minOnly && len >= e.rest) continue;
-
     const error = len - e.rest;
-    if (e.kind !== 'stiff') {
-      sum += error * error;
-      count++;
-    }
+    sum += error * error;
 
-    const w = e.kind === 'stiff' ? stiffness : 1;
     // 양 끝이 절반씩 움직인다 (질량이 같다고 본다)
-    const k = (error / len) * 0.5 * w;
+    const k = (error / len) * 0.5;
     px[e.a] += dx * k; py[e.a] += dy * k; pz[e.a] += dz * k;
     px[e.b] -= dx * k; py[e.b] -= dy * k; pz[e.b] -= dz * k;
   }
-  return count > 0 ? Math.sqrt(sum / count) : 0;
+  return edges.length > 0 ? Math.sqrt(sum / edges.length) : 0;
+}
+
+/**
+ * 곡률이 **이웃과 다를 때만** 잡아 주는 굽힘 저항.
+ *
+ * 곡률을 그냥 0 으로 미는 흔한 방식(가운데 코를 양옆의 중간으로 당기기)은 여기서 못 쓴다.
+ * 닫힌 단은 곡률이 0 일 수 없는데도 계속 펴려 들어, 둘레를 정하는 가로 변과 영원히
+ * 싸우다 단을 쪼그라뜨린다.
+ *
+ * 대신 **곡률의 변화**를 잡는다. 고르게 휜 원은 이웃끼리 곡률이 같아 힘이 거의 0 이고
+ * (18각형이면 6%), 번갈아 꺾이는 톱니는 이웃과 정반대라 힘이 두 배로 실린다. 걸러야
+ * 할 것만 30배 세게 걸린다.
+ *
+ * 각 길마다 곡률을 먼저 다 구한 뒤 한꺼번에 적용한다 — 하나씩 고쳐 가며 계산하면
+ * 앞쪽에서 바뀐 값이 뒤쪽 곡률에 섞여 톱니를 옆으로 밀고 다닌다.
+ */
+function applyBending(
+  px: Float64Array,
+  py: Float64Array,
+  pz: Float64Array,
+  chains: readonly StitchGraph['chains'][number][],
+  stiffness: number,
+): void {
+  if (stiffness <= 0) return;
+  for (const chain of chains) {
+    const ids = chain.nodes;
+    const n = ids.length;
+    if (n < 3) continue;
+
+    // 곡률 — 가운데 코가 양옆의 중간에서 얼마나 벗어나 있는가.
+    // 열린 길의 양 끝은 이웃이 한쪽뿐이라 곡률이 없다.
+    const cx = new Float64Array(n);
+    const cy = new Float64Array(n);
+    const cz = new Float64Array(n);
+    const has = new Uint8Array(n);
+    for (let k = 0; k < n; k++) {
+      if (!chain.closed && (k === 0 || k === n - 1)) continue;
+      const a = ids[(k - 1 + n) % n]!;
+      const m = ids[k]!;
+      const b = ids[(k + 1) % n]!;
+      cx[k] = (px[a]! + px[b]!) / 2 - px[m]!;
+      cy[k] = (py[a]! + py[b]!) / 2 - py[m]!;
+      cz[k] = (pz[a]! + pz[b]!) / 2 - pz[m]!;
+      has[k] = 1;
+    }
+
+    for (let k = 0; k < n; k++) {
+      if (!has[k]) continue;
+      // 양옆의 곡률 평균 — 한쪽만 있으면 그쪽만 쓴다
+      const prev = (k - 1 + n) % n;
+      const next = (k + 1) % n;
+      let sx = 0, sy = 0, sz = 0, count = 0;
+      if (has[prev]) { sx += cx[prev]!; sy += cy[prev]!; sz += cz[prev]!; count++; }
+      if (has[next]) { sx += cx[next]!; sy += cy[next]!; sz += cz[next]!; count++; }
+      if (count === 0) continue;
+      sx /= count; sy /= count; sz /= count;
+
+      // 이웃과 다른 만큼만 되돌린다
+      const dx = (cx[k]! - sx) * stiffness;
+      const dy = (cy[k]! - sy) * stiffness;
+      const dz = (cz[k]! - sz) * stiffness;
+
+      const a = ids[prev]!;
+      const m = ids[k]!;
+      const b = ids[next]!;
+      px[m] += dx; py[m] += dy; pz[m] += dz;
+      px[a] -= dx / 2; py[a] -= dy / 2; pz[a] -= dz / 2;
+      px[b] -= dx / 2; py[b] -= dy / 2; pz[b] -= dz / 2;
+    }
+  }
 }
 
 /**

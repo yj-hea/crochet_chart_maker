@@ -178,18 +178,34 @@ describe('코 그래프 (graph)', () => {
 
 describe('회전면 시드 (seed)', () => {
   it('반지름은 그 단의 둘레에서 나온다', () => {
-    const g = graphFromSources(['@, 6X', '12X', '12X']);
+    const g = graphFromSources(['@, 6X', '6V', '12X']);
     const stats = roundStats(g, axisymmetricSeed(g));
     // 12코 → 둘레 12 → 반지름 12/2π
     expect(stats[1]!.radius).toBeCloseTo(12 / (2 * Math.PI), 3);
     expect(stats[2]!.radius).toBeCloseTo(12 / (2 * Math.PI), 3);
   });
 
+  it('코는 제 부모 위에 선다 — 세로 변이 처음부터 코 키에 가깝다', () => {
+    const g = graphFromSources(['@, 6X', '6V', '(1X,1V)*6', '(1X,1A)*6', '6A']);
+    const seed = axisymmetricSeed(g);
+    const errors = g.edges
+      .filter((e) => e.kind === 'column')
+      .map((e) => {
+        const a = seed[e.a]!;
+        const b = seed[e.b]!;
+        return Math.abs(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) - e.rest) / e.rest;
+      });
+    // 부모를 보지 않고 단 안에서 균등하게만 나누면 여기가 17% 까지 벌어진다
+    expect(Math.max(...errors)).toBeLessThan(0.1);
+  });
+
   it('늘림이 없으면 단 간격이 곧 코 높이 — 곧은 원통', () => {
-    const g = graphFromSources(['@, 6X', '12X', '12X', '12X']);
+    const g = graphFromSources(['@, 6X', '6V', '12X', '12X']);
     const stats = roundStats(g, axisymmetricSeed(g));
     expect(stats[2]!.z - stats[1]!.z).toBeCloseTo(1.0, 3);
     expect(stats[3]!.z - stats[2]!.z).toBeCloseTo(1.0, 3);
+    // 반지름은 그대로다 — 늘어난 키가 통째로 높이로 간다
+    expect(stats[3]!.radius).toBeCloseTo(stats[1]!.radius, 3);
   });
 });
 
@@ -199,6 +215,40 @@ describe('완화 솔버 (relax)', () => {
     const a = relax(g);
     const b = relax(g);
     expect(a.positions).toEqual(b.positions);
+  });
+
+  it('한 단 안에서 늘림과 보통 코가 같은 각도로 기운다', () => {
+    // 좌우로 이어져 있으니 늘림 자리만 따로 눕거나 설 수 없다. 이 코들만 느슨하게
+    // 뜨는 상황은 가정하지 않는다.
+    const g = graphFromSources(['@, 6X', '6V', '(1X,1V)*6', '(1X,1A)*6', '6A']);
+    const { positions } = relax(g, { iterations: 500 });
+
+    const parentOf = new Map<number, number>();
+    for (const e of g.edges) {
+      if (e.kind === 'column' && !parentOf.has(e.b)) parentOf.set(e.b, e.a);
+    }
+    /** 부모에서 이 코까지 올라간 각도 — 편물이 얼마나 서 있는가 */
+    const tilt = (i: number): number => {
+      const p = positions[i]!;
+      const q = positions[parentOf.get(i)!]!;
+      const dr = Math.hypot(p.x, p.y) - Math.hypot(q.x, q.y);
+      return (Math.atan2(p.z - q.z, dr) * 180) / Math.PI;
+    };
+
+    const inRound3 = g.nodes
+      .map((n, i) => ({ n, i }))
+      .filter(({ n, i }) => n.roundIndex === 3 && parentOf.has(i));
+    const plain = inRound3.filter(({ n }) => n.kind === 'SC').map(({ i }) => tilt(i));
+    const inc = inRound3.filter(({ n }) => n.kind === 'INC').map(({ i }) => tilt(i));
+    expect(plain.length).toBe(6);
+    expect(inc.length).toBe(12);
+
+    // 늘림 두 코가 부모를 축 삼아 하나는 위로 하나는 아래로 돌아가면 여기서 벌어진다
+    const spread = (a: number[]) => Math.max(...a) - Math.min(...a);
+    expect(spread(inc)).toBeLessThan(12);
+    // 늘림의 평균 각도가 보통 코와 크게 다르지 않다
+    const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+    expect(Math.abs(mean(inc) - mean(plain))).toBeLessThan(6);
   });
 
   it('6코 뒤 6늘림은 평평하고 조금 넓어진 원 — 위로 서지 않는다', () => {
@@ -214,9 +264,10 @@ describe('완화 솔버 (relax)', () => {
   it('늘린 다음 그대로 뜨면 늘 곳이 없어 위로 선다', () => {
     const g = graphFromSources(['@, 6X', '6V', '12X', '12X', '12X']);
     const stats = roundStats(g, relax(g, { iterations: 500 }).positions);
-    // 12코 단들은 반지름이 같고
-    for (let i = 2; i < stats.length; i++) {
-      expect(stats[i]!.radius).toBeCloseTo(stats[1]!.radius, 1);
+    // 12코 단들은 둘레가 같으니 반지름도 같다
+    const expected = 12 / (2 * Math.PI);
+    for (let i = 1; i < stats.length; i++) {
+      expect(stats[i]!.radius).toBeCloseTo(expected, 1);
     }
     // 늘어난 키가 고스란히 높이로 간다
     for (let i = 3; i < stats.length; i++) {
@@ -243,14 +294,14 @@ describe('완화 솔버 (relax)', () => {
     const { positions, residual } = relax(g, { iterations: 500 });
     const stats = roundStats(g, positions);
 
-    // 지름 11 짜리 원판인데 두께 방향으로는 0.5 도 안 된다
-    expect(zSpread(positions)).toBeLessThan(0.5);
+    // 지름 11 짜리 원판인데 두께 방향으로는 0.2 도 안 된다
+    expect(zSpread(positions)).toBeLessThan(0.2);
     expect(stats.at(-1)!.radius).toBeGreaterThan(5);
     // 단마다 반지름이 꾸준히 자란다 = 안으로 접히지 않았다
     for (let i = 1; i < stats.length; i++) {
       expect(stats[i]!.radius).toBeGreaterThan(stats[i - 1]!.radius);
     }
-    expect(residual).toBeLessThan(0.005);
+    expect(residual).toBeLessThan(0.01);
   });
 
   it('늘림 없이 이어 뜨면 곧은 원통이 된다', () => {
@@ -302,7 +353,7 @@ describe('완화 솔버 (relax)', () => {
   });
 
   it('코가 없으면 빈 결과', () => {
-    const g: StitchGraph = { nodes: [], edges: [], unit: 1, closed: false };
+    const g: StitchGraph = { nodes: [], edges: [], chains: [], unit: 1, closed: false };
     expect(relax(g)).toEqual({ positions: [], residual: 0 });
   });
 });

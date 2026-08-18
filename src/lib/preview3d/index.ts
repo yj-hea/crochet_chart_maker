@@ -6,7 +6,9 @@
  */
 
 export { buildStitchGraph } from './graph';
-export type { StitchGraph, StitchNode, StitchEdge, EdgeKind, GraphOptions, Vec3 } from './graph';
+export type {
+  StitchGraph, StitchNode, StitchEdge, StitchChain, EdgeKind, GraphOptions, Vec3,
+} from './graph';
 export { relax } from './relax';
 export type { RelaxOptions, RelaxResult } from './relax';
 export { axisymmetricSeed } from './seed';

@@ -50,9 +50,13 @@ export interface StitchNode {
  * 변의 종류.
  *  - `row`    같은 단 이웃 — 단의 둘레를 정한다
  *  - `column` 부모→자식 — 단 사이 간격을 정한다
- *  - `stiff`  굽힘 저항 — 편물이 종이처럼 접히지 않게 잡아준다
+ *
+ * 부모의 **양옆** 코까지 잇는 대각선(천 시뮬레이션의 전단 제약)도 넣어 봤지만 뺐다.
+ * 길이를 평면 격자로 잡을 수밖에 없는데(`√(코높이² + 이웃거리²)`), 단마다 코 수가
+ * 다르면 그 값이 틀린다 — 12코 위의 18코 단은 각도 간격이 30° 와 20° 로 달라서 실제
+ * 대각선이 11% 더 길다. 틀린 목표를 향해 당기니 편물이 오히려 뒤틀렸다.
  */
-export type EdgeKind = 'row' | 'column' | 'stiff';
+export type EdgeKind = 'row' | 'column';
 
 export interface StitchEdge {
   a: number;
@@ -60,18 +64,40 @@ export interface StitchEdge {
   /** 목표 길이 (코 폭 단위) */
   rest: number;
   kind: EdgeKind;
-  /**
-   * true 면 **가까울 때만** 밀어낸다.
-   *
-   * 굽힘 저항은 "펴져 있으라"가 아니라 "접히지 말라"다. 등식으로 걸면 편물이 곡면을
-   * 이루지 못하고 억지로 평평해진다.
-   */
-  minOnly?: boolean;
+}
+
+/**
+ * 코가 줄줄이 이어진 길 — 굽힘 저항이 걸리는 단위.
+ *
+ * 가로로는 한 단, 세로로는 부모에서 자식으로 타고 올라가는 기둥이다. 굽힘은 세 코만
+ * 봐서는 제대로 걸 수 없어서(아래 설명) 길 전체를 하나로 넘긴다.
+ *
+ * ── 굽힘을 두 번 갈아엎은 이유 ──
+ *
+ * 1) **거리 하한** ("한 칸 건너 이웃이 이보다 가까워지지 말라")
+ *    지그재그를 구조적으로 보지 못한다. 코가 번갈아 오르내리면 한 칸 건너 이웃은 같은
+ *    높이라 거리가 그대로다. 그 틈으로 `V` 가 만든 두 코가 부모 한 점을 축 삼아 하나는
+ *    위로 하나는 아래로 돌아가 버렸다 — 좌우로 이어져 있는데 서로 다른 각도로 기울었다.
+ *
+ * 2) **곡률 최소화** (가운데 코를 양옆의 중간으로 당기기)
+ *    지그재그는 잡히지만 **원래 휘어 있어야 할 고리까지 편다**. 닫힌 단은 곡률이 0 일
+ *    수 없는데 계속 펴려 드니 둘레 제약과 싸워서 단이 11% 쪼그라들었다.
+ *
+ * 3) **곡률이 이웃과 다를 때만** (현재)
+ *    고르게 휜 원은 이웃끼리 곡률이 같으니 힘이 거의 0 이고, 번갈아 꺾이는 톱니는
+ *    이웃과 정반대라 힘이 두 배로 실린다. 걸러야 할 것만 정확히 걸린다.
+ */
+export interface StitchChain {
+  nodes: number[];
+  /** 고리처럼 끝이 처음과 이어지는가 (원형 도안의 단) */
+  closed: boolean;
 }
 
 export interface StitchGraph {
   nodes: StitchNode[];
   edges: StitchEdge[];
+  /** 굽힘 저항이 걸리는 코의 길 — 가로는 단, 세로는 기둥 */
+  chains: StitchChain[];
   /**
    * 코 폭 1 에 해당하는 원본 레이아웃 px.
    * 3D 결과를 2D 도안과 같은 축척으로 보여줄 때 되곱한다.
@@ -88,18 +114,6 @@ export interface StitchGraph {
 function isFabric(kind: StitchKind): boolean {
   return kind !== 'MARKER' && kind !== 'SKIP' && kind !== 'TC';
 }
-
-/**
- * 굽힘 저항의 목표 길이를 일직선의 몇 배로 잡을 것인가.
- *
- * 1.0 으로 두면 안 된다. 닫힌 단은 **원래 휘어 있는 것이 정상**인데, 일직선을 목표로
- * 걸면 "펴져라"가 한순간도 쉬지 않고 작동해 둘레 제약과 영원히 싸운다. 그 결과 단이
- * 원이 되지 못하고 해가 수렴하지 않는다.
- *
- * 조금 줄여 잡으면 완만한 곡률은 통과시키고 급하게 접히는 것만 막는다 — 굽힘 저항이
- * 실제로 해야 하는 일이 그것이다.
- */
-const STIFF_SLACK = 0.75;
 
 /** 한 표기에서 갈라진 구슬들을 떼어 놓을 거리 (레이아웃 px) */
 const SPLIT_NUDGE = 0.01;
@@ -160,54 +174,10 @@ export function buildStitchGraph(
   });
 
   const edges: StitchEdge[] = [];
-  const push = (a: number, b: number, rest: number, kind: EdgeKind, minOnly?: boolean) => {
+  const push = (a: number, b: number, rest: number, kind: EdgeKind) => {
     if (a === b || rest <= 0) return;
-    edges.push(minOnly ? { a, b, rest, kind, minOnly } : { a, b, rest, kind });
+    edges.push({ a, b, rest, kind });
   };
-
-  // ── 세로 변: 부모 → 자식 ────────────────────────────────────────────
-  // 한 자식이 부모를 여럿 가지면(A 줄임) 각 부모마다 같은 길이의 변이 걸려, 부모들이
-  // 서로 끌려와 오므라든다. 반대로 한 부모가 구슬 여럿이면(V 늘림) 자식들이 각각 다른
-  // 윗변에 걸려 나란히 선다. 줄임·늘림을 따로 다룰 필요가 없는 이유다.
-  //
-  // 부모가 구슬 여럿이면 **자식들이 왼쪽부터 하나씩 나눠 갖는다**. `V` 위에 두 코를
-  // 뜨면 왼쪽 윗변에 하나, 오른쪽 윗변에 하나가 걸리는 것과 같다.
-  const usedSlots = new Map<number, number>();
-  stitches.forEach((s, i) => {
-    const childBeads = beadsOf.get(i);
-    if (!childBeads) return;
-    for (const p of s.parentIndices) {
-      const parentBeads = beadsOf.get(p);
-      if (!parentBeads || parentBeads.length === 0) continue;
-      const used = usedSlots.get(p) ?? 0;
-      // `[...]` 한 구멍 그룹의 두 번째 이후 코는 슬롯을 새로 먹지 않고 직전 코와
-      // 같은 자리에 얹힌다
-      const slot = s.op.sameHoleContinuation ? used - 1 : used;
-      if (!s.op.sameHoleContinuation) usedSlots.set(p, used + 1);
-      const parent = parentBeads[Math.max(0, Math.min(slot, parentBeads.length - 1))]!;
-      // 자식이 V 면 그 구슬 전부가 같은 구멍에서 나온다
-      for (const child of childBeads) {
-        push(parent, child, nodes[child]!.height, 'column');
-      }
-    }
-  });
-
-  // 매직링은 1단의 **부모로 기록되지 않는다** — 레이아웃에서 1단 코들의
-  // `parentIndices` 는 비어 있다. 그대로 두면 매직링이 아무 변에도 걸리지 않은 외톨이가
-  // 되어 허공으로 날아간다. 실제로는 1단 전체가 이 고리 하나에 걸리므로, 부모 없는
-  // 같은 단 코 전부에 세로 변을 이어 준다. 그러면 조임끈처럼 1단을 오므려 준다.
-  stitches.forEach((s, i) => {
-    if (s.op.kind !== 'MAGIC') return;
-    const ring = beadsOf.get(i)?.[0];
-    if (ring === undefined) return;
-    stitches.forEach((t, j) => {
-      if (t.roundIndex !== s.roundIndex || t.parentIndices.length > 0) return;
-      for (const child of beadsOf.get(j) ?? []) {
-        if (child === ring) continue;
-        push(ring, child, nodes[child]!.height, 'column');
-      }
-    });
-  });
 
   // ── 가로 변: 같은 단 이웃 ──────────────────────────────────────────
   // 매직링은 단의 이웃이 아니라 1단 전체가 모이는 중심점이라 줄에서 뺀다.
@@ -266,38 +236,85 @@ export function buildStitchGraph(
     }
   }
 
-  // ── 굽힘 저항 ──────────────────────────────────────────────────────
-  // 변 길이만 맞추면 편물이 종이처럼 자유롭게 접힌다. 한 칸 건너 이웃에 "이보다 가까워지지
-  // 말라"는 하한을 걸어 뻣뻣함을 준다. 가로(단이 각지게 꺾이는 것)와 세로(단끼리 겹쳐
-  // 접히는 것) 양쪽에 필요하다.
-  const stiffRest = (straight: number) => straight * STIFF_SLACK;
-
-  for (const row of rows.values()) {
-    const n = row.length;
-    const span = closed && n > 3 ? n : n - 2;
-    for (let k = 0; k < span; k++) {
-      const a = row[k]!;
-      const mid = row[(k + 1) % n]!;
-      const b = row[(k + 2) % n]!;
-      const straight = rowRest(nodes[a]!, nodes[mid]!) + rowRest(nodes[mid]!, nodes[b]!);
-      push(a, b, stiffRest(straight), 'stiff', true);
-    }
-  }
-
-  // 자식 → 할아버지. 단 세 개가 일직선으로 서 있으려는 힘이다.
-  const parentsOf = new Map<number, number[]>();
-  for (const e of edges) {
-    if (e.kind !== 'column') continue;
-    const list = parentsOf.get(e.b);
-    if (list) list.push(e.a);
-    else parentsOf.set(e.b, [e.a]);
-  }
-  for (const [child, parents] of parentsOf) {
-    for (const p of parents) {
-      for (const gp of parentsOf.get(p) ?? []) {
-        push(gp, child, stiffRest(nodes[child]!.height + nodes[p]!.height), 'stiff', true);
+  // ── 세로 변: 부모 → 자식 ────────────────────────────────────────────
+  // 한 자식이 부모를 여럿 가지면(A 줄임) 각 부모마다 같은 길이의 변이 걸려, 부모들이
+  // 서로 끌려와 오므라든다. 반대로 한 부모가 구슬 여럿이면(V 늘림) 자식들이 각각 다른
+  // 윗변에 걸려 나란히 선다. 줄임·늘림을 따로 다룰 필요가 없는 이유다.
+  //
+  // 부모가 구슬 여럿이면 **자식들이 왼쪽부터 하나씩 나눠 갖는다**. `V` 위에 두 코를
+  // 뜨면 왼쪽 윗변에 하나, 오른쪽 윗변에 하나가 걸리는 것과 같다.
+  const usedSlots = new Map<number, number>();
+  stitches.forEach((s, i) => {
+    const childBeads = beadsOf.get(i);
+    if (!childBeads) return;
+    for (const p of s.parentIndices) {
+      const parentBeads = beadsOf.get(p);
+      if (!parentBeads || parentBeads.length === 0) continue;
+      const used = usedSlots.get(p) ?? 0;
+      // `[...]` 한 구멍 그룹의 두 번째 이후 코는 슬롯을 새로 먹지 않고 직전 코와
+      // 같은 자리에 얹힌다
+      const slot = s.op.sameHoleContinuation ? used - 1 : used;
+      if (!s.op.sameHoleContinuation) usedSlots.set(p, used + 1);
+      const parent = parentBeads[Math.max(0, Math.min(slot, parentBeads.length - 1))]!;
+      // 자식이 V 면 그 구슬 전부가 같은 구멍에서 나온다
+      for (const child of childBeads) {
+        push(parent, child, nodes[child]!.height, 'column');
       }
     }
+  });
+
+  // 매직링은 1단의 **부모로 기록되지 않는다** — 레이아웃에서 1단 코들의
+  // `parentIndices` 는 비어 있다. 그대로 두면 매직링이 아무 변에도 걸리지 않은 외톨이가
+  // 되어 허공으로 날아간다. 실제로는 1단 전체가 이 고리 하나에 걸리므로, 부모 없는
+  // 같은 단 코 전부에 세로 변을 이어 준다. 그러면 조임끈처럼 1단을 오므려 준다.
+  stitches.forEach((s, i) => {
+    if (s.op.kind !== 'MAGIC') return;
+    const ring = beadsOf.get(i)?.[0];
+    if (ring === undefined) return;
+    stitches.forEach((t, j) => {
+      if (t.roundIndex !== s.roundIndex || t.parentIndices.length > 0) return;
+      for (const child of beadsOf.get(j) ?? []) {
+        if (child === ring) continue;
+        push(ring, child, nodes[child]!.height, 'column');
+      }
+    });
+  });
+
+  // ── 굽힘 저항이 걸릴 길 ────────────────────────────────────────────
+  // 변 길이만 맞추면 편물이 종이처럼 자유롭게 접힌다. 가로(단)와 세로(기둥) 두 방향
+  // 모두에 길을 내어 굽힘을 건다.
+  const chains: StitchChain[] = [];
+  for (const row of rows.values()) {
+    if (row.length >= 3) chains.push({ nodes: [...row], closed: closed && row.length > 3 });
+  }
+
+  // 세로 기둥 — 부모에서 자식으로 타고 올라간다. 늘림에서 갈라지고 줄임에서 합쳐지므로
+  // 깔끔한 격자가 아니다. 아직 어느 기둥에도 안 들어간 자식을 하나씩 골라 이어 붙여,
+  // 모든 코가 정확히 한 기둥에만 들어가게 한다.
+  const childrenOf = new Map<number, number[]>();
+  for (const e of edges) {
+    if (e.kind !== 'column') continue;
+    const list = childrenOf.get(e.a);
+    if (list) list.push(e.b);
+    else childrenOf.set(e.a, [e.b]);
+  }
+  const claimed = new Set<number>();
+  const byRound = nodes
+    .map((n, i) => ({ round: n.roundIndex, i }))
+    .sort((a, b) => a.round - b.round || a.i - b.i);
+  for (const { i: start } of byRound) {
+    if (claimed.has(start)) continue;
+    claimed.add(start);
+    const column = [start];
+    let cur = start;
+    for (;;) {
+      const next = (childrenOf.get(cur) ?? []).find((c) => !claimed.has(c));
+      if (next === undefined) break;
+      claimed.add(next);
+      column.push(next);
+      cur = next;
+    }
+    if (column.length >= 3) chains.push({ nodes: column, closed: false });
   }
 
   // ── 축척 ───────────────────────────────────────────────────────────
@@ -309,7 +326,7 @@ export function buildStitchGraph(
     n.seed.y /= unit;
   }
 
-  return { nodes, edges, unit, closed };
+  return { nodes, edges, chains, unit, closed };
 }
 
 /** 가로 변의 2D 길이 중앙값 ÷ 목표 길이 — 레이아웃 px 로 잰 "코 폭 1" */

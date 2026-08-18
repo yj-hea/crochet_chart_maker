@@ -12,14 +12,12 @@
  *
  *  - 단의 반지름은 그 단의 둘레에서 나온다 — `R = 둘레 / 2π`
  *  - 단 사이의 축 방향 높이는 피타고라스로 나온다 — `dz = √(코높이² − ΔR²)`
+ *  - 한 단 안에서 코의 각도는 **자기 부모를 따라간다**
  *
  * 반지름이 코 높이만큼 늘면 `dz = 0` 이라 평평한 원판, 전혀 안 늘면 `dz = 코높이` 라
  * 곧은 원통, 그 사이면 원뿔·공이 된다. 늘어나는 양이 코 높이를 넘으면 평면에
  * 들어가지 못하는데(주름), 이때는 `dz = 0` 으로 두고 남는 둘레를 완화 솔버가 물결로
  * 풀게 맡긴다.
- *
- * 회전 대칭이 아닌 도안(한쪽만 늘리는 등)에서도 나쁘지 않은 출발점이다 — 어차피
- * 솔버가 이어받아 비대칭을 잡는다.
  */
 
 import type { StitchGraph, Vec3 } from './graph';
@@ -27,12 +25,28 @@ import type { StitchGraph, Vec3 } from './graph';
 /**
  * 회전면 가정으로 푼 출발 위치.
  *
- * 단 번호 순서대로 쌓고, 한 단 안에서는 각 코가 차지하는 **폭에 비례해** 각도를
- * 나눠 준다 (V 는 두 칸, 보통 코는 한 칸). 매직링은 1단 원의 중심축 아래에 둔다.
+ * 각도를 **부모에서 물려받는 것**이 중요하다. 단 안에서 그냥 균등하게 나눠 놓으면,
+ * 아래위 단의 코 수가 다를 때 코가 제 부모에서 옆으로 크게 벗어난다. 12코 위의 18코
+ * 단은 각도 간격이 30° 와 20° 로 달라서 최대 15° — 반지름 2 에서 0.5 만큼 — 어긋나고,
+ * 그러면 목표 1.00 인 세로 변이 1.17 이 된다. 솔버가 그 17% 를 밀어내느라 편물 전체를
+ * 뒤트는데, 특히 `V` 의 두 코가 부모를 축으로 하나는 위로 하나는 아래로 돌아가 버린다.
+ *
+ * 부모 각도를 따라가면 세로 변이 처음부터 맞고, 솔버는 단 안의 간격을 고르게 펴는
+ * 작고 얌전한 일만 남는다.
  */
 export function axisymmetricSeed(graph: StitchGraph): Vec3[] {
   const { nodes } = graph;
   const out: Vec3[] = nodes.map(() => ({ x: 0, y: 0, z: 0 }));
+  /** 코마다 배정된 각도 (라디안, 단 안에서 증가하도록 펼친 값) */
+  const angles = new Float64Array(nodes.length);
+
+  const parentsOf = new Map<number, number[]>();
+  for (const e of graph.edges) {
+    if (e.kind !== 'column') continue;
+    const list = parentsOf.get(e.b);
+    if (list) list.push(e.a);
+    else parentsOf.set(e.b, [e.a]);
+  }
 
   const byRound = new Map<number, number[]>();
   const magics: number[] = [];
@@ -66,13 +80,9 @@ export function axisymmetricSeed(graph: StitchGraph): Vec3[] {
       z += Math.sqrt(Math.max(0, height * height - dr * dr));
     }
 
-    // 각 코에 자기 폭만큼의 각도를 준다
-    let walked = 0;
+    assignAngles(idxs, order === 0, circumference, nodes, parentsOf, angles);
     for (const i of idxs) {
-      const w = nodes[i]!.width;
-      const angle = circumference > 0 ? (2 * Math.PI * (walked + w / 2)) / circumference : 0;
-      walked += w;
-      out[i] = { x: radius * Math.cos(angle), y: radius * Math.sin(angle), z };
+      out[i] = { x: radius * Math.cos(angles[i]!), y: radius * Math.sin(angles[i]!), z };
     }
 
     if (order === 0) firstZ = z;
@@ -84,4 +94,81 @@ export function axisymmetricSeed(graph: StitchGraph): Vec3[] {
   for (const i of magics) out[i] = { x: 0, y: 0, z: firstZ - drop };
 
   return out;
+}
+
+/**
+ * 한 단의 코마다 각도를 정한다.
+ *
+ * 첫 단은 기댈 부모가 없으니 폭에 비례해 고르게 나눈다. 그 뒤로는 부모 각도를 그대로
+ * 물려받되, 한 부모에서 여러 코가 나오면(`V`) 부모를 가운데 두고 좌우로 갈라 세운다.
+ */
+function assignAngles(
+  idxs: readonly number[],
+  isFirstRound: boolean,
+  circumference: number,
+  nodes: StitchGraph['nodes'],
+  parentsOf: ReadonlyMap<number, number[]>,
+  angles: Float64Array,
+): void {
+  if (circumference <= 0) return;
+
+  if (isFirstRound) {
+    let walked = 0;
+    for (const i of idxs) {
+      const w = nodes[i]!.width;
+      angles[i] = (2 * Math.PI * (walked + w / 2)) / circumference;
+      walked += w;
+    }
+    return;
+  }
+
+  // 같은 부모에서 나온 코들은 줄에서 이어져 있다 — 묶어서 한꺼번에 벌려 세운다
+  let k = 0;
+  while (k < idxs.length) {
+    const base = parentAngle(idxs[k]!, parentsOf, angles);
+    let end = k + 1;
+    while (
+      end < idxs.length &&
+      parentAngle(idxs[end]!, parentsOf, angles) === base
+    ) end++;
+
+    const group = end - k;
+    for (let g = 0; g < group; g++) {
+      const i = idxs[k + g]!;
+      // 이 단에서 코 하나가 차지하는 각도만큼씩 벌린다
+      const pitch = (2 * Math.PI * nodes[i]!.width) / circumference;
+      angles[i] = base + (g - (group - 1) / 2) * pitch;
+    }
+    k = end;
+  }
+
+  // 줄을 따라 각도가 계속 커지도록 펼친다 — 한 바퀴를 넘어가는 지점에서 부모 각도가
+  // 0 으로 되감기면 뒤 코들이 앞으로 튀어 순서가 뒤집힌다
+  for (let j = 1; j < idxs.length; j++) {
+    const prev = angles[idxs[j - 1]!]!;
+    while (angles[idxs[j]!]! < prev) angles[idxs[j]!] += 2 * Math.PI;
+  }
+}
+
+/**
+ * 부모의 각도. 부모가 둘이면(`A` 줄임) 가운데를 쓴다.
+ * 한 바퀴 경계에서 두 부모가 0 과 2π 로 갈리면 평균이 반대쪽으로 튀므로, 가까운 쪽으로
+ * 끌어당긴 뒤 평균한다.
+ */
+function parentAngle(
+  node: number,
+  parentsOf: ReadonlyMap<number, number[]>,
+  angles: Float64Array,
+): number {
+  const parents = parentsOf.get(node);
+  if (!parents || parents.length === 0) return angles[node] ?? 0;
+  const first = angles[parents[0]!]!;
+  let sum = first;
+  for (let i = 1; i < parents.length; i++) {
+    let a = angles[parents[i]!]!;
+    while (a - first > Math.PI) a -= 2 * Math.PI;
+    while (first - a > Math.PI) a += 2 * Math.PI;
+    sum += a;
+  }
+  return sum / parents.length;
 }
