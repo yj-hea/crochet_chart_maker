@@ -37,6 +37,7 @@
     flashTimer = setTimeout(() => { savedFlash = false; }, duration);
   }
   let helpOpen = $state(false);
+  let preview3dOpen = $state(false);
   let exportMenuOpen = $state(false);
   let exportMenuRoot: HTMLDivElement | undefined = $state();
   let exportMenuTrigger: HTMLButtonElement | undefined = $state();
@@ -384,6 +385,7 @@
           </div>
         {/if}
       </div>
+      <button type="button" class="icon-btn" onclick={() => (preview3dOpen = true)} title="3D 미리보기" disabled={!$renderedChart}><i class="fa-solid fa-cube"></i></button>
       <button type="button" class="icon-btn" onclick={() => (helpOpen = true)} title="도안 작성 가이드"><i class="fa-solid fa-circle-question"></i></button>
     </div>
 
@@ -404,6 +406,16 @@
 
 {#if helpOpen}
   <HelpModal onClose={() => (helpOpen = false)} />
+{/if}
+
+<!-- 3D 미리보기는 three.js 를 쓰는데 이게 첫 화면 번들의 절반에 가깝다.
+     열 때 받아 오면 도안을 쓰기만 하는 사람은 내려받지 않는다. -->
+{#if preview3dOpen}
+  {#await import('./components/Preview3DModal.svelte')}
+    <div class="preview3d-loading">3D 미리보기를 불러오는 중…</div>
+  {:then Modal}
+    <Modal.default onClose={() => (preview3dOpen = false)} />
+  {/await}
 {/if}
 
 <!-- ===== Edit Mode ===== -->
@@ -822,5 +834,17 @@
     .edit-layout.stacked {
       grid-template-columns: 1fr;
     }
+  }
+
+  .preview3d-loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 13px;
+    z-index: 900;
   }
 </style>

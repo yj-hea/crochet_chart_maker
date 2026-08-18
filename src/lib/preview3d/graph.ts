@@ -37,6 +37,14 @@ export interface StitchNode {
   kind: StitchKind;
   /** 윗변에서 차지하는 폭 (코 폭 단위). V 는 2, A 는 1 */
   width: number;
+  /**
+   * 윗변에 늘어서는 코의 개수.
+   *
+   * `V` 는 한 구멍에서 시작하지만 위로는 **코 두 개**다. 계산에는 구슬 하나로 두는
+   * 편이 간단하지만(부모가 하나뿐이니까), 그림에서는 두 개로 나눠 그려야 실제로
+   * 보이는 것과 맞는다.
+   */
+  tops: number;
   /** 아랫변에서 윗변까지 (코 폭 단위) */
   height: number;
   /** 2D 레이아웃에서 가져온 초기 위치 (코 폭 단위, z=0 평면) */
@@ -103,13 +111,27 @@ function rowRest(a: StitchNode, b: StitchNode): number {
   return (a.width + b.width) / 2;
 }
 
+export interface GraphOptions {
+  /**
+   * 각 단이 고리로 닫히는가 (원형 도안). 기본 true.
+   *
+   * 닫히면 마지막 코와 첫 코 사이에도 가로 변을 건다 — 이게 없으면 단이 띠처럼
+   * 풀어져 원통이 되지 않는다. 반대로 왕복뜨기(평면)에 이 변을 걸면 납작한 천이
+   * 원통으로 말려 버린다.
+   *
+   * 레이아웃 좌표만 봐서는 구분할 수 없다. 평면 레이아웃도 `angle` 을 0 으로 채워
+   * 두기 때문에, 도안의 `shape` 를 아는 쪽에서 알려 줘야 한다.
+   */
+  closed?: boolean;
+}
+
 /**
- * 코 그래프를 만든다.
- *
- * 원형/평면 어느 레이아웃이든 받는다. 원형이면 각 단이 고리로 닫히므로 마지막 코와
- * 첫 코 사이에도 가로 변을 건다 — 이게 없으면 단이 띠처럼 풀어져 원통이 되지 않는다.
+ * 코 그래프를 만든다. 원형/평면 어느 레이아웃이든 받는다.
  */
-export function buildStitchGraph(stitches: readonly PositionedStitch[]): StitchGraph {
+export function buildStitchGraph(
+  stitches: readonly PositionedStitch[],
+  options: GraphOptions = {},
+): StitchGraph {
   const nodes: StitchNode[] = [];
   /** 원본 인덱스 → 노드 인덱스 */
   const nodeOf = new Map<number, number>();
@@ -122,6 +144,7 @@ export function buildStitchGraph(stitches: readonly PositionedStitch[]): StitchG
       roundIndex: s.roundIndex,
       kind: s.op.kind,
       width: stitchTopWidth(s.op),
+      tops: s.op.kind === 'MAGIC' ? 1 : Math.max(1, s.op.produce),
       height: stitchHeight(s.op),
       seed: { x: s.position.x, y: s.position.y, z: 0 },
     });
@@ -206,8 +229,7 @@ export function buildStitchGraph(stitches: readonly PositionedStitch[]): StitchG
     i++;
   }
 
-  // 원형이면 각 단이 고리로 닫힌다. 평면(왕복뜨기)이면 양 끝이 열려 있다.
-  const closed = stitches.some((s) => s.angle !== undefined);
+  const closed = options.closed ?? true;
 
   for (const row of rows.values()) {
     for (let k = 0; k + 1 < row.length; k++) {

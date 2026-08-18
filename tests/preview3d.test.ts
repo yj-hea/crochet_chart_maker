@@ -8,13 +8,13 @@ import { relax } from '../src/lib/preview3d/relax';
 import { stitchHeight, stitchTopWidth } from '../src/lib/preview3d/aspect';
 import { axisymmetricSeed } from '../src/lib/preview3d/seed';
 
-function graphFromSources(sources: string[]): StitchGraph {
+function graphFromSources(sources: string[], closed = true): StitchGraph {
   const rounds = sources.map((src, i) => {
     const r = parseRound(i + 1, src);
     if (!r.body) throw new Error(`parse failed: ${JSON.stringify(r.errors)}`);
     return expand(r.body, i + 1);
   });
-  return buildStitchGraph(layoutCircular(rounds).stitches);
+  return buildStitchGraph(layoutCircular(rounds).stitches, { closed });
 }
 
 interface RoundStat {
@@ -107,6 +107,17 @@ describe('코 그래프 (graph)', () => {
     );
     // 고리가 닫히면 가로 변 수 = 코 수 (열려 있으면 코 수 - 1)
     expect(rowsIn2).toHaveLength(round2.length);
+  });
+
+  it('평면이라고 알려주면 단이 띠로 열린다', () => {
+    // 좌표만으로는 알 수 없다 — 평면 레이아웃도 `angle` 을 0 으로 채워 둔다
+    const g = graphFromSources(['@, 6X', '12X'], false);
+    expect(g.closed).toBe(false);
+    const round2 = g.nodes.filter((n) => n.roundIndex === 2);
+    const rowsIn2 = g.edges.filter(
+      (e) => e.kind === 'row' && g.nodes[e.a]!.roundIndex === 2 && g.nodes[e.b]!.roundIndex === 2,
+    );
+    expect(rowsIn2).toHaveLength(round2.length - 1);
   });
 
   it('매직링은 1단 전부와 이어진다 — 아니면 외톨이로 날아간다', () => {
