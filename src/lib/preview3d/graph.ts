@@ -16,7 +16,7 @@
 
 import type { PositionedStitch } from '$lib/layout/types';
 import type { StitchKind } from '$lib/model/stitch-kind';
-import { stitchHeight, stitchTopWidth } from './aspect';
+import { stitchHeight, stitchTops, stitchWidth } from './aspect';
 
 export interface Vec3 {
   x: number;
@@ -27,6 +27,9 @@ export interface Vec3 {
 /**
  * 구슬 하나 = 코 하나.
  *
+ * `V` 처럼 한 표기가 여러 코를 만들면 구슬도 그만큼 생긴다 — `stitchIndex` 가 같은
+ * 구슬이 여럿일 수 있다.
+ *
  * 좌표가 가리키는 곳은 코의 **윗변 가운데**다. 다음 단이 올라앉는 자리가 윗변이라,
  * 세로 변(부모→자식)의 길이가 곧 자식의 키가 되어 계산이 단순해진다.
  */
@@ -35,16 +38,8 @@ export interface StitchNode {
   stitchIndex: number;
   roundIndex: number;
   kind: StitchKind;
-  /** 윗변에서 차지하는 폭 (코 폭 단위). V 는 2, A 는 1 */
+  /** 코 하나의 폭 (코 폭 단위) */
   width: number;
-  /**
-   * 윗변에 늘어서는 코의 개수.
-   *
-   * `V` 는 한 구멍에서 시작하지만 위로는 **코 두 개**다. 계산에는 구슬 하나로 두는
-   * 편이 간단하지만(부모가 하나뿐이니까), 그림에서는 두 개로 나눠 그려야 실제로
-   * 보이는 것과 맞는다.
-   */
-  tops: number;
   /** 아랫변에서 윗변까지 (코 폭 단위) */
   height: number;
   /** 2D 레이아웃에서 가져온 초기 위치 (코 폭 단위, z=0 평면) */
@@ -106,6 +101,9 @@ function isFabric(kind: StitchKind): boolean {
  */
 const STIFF_SLACK = 0.75;
 
+/** 한 표기에서 갈라진 구슬들을 떼어 놓을 거리 (레이아웃 px) */
+const SPLIT_NUDGE = 0.01;
+
 /** 두 코 사이 가로 변의 길이 — 각자 자기 폭의 절반씩 내놓는다 */
 function rowRest(a: StitchNode, b: StitchNode): number {
   return (a.width + b.width) / 2;
@@ -133,21 +131,32 @@ export function buildStitchGraph(
   options: GraphOptions = {},
 ): StitchGraph {
   const nodes: StitchNode[] = [];
-  /** 원본 인덱스 → 노드 인덱스 */
-  const nodeOf = new Map<number, number>();
+  /** 원본 인덱스 → 그 표기가 만든 구슬들 (`V^3` 이면 3개) */
+  const beadsOf = new Map<number, number[]>();
 
+  // `V` 는 구슬 하나가 아니라 **만드는 코 수만큼** 이다.
+  //
+  // 폭만 두 배로 늘린 구슬 하나로 두면 둘레 계산은 맞지만 편물이 틀어진다. 다음 단의
+  // 두 코가 한 점에 매달려 좌우로 벌어질 자리를 잃고, V 가 만든 두 코 사이에는
+  // 좌우 연결이 아예 없어진다. 편물은 코마다 상하좌우로 이어져 있어야 제 모양이 나온다.
   stitches.forEach((s, i) => {
     if (!isFabric(s.op.kind)) return;
-    nodeOf.set(i, nodes.length);
-    nodes.push({
-      stitchIndex: i,
-      roundIndex: s.roundIndex,
-      kind: s.op.kind,
-      width: stitchTopWidth(s.op),
-      tops: s.op.kind === 'MAGIC' ? 1 : Math.max(1, s.op.produce),
-      height: stitchHeight(s.op),
-      seed: { x: s.position.x, y: s.position.y, z: 0 },
-    });
+    const tops = stitchTops(s.op);
+    const ids: number[] = [];
+    for (let k = 0; k < tops; k++) {
+      ids.push(nodes.length);
+      nodes.push({
+        stitchIndex: i,
+        roundIndex: s.roundIndex,
+        kind: s.op.kind,
+        width: stitchWidth(s.op),
+        height: stitchHeight(s.op),
+        // 한 표기에서 나온 구슬들은 2D 도안에서 같은 자리를 가리킨다. 완전히 겹치면
+        // 서로 밀어낼 방향이 없어 영영 붙어 있으므로 아주 조금 떼어 놓는다.
+        seed: { x: s.position.x + k * SPLIT_NUDGE, y: s.position.y, z: 0 },
+      });
+    }
+    beadsOf.set(i, ids);
   });
 
   const edges: StitchEdge[] = [];
@@ -158,17 +167,28 @@ export function buildStitchGraph(
 
   // ── 세로 변: 부모 → 자식 ────────────────────────────────────────────
   // 한 자식이 부모를 여럿 가지면(A 줄임) 각 부모마다 같은 길이의 변이 걸려, 부모들이
-  // 서로 끌려와 오므라든다. 반대로 한 부모에 자식이 여럿이면(V 늘림) 자식들이 한 점에서
-  // 부챗살처럼 퍼진다. 줄임·늘림을 따로 다룰 필요가 없는 이유다.
+  // 서로 끌려와 오므라든다. 반대로 한 부모가 구슬 여럿이면(V 늘림) 자식들이 각각 다른
+  // 윗변에 걸려 나란히 선다. 줄임·늘림을 따로 다룰 필요가 없는 이유다.
+  //
+  // 부모가 구슬 여럿이면 **자식들이 왼쪽부터 하나씩 나눠 갖는다**. `V` 위에 두 코를
+  // 뜨면 왼쪽 윗변에 하나, 오른쪽 윗변에 하나가 걸리는 것과 같다.
+  const usedSlots = new Map<number, number>();
   stitches.forEach((s, i) => {
-    const child = nodeOf.get(i);
-    if (child === undefined) return;
-    const seen = new Set<number>();
+    const childBeads = beadsOf.get(i);
+    if (!childBeads) return;
     for (const p of s.parentIndices) {
-      const parent = nodeOf.get(p);
-      if (parent === undefined || seen.has(parent)) continue;
-      seen.add(parent);
-      push(parent, child, nodes[child]!.height, 'column');
+      const parentBeads = beadsOf.get(p);
+      if (!parentBeads || parentBeads.length === 0) continue;
+      const used = usedSlots.get(p) ?? 0;
+      // `[...]` 한 구멍 그룹의 두 번째 이후 코는 슬롯을 새로 먹지 않고 직전 코와
+      // 같은 자리에 얹힌다
+      const slot = s.op.sameHoleContinuation ? used - 1 : used;
+      if (!s.op.sameHoleContinuation) usedSlots.set(p, used + 1);
+      const parent = parentBeads[Math.max(0, Math.min(slot, parentBeads.length - 1))]!;
+      // 자식이 V 면 그 구슬 전부가 같은 구멍에서 나온다
+      for (const child of childBeads) {
+        push(parent, child, nodes[child]!.height, 'column');
+      }
     }
   });
 
@@ -178,13 +198,14 @@ export function buildStitchGraph(
   // 같은 단 코 전부에 세로 변을 이어 준다. 그러면 조임끈처럼 1단을 오므려 준다.
   stitches.forEach((s, i) => {
     if (s.op.kind !== 'MAGIC') return;
-    const ring = nodeOf.get(i);
+    const ring = beadsOf.get(i)?.[0];
     if (ring === undefined) return;
     stitches.forEach((t, j) => {
       if (t.roundIndex !== s.roundIndex || t.parentIndices.length > 0) return;
-      const child = nodeOf.get(j);
-      if (child === undefined || child === ring) return;
-      push(ring, child, nodes[child]!.height, 'column');
+      for (const child of beadsOf.get(j) ?? []) {
+        if (child === ring) continue;
+        push(ring, child, nodes[child]!.height, 'column');
+      }
     });
   });
 
@@ -203,17 +224,17 @@ export function buildStitchGraph(
   let i = 0;
   while (i < stitches.length) {
     const s = stitches[i]!;
-    const node = nodeOf.get(i);
-    if (node === undefined || s.op.kind === 'MAGIC') { i++; continue; }
+    const beads = beadsOf.get(i);
+    if (!beads || s.op.kind === 'MAGIC') { i++; continue; }
 
     if (s.op.turningChain) {
       // 연속된 기둥코를 세로로 쌓는다
-      let top = node;
+      let top = beads[beads.length - 1]!;
       let j = i + 1;
       while (j < stitches.length) {
         const t = stitches[j]!;
         if (!t.op.turningChain || t.roundIndex !== s.roundIndex) break;
-        const next = nodeOf.get(j);
+        const next = beadsOf.get(j)?.[0];
         if (next !== undefined) {
           push(top, next, nodes[next]!.height, 'column');
           top = next;
@@ -225,7 +246,8 @@ export function buildStitchGraph(
       continue;
     }
 
-    rowFor(s.roundIndex).push(node);
+    // V 가 만든 코들은 나란히 선다 — 줄에 순서대로 들어가 서로 가로 변으로 이어진다
+    for (const b of beads) rowFor(s.roundIndex).push(b);
     i++;
   }
 

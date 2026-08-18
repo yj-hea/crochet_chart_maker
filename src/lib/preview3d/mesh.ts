@@ -54,39 +54,29 @@ export function buildStitchMesh(
   const drawn = graph.nodes
     .map((n, i) => ({ n, i }))
     .filter(({ n }) => n.kind !== 'MAGIC' && n.width > 0);
-  const beadCount = drawn.reduce((sum, { n }) => sum + n.tops, 0);
 
-  const mesh = new THREE.InstancedMesh(geometry, material, beadCount);
+  const mesh = new THREE.InstancedMesh(geometry, material, drawn.length);
   const matrix = new THREE.Matrix4();
   const color = new THREE.Color();
-  const offset = new THREE.Vector3();
-  let slot = 0;
 
-  for (const { n, i } of drawn) {
+  drawn.forEach(({ n, i }, slot) => {
     const frame = frames[i]!;
     const p = positions[i]!;
-    const yarn = color.set(stitches[n.stitchIndex]?.op.color ?? DEFAULT_YARN).clone();
-    // V 는 윗변을 코 개수만큼 나눠 나란히 놓는다
-    const beadWidth = n.width / n.tops;
 
-    for (let k = 0; k < n.tops; k++) {
-      // 좌표가 가리키는 곳은 코의 윗변 가운데이므로, 비즈의 한가운데는 키의 절반만큼
-      // 아래이고, 여러 코로 나뉘면 옆으로도 제 몫만큼 비켜난다
-      offset
-        .copy(frame.side).multiplyScalar((k + 0.5 - n.tops / 2) * beadWidth)
-        .addScaledVector(frame.up, -n.height / 2);
-
-      matrix.makeBasis(
-        frame.side.clone().multiplyScalar(beadWidth * BEAD_FILL),
-        frame.up.clone().multiplyScalar(n.height * BEAD_FILL),
-        frame.normal.clone().multiplyScalar(FABRIC_THICKNESS),
-      );
-      matrix.setPosition(p.x + offset.x, p.y + offset.y, p.z + offset.z);
-      mesh.setMatrixAt(slot, matrix);
-      mesh.setColorAt(slot, yarn);
-      slot++;
-    }
-  }
+    // 좌표가 가리키는 곳은 코의 윗변 가운데이므로, 비즈의 한가운데는 키의 절반만큼 아래다
+    matrix.makeBasis(
+      frame.side.clone().multiplyScalar(n.width * BEAD_FILL),
+      frame.up.clone().multiplyScalar(n.height * BEAD_FILL),
+      frame.normal.clone().multiplyScalar(FABRIC_THICKNESS),
+    );
+    matrix.setPosition(
+      p.x - frame.up.x * (n.height / 2),
+      p.y - frame.up.y * (n.height / 2),
+      p.z - frame.up.z * (n.height / 2),
+    );
+    mesh.setMatrixAt(slot, matrix);
+    mesh.setColorAt(slot, color.set(stitches[n.stitchIndex]?.op.color ?? DEFAULT_YARN));
+  });
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   group.add(mesh);

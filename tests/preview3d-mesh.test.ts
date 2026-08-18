@@ -19,17 +19,13 @@ describe('3D 메시 (mesh)', () => {
   const stitches = layoutOf(['@, 6X', '6V', '(1X:navy,1V:navy)*6', '18X']);
   const solved = buildPreview3D(stitches, { iterations: 200 });
 
-  it('비즈 수는 윗변에 늘어서는 코의 수 — V 는 둘로 나뉜다', () => {
+  it('매직링을 뺀 구슬마다 비즈 하나', () => {
     const mesh = buildStitchMesh(solved, stitches, false);
     const instanced = mesh.object.children.find(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    const expected = solved.graph.nodes
-      .filter((n) => n.kind !== 'MAGIC')
-      .reduce((sum, n) => sum + n.tops, 0);
+    const expected = solved.graph.nodes.filter((n) => n.kind !== 'MAGIC').length;
     expect(instanced?.count).toBe(expected);
-    // 노드 수보다 많다 = V 가 실제로 쪼개졌다
-    expect(expected).toBeGreaterThan(solved.graph.nodes.length - 1);
     mesh.dispose();
   });
 

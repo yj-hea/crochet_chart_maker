@@ -10,7 +10,7 @@ export type { StitchGraph, StitchNode, StitchEdge, EdgeKind, GraphOptions, Vec3 
 export { relax } from './relax';
 export type { RelaxOptions, RelaxResult } from './relax';
 export { axisymmetricSeed } from './seed';
-export { stitchHeight, stitchTopWidth, FABRIC_THICKNESS } from './aspect';
+export { stitchHeight, stitchWidth, stitchTops, FABRIC_THICKNESS } from './aspect';
 
 import type { PositionedStitch } from '$lib/layout/types';
 import { buildStitchGraph } from './graph';

@@ -5,7 +5,7 @@ import { layoutCircular } from '../src/lib/crafts/crochet/circular';
 import { buildStitchGraph } from '../src/lib/preview3d/graph';
 import type { StitchGraph, Vec3 } from '../src/lib/preview3d/graph';
 import { relax } from '../src/lib/preview3d/relax';
-import { stitchHeight, stitchTopWidth } from '../src/lib/preview3d/aspect';
+import { stitchHeight, stitchTops, stitchWidth } from '../src/lib/preview3d/aspect';
 import { axisymmetricSeed } from '../src/lib/preview3d/seed';
 
 function graphFromSources(sources: string[], closed = true): StitchGraph {
@@ -80,12 +80,15 @@ describe('코 비율 (aspect)', () => {
     expect(stitchHeight(opOf('1VF'))).toBeCloseTo(stitchHeight(opOf('1F')), 5);
   });
 
-  it('윗변 폭은 늘림 수만큼 넓다 — 다음 단이 올라앉는 자리다', () => {
-    expect(stitchTopWidth(opOf('1X'))).toBeCloseTo(1, 5);
-    expect(stitchTopWidth(opOf('1V'))).toBeCloseTo(2, 5);
-    expect(stitchTopWidth(opOf('1V^3'))).toBeCloseTo(3, 5);
+  it('V 는 코 여러 개, A 는 한 개 — 폭은 어느 쪽이나 코 하나만큼', () => {
+    expect(stitchTops(opOf('1X'))).toBe(1);
+    expect(stitchTops(opOf('1V'))).toBe(2);
+    expect(stitchTops(opOf('1V^3'))).toBe(3);
     // 줄임은 두 구멍을 먹지만 위로는 한 코다
-    expect(stitchTopWidth(opOf('1A'))).toBeCloseTo(1, 5);
+    expect(stitchTops(opOf('1A'))).toBe(1);
+    // 폭은 코 하나 기준이다 — V 는 구슬 두 개로 풀리므로 여기서 곱하지 않는다
+    expect(stitchWidth(opOf('1V'))).toBeCloseTo(1, 5);
+    expect(stitchWidth(opOf('1X'))).toBeCloseTo(1, 5);
   });
 });
 
@@ -96,6 +99,43 @@ describe('코 그래프 (graph)', () => {
     const toRound2 = columns.filter((e) => g.nodes[e.b]!.roundIndex === 2);
     expect(toRound2.length).toBeGreaterThan(0);
     for (const e of toRound2) expect(e.rest).toBeCloseTo(2.0, 5); // 한길긴뜨기
+  });
+
+  it('V 는 구슬 두 개 — 만든 코마다 하나씩', () => {
+    const plain = graphFromSources(['@, 6X', '12X']);
+    const inc = graphFromSources(['@, 6X', '6V']);
+    // 둘 다 2단이 12코다. 표기는 6개지만 구슬은 12개여야 한다.
+    const count = (g: StitchGraph) => g.nodes.filter((n) => n.roundIndex === 2).length;
+    expect(count(plain)).toBe(12);
+    expect(count(inc)).toBe(12);
+  });
+
+  it('V 가 만든 두 코는 서로 가로로 이어진다 — 편물은 상하좌우로 붙어 있다', () => {
+    const g = graphFromSources(['@, 6X', '6V']);
+    const rows = g.edges.filter(
+      (e) => e.kind === 'row' && g.nodes[e.a]!.roundIndex === 2 && g.nodes[e.b]!.roundIndex === 2,
+    );
+    // 12코가 고리로 닫히면 가로 변도 12개
+    expect(rows).toHaveLength(12);
+    // 그중 하나는 같은 V 에서 갈라져 나온 짝이다
+    const sameStitch = rows.filter(
+      (e) => g.nodes[e.a]!.stitchIndex === g.nodes[e.b]!.stitchIndex,
+    );
+    expect(sameStitch).toHaveLength(6);
+  });
+
+  it('V 위의 자식들은 서로 다른 윗변에 걸린다 — 한 점에 몰리지 않는다', () => {
+    const g = graphFromSources(['@, 6X', '6V', '12X']);
+    const round2 = g.nodes
+      .map((n, i) => ({ n, i }))
+      .filter(({ n }) => n.roundIndex === 2);
+    // 2단 구슬 12개가 각각 3단 자식을 정확히 하나씩 받는다
+    for (const { i } of round2) {
+      const children = g.edges.filter(
+        (e) => e.kind === 'column' && e.a === i && g.nodes[e.b]!.roundIndex === 3,
+      );
+      expect(children).toHaveLength(1);
+    }
   });
 
   it('원형이면 단이 고리로 닫힌다', () => {
@@ -161,19 +201,56 @@ describe('완화 솔버 (relax)', () => {
     expect(a.positions).toEqual(b.positions);
   });
 
+  it('6코 뒤 6늘림은 평평하고 조금 넓어진 원 — 위로 서지 않는다', () => {
+    const g = graphFromSources(['@, 6X', '6V']);
+    const stats = roundStats(g, relax(g, { iterations: 500 }).positions);
+    // 둘레가 6 → 12 로 늘어난 만큼 반지름도 그만큼 커진다
+    expect(stats[0]!.radius).toBeCloseTo(6 / (2 * Math.PI), 1);
+    expect(stats[1]!.radius).toBeCloseTo(12 / (2 * Math.PI), 1);
+    // 늘어날 자리가 충분해 축 방향으로는 서지 않는다
+    expect(Math.abs(stats[1]!.z - stats[0]!.z)).toBeLessThan(0.2);
+  });
+
+  it('늘린 다음 그대로 뜨면 늘 곳이 없어 위로 선다', () => {
+    const g = graphFromSources(['@, 6X', '6V', '12X', '12X', '12X']);
+    const stats = roundStats(g, relax(g, { iterations: 500 }).positions);
+    // 12코 단들은 반지름이 같고
+    for (let i = 2; i < stats.length; i++) {
+      expect(stats[i]!.radius).toBeCloseTo(stats[1]!.radius, 1);
+    }
+    // 늘어난 키가 고스란히 높이로 간다
+    for (let i = 3; i < stats.length; i++) {
+      expect(stats[i]!.z - stats[i - 1]!.z).toBeCloseTo(1.0, 1);
+    }
+  });
+
+  it('줄이면 올라가는 각도가 낮아진다 — 오므라들며 평평해진다', () => {
+    const g = graphFromSources(['@, 6X', '6V', '(1X,1V)*6', '18X', '(1X,1A)*6', '6A']);
+    const stats = roundStats(g, relax(g, { iterations: 500 }).positions);
+    const rise = (i: number) => stats[i]!.z - stats[i - 1]!.z;
+    const shrink = (i: number) => stats[i - 1]!.radius - stats[i]!.radius;
+    // 줄임 단(5, 6)은 반지름이 크게 줄면서 높이는 조금밖에 안 오른다
+    for (const i of [4, 5]) {
+      expect(shrink(i)).toBeGreaterThan(0.5);
+      expect(rise(i)).toBeLessThan(shrink(i));
+    }
+    // 늘림 없이 그대로 뜬 단(3)보다 훨씬 덜 오른다
+    expect(rise(5)).toBeLessThan(rise(3) / 2);
+  });
+
   it('매 단 6늘림은 평평한 원판이 된다', () => {
     const g = graphFromSources(['@, 6X', '6V', '(1X,1V)*6', '(2X,1V)*6', '(3X,1V)*6', '(4X,1V)*6']);
     const { positions, residual } = relax(g, { iterations: 500 });
     const stats = roundStats(g, positions);
 
-    // 지름 11 짜리 원판인데 두께 방향으로는 1 도 안 된다
-    expect(zSpread(positions)).toBeLessThan(1);
+    // 지름 11 짜리 원판인데 두께 방향으로는 0.5 도 안 된다
+    expect(zSpread(positions)).toBeLessThan(0.5);
     expect(stats.at(-1)!.radius).toBeGreaterThan(5);
     // 단마다 반지름이 꾸준히 자란다 = 안으로 접히지 않았다
     for (let i = 1; i < stats.length; i++) {
       expect(stats[i]!.radius).toBeGreaterThan(stats[i - 1]!.radius);
     }
-    expect(residual).toBeLessThan(0.02);
+    expect(residual).toBeLessThan(0.005);
   });
 
   it('늘림 없이 이어 뜨면 곧은 원통이 된다', () => {

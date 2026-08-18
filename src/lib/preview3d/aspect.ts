@@ -64,18 +64,22 @@ export function stitchHeight(op: Op): number {
 }
 
 /**
- * 이 코가 **윗변에서** 차지하는 폭 (코 폭 단위).
+ * 코 **하나**의 폭 (코 폭 단위).
  *
- * 아랫변이 아니라 윗변인 게 중요하다. `V`(늘림)는 한 구멍에서 시작하지만 위로는
- * 코 두 개만큼 벌어지고, `A`(줄임)는 두 구멍을 먹지만 위로는 한 코다. 다음 단이
- * 올라앉는 건 윗변이므로, 단의 둘레를 정하는 것도 윗변이다.
+ * `V`(늘림)처럼 여러 코를 만드는 표기라도 여기서는 코 하나의 폭을 돌려준다 —
+ * `V` 는 구슬 하나가 아니라 **구슬 두 개**로 풀리기 때문이다 (`graph.ts` 참고).
  *
  * 매직링은 코가 아니라 1단이 모이는 점이라 0 이다.
  */
-export function stitchTopWidth(op: Op): number {
-  const base = WIDTH[resolveKind(op)] ?? 1.0;
+export function stitchWidth(op: Op): number {
   if (op.kind === 'MAGIC') return 0;
-  return base * Math.max(1, op.produce);
+  return WIDTH[resolveKind(op)] ?? 1.0;
+}
+
+/** 이 표기가 윗변에 만들어 내는 코의 개수 — `V^3` 이면 3 */
+export function stitchTops(op: Op): number {
+  if (op.kind === 'MAGIC') return 1;
+  return Math.max(1, op.produce);
 }
 
 /**
