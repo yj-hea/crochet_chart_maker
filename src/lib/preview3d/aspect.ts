@@ -13,8 +13,23 @@
 import type { Op } from '$lib/expand/op';
 import type { StitchKind } from '$lib/model/stitch-kind';
 
-/** 코 폭 1 기준 높이. 게이지·실 종류에 따라 ±15% 는 정상 범위다. */
-const HEIGHT: Partial<Record<StitchKind, number>> = {
+/**
+ * 높이의 절대 눈금.
+ *
+ * 아래 표는 코끼리의 **비율**이고, 폭에 대한 절대 크기는 이 값이 정한다. 근거는
+ * 코바늘의 경험칙이다 — 짧은뜨기는 **한 단에 6 늘림**이면 평평한 원판이 된다. 그러려면
+ * 단마다 반지름이 `6/2π` 만큼 늘고 그게 곧 코 높이여야 하므로, 짧은뜨기 높이는 폭의
+ * 0.955 다.
+ *
+ * 다른 코도 같은 규칙으로 맞아떨어진다. 한길긴뜨기는 12 늘림이 정석인데 `12/2π = 1.91`
+ * 이고, 아래 표의 비율 2.0 에 이 눈금을 곱한 값과 같다. 긴뜨기의 8~9 늘림도 마찬가지다.
+ *
+ * 1.0 으로 두면 표준 원판이 살짝 오므라든 원뿔이 된다 — 5% 차이가 단마다 쌓인다.
+ */
+const HEIGHT_SCALE = 6 / (2 * Math.PI);
+
+/** 짧은뜨기를 1 로 본 높이 비율. 게이지·실 종류에 따라 ±15% 는 정상 범위다. */
+const RATIO: Partial<Record<StitchKind, number>> = {
   MAGIC: 0,
   CHAIN: 0.5,
   SLIP: 0.25,
@@ -45,7 +60,7 @@ const WIDTH: Partial<Record<StitchKind, number>> = {
  * 네길·다섯길 긴뜨기도 같은 기울기로 이어 쓴다.
  */
 function heightByYarnOver(yarnOverCount: number): number {
-  return 2.0 + 0.7 * (yarnOverCount - 1);
+  return (2.0 + 0.7 * (yarnOverCount - 1)) * HEIGHT_SCALE;
 }
 
 /** V/A 는 자기 높이가 아니라 **바탕 코**의 높이를 따른다 (`2V^3` 은 짧은뜨기 3개) */
@@ -60,7 +75,7 @@ export function stitchHeight(op: Op): number {
   if ((kind === 'TR' || kind === 'DTR') && op.yarnOverCount !== undefined) {
     return heightByYarnOver(op.yarnOverCount);
   }
-  return HEIGHT[kind] ?? 1.0;
+  return (RATIO[kind] ?? 1.0) * HEIGHT_SCALE;
 }
 
 /**

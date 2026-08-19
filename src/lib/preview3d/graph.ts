@@ -89,6 +89,8 @@ export interface StitchEdge {
  */
 export interface StitchChain {
   nodes: number[];
+  /** 가로로 한 단인가, 세로로 타고 올라가는 기둥인가 */
+  kind: 'row' | 'column';
   /** 고리처럼 끝이 처음과 이어지는가 (원형 도안의 단) */
   closed: boolean;
 }
@@ -118,9 +120,25 @@ function isFabric(kind: StitchKind): boolean {
 /** 한 표기에서 갈라진 구슬들을 떼어 놓을 거리 (레이아웃 px) */
 const SPLIT_NUDGE = 0.01;
 
-/** 두 코 사이 가로 변의 길이 — 각자 자기 폭의 절반씩 내놓는다 */
-function rowRest(a: StitchNode, b: StitchNode): number {
+/** 두 코 사이가 편물을 따라 얼마나 떨어져 있는가 — 각자 자기 폭의 절반씩 내놓는다 */
+function rowArc(a: StitchNode, b: StitchNode): number {
   return (a.width + b.width) / 2;
+}
+
+/**
+ * 그 호를 **직선 거리**로 바꾼다.
+ *
+ * 코 폭은 편물을 따라가며 잰 길이(호)인데, 구슬끼리는 직선으로 이어져 있다. 단이
+ * 고리로 닫혀 있으면 그 둘이 다르다 — 6코짜리 작은 단에서는 4.5% 나 차이 난다.
+ * 호를 그대로 목표로 삼으면 고리가 제 둘레보다 커져야 하고, 그 남는 길이가 단마다
+ * 쌓여 평평해야 할 원판이 점점 휜다.
+ *
+ * 둘레 `C` 인 원에서 호 `arc` 에 대응하는 현의 길이를 쓴다. 코가 많아질수록 둘 차이는
+ * 사라진다 (36코 단이면 0.07%).
+ */
+function chordOfArc(arc: number, circumference: number): number {
+  if (circumference <= 0 || arc <= 0) return arc;
+  return (circumference / Math.PI) * Math.sin((Math.PI * arc) / circumference);
 }
 
 export interface GraphOptions {
@@ -224,15 +242,20 @@ export function buildStitchGraph(
   const closed = options.closed ?? true;
 
   for (const row of rows.values()) {
+    // 고리로 닫힌 단만 현으로 바꾼다. 왕복뜨기의 띠는 곧게 펴지므로 호가 곧 직선이다.
+    const circumference = closed ? row.reduce((sum, i) => sum + nodes[i]!.width, 0) : 0;
+    const rest = (a: number, b: number) =>
+      closed
+        ? chordOfArc(rowArc(nodes[a]!, nodes[b]!), circumference)
+        : rowArc(nodes[a]!, nodes[b]!);
+
     for (let k = 0; k + 1 < row.length; k++) {
-      const a = row[k]!;
-      const b = row[k + 1]!;
-      push(a, b, rowRest(nodes[a]!, nodes[b]!), 'row');
+      push(row[k]!, row[k + 1]!, rest(row[k]!, row[k + 1]!), 'row');
     }
     if (closed && row.length > 2) {
       const a = row[row.length - 1]!;
       const b = row[0]!;
-      push(a, b, rowRest(nodes[a]!, nodes[b]!), 'row');
+      push(a, b, rest(a, b), 'row');
     }
   }
 
@@ -257,8 +280,15 @@ export function buildStitchGraph(
       if (!s.op.sameHoleContinuation) usedSlots.set(p, used + 1);
       const parent = parentBeads[Math.max(0, Math.min(slot, parentBeads.length - 1))]!;
       // 자식이 V 면 그 구슬 전부가 같은 구멍에서 나온다
-      for (const child of childBeads) {
-        push(parent, child, nodes[child]!.height, 'column');
+      // 코는 부모의 **윗변 어딘가**에 걸린다 — 윗변 한가운데 점에 걸리는 게 아니다.
+      // 한 구멍에서 여러 코가 나오면 각자 윗변을 나눠 갖고 걸리므로, 부모 한가운데에서
+      // 재면 그 어긋난 만큼 더 멀다. 이걸 빼먹으면 늘림에서 나온 코들이 부모 쪽으로
+      // 끌려 내려와 옆 코보다 눕는다.
+      const parentWidth = nodes[parent]!.width;
+      for (let k = 0; k < childBeads.length; k++) {
+        const child = childBeads[k]!;
+        const grip = ((k + 0.5) / childBeads.length - 0.5) * parentWidth;
+        push(parent, child, Math.hypot(nodes[child]!.height, grip), 'column');
       }
     }
   });
@@ -285,7 +315,9 @@ export function buildStitchGraph(
   // 모두에 길을 내어 굽힘을 건다.
   const chains: StitchChain[] = [];
   for (const row of rows.values()) {
-    if (row.length >= 3) chains.push({ nodes: [...row], closed: closed && row.length > 3 });
+    if (row.length >= 3) {
+      chains.push({ nodes: [...row], kind: 'row', closed: closed && row.length > 3 });
+    }
   }
 
   // 세로 기둥 — 부모에서 자식으로 타고 올라간다. 늘림에서 갈라지고 줄임에서 합쳐지므로
@@ -314,7 +346,7 @@ export function buildStitchGraph(
       column.push(next);
       cur = next;
     }
-    if (column.length >= 3) chains.push({ nodes: column, closed: false });
+    if (column.length >= 2) chains.push({ nodes: column, kind: 'column', closed: false });
   }
 
   // ── 축척 ───────────────────────────────────────────────────────────

@@ -61,6 +61,7 @@ export function axisymmetricSeed(graph: StitchGraph): Vec3[] {
   let z = 0;
   let prevRadius = 0;
   let firstRadius = 0;
+  let firstHeight = 1;
   let firstZ = 0;
 
   roundNumbers.forEach((round, order) => {
@@ -74,6 +75,7 @@ export function axisymmetricSeed(graph: StitchGraph): Vec3[] {
     const height = heights[heights.length >> 1] ?? 1;
     if (order === 0) {
       firstRadius = radius;
+      firstHeight = height;
     } else {
       const dr = radius - prevRadius;
       // 반지름이 코 높이보다 더 벌어지면 평면에 못 들어간다 — 주름이므로 높이는 0
@@ -89,8 +91,11 @@ export function axisymmetricSeed(graph: StitchGraph): Vec3[] {
     prevRadius = radius;
   });
 
-  // 매직링은 1단이 모여드는 점 — 1단 원의 중심에서 코 높이만큼 아래
-  const drop = Math.sqrt(Math.max(0, 1 - firstRadius * firstRadius));
+  // 매직링은 1단이 모여드는 점 — 1단 원의 중심축에서, 1단 코 하나만큼 떨어진 곳.
+  // 높이를 1 로 박아 두면 안 된다. 짧은뜨기 6코 원은 반지름이 마침 코 키와 같아서
+  // 매직링이 1단과 같은 평면에 놓여야 하는데, 1 로 재면 0.3 만큼 아래로 처져
+  // 평평해야 할 원판이 처음부터 휜 채로 출발한다.
+  const drop = Math.sqrt(Math.max(0, firstHeight * firstHeight - firstRadius * firstRadius));
   for (const i of magics) out[i] = { x: 0, y: 0, z: firstZ - drop };
 
   return out;
@@ -148,7 +153,45 @@ function assignAngles(
     const prev = angles[idxs[j - 1]!]!;
     while (angles[idxs[j]!]! < prev) angles[idxs[j]!] += 2 * Math.PI;
   }
+
+  evenOutGaps(idxs, angles);
 }
+
+/**
+ * 코 간격을 고르게 편다. 부모에게서 물려받은 회전 위치는 유지한 채로.
+ *
+ * 부모 각도를 그대로 쓰면 **불균등이 단마다 쌓인다**. 늘림이 끼어들 때마다 그 부모의
+ * 몫만 둘로 갈라지고 나머지는 부모 간격을 그대로 쓰기 때문이다. 6단쯤 가면 코 간격이
+ * 1.5°~20° 로 벌어진다 (고르면 10°). 그 상태로는 가로 변이 목표의 0.15~2 배가 되고,
+ * 솔버가 그걸 밀어내다 편물을 통째로 휘게 만든다.
+ *
+ * 이웃의 가운데로 조금씩 당기면 간격이 고르게 펴진다. 전체가 어느 쪽으로 돌아 있는지는
+ * 이 연산이 바꾸지 않으므로, 부모 위에 선다는 성질은 그대로 남는다.
+ */
+function evenOutGaps(idxs: readonly number[], angles: Float64Array): void {
+  const n = idxs.length;
+  if (n < 3) return;
+
+  // 고리이므로 **끝과 처음 사이도 이웃이다**. 양 끝을 고정하고 가운데만 펴면 남는 몫이
+  // 전부 그 이음매로 몰려, 마지막 코와 첫 코가 겹치다시피 붙는다.
+  const TWO_PI = 2 * Math.PI;
+  for (let pass = 0; pass < EVEN_OUT_PASSES; pass++) {
+    for (let j = 0; j < n; j++) {
+      const before = j === 0 ? angles[idxs[n - 1]!]! - TWO_PI : angles[idxs[j - 1]!]!;
+      const after = j === n - 1 ? angles[idxs[0]!]! + TWO_PI : angles[idxs[j + 1]!]!;
+      angles[idxs[j]!] += ((before + after) / 2 - angles[idxs[j]!]!) * EVEN_OUT_RATE;
+    }
+  }
+}
+
+/**
+ * 간격을 펴는 횟수와 세기.
+ *
+ * 양 끝은 고정하고 가운데만 당기므로, 많이 돌릴수록 완전히 고른 간격에 가까워진다.
+ * 부모 정렬을 조금 남겨 두는 편이 세로 변에 유리해서 끝까지 밀지는 않는다.
+ */
+const EVEN_OUT_PASSES = 40;
+const EVEN_OUT_RATE = 0.5;
 
 /**
  * 부모의 각도. 부모가 둘이면(`A` 줄임) 가운데를 쓴다.

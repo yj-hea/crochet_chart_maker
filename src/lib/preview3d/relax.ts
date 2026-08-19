@@ -10,10 +10,11 @@
  * 만족하는 배치가 여럿 있다 — 평평한 원판, 위로 부푼 그릇, 아래로 뒤집힌 그릇.
  * 그래서 두 가지를 더 넣는다:
  *
- *  - **속 채우기(stuffing)** — 모든 코를 중심에서 바깥으로 약하게 민다. 아미구루미에
- *    솜을 넣는 것과 같아서, 부풀 수 있는 형태는 부풀고 원판처럼 둘레가 모자란 형태는
- *    그대로 평평하게 남는다. 초반에 강하고 후반에 0 으로 줄여, 모양을 고른 뒤에는
- *    제약이 이기게 한다.
+ *  - **속 채우기(stuffing)** — 편물을 **면에 수직인 방향으로** 민다. 아미구루미에 솜을
+ *    넣는 것과 같다. 방향이 중요하다 — 중심에서 바깥으로 균일하게 확대하면 코 길이
+ *    제약이 정면으로 막아 아무 일도 일어나지 않는다. 면에 수직인 방향은 코 길이를
+ *    (1차적으로) 바꾸지 않아서, 굽으며 생기는 장력이 압력과 균형을 이룰 때까지
+ *    실제로 부푼다.
  *  - **밀어내기(repulsion)** — 변으로 이어지지 않은 코끼리 너무 가까워지면 밀어낸다.
  *    없으면 편물이 자기 자신을 뚫고 지나간다.
  *
@@ -27,7 +28,7 @@ import { axisymmetricSeed } from './seed';
 export interface RelaxOptions {
   /** 반복 횟수. 200 이면 수백 코짜리 도안이 대체로 수렴한다 */
   iterations?: number;
-  /** 속 채우기 세기 (코 폭 단위/회). 0 이면 평면 해를 그대로 둔다 */
+  /** 속 채우기 압력 (코 폭 단위/회). 0 이면 부풀리지 않는다 */
   stuffing?: number;
   /**
    * 굽힘 저항 세기 (0~1). 크면 뻣뻣하고, 작으면 흐물흐물하게 나온다.
@@ -38,6 +39,14 @@ export interface RelaxOptions {
   repulsion?: number;
   /** 초기 z 흔들림 — 완전한 평면에서 시작하면 어느 쪽으로도 부풀지 못한다 */
   jitter?: number;
+  /**
+   * 눌리는 데 대한 저항 (0~1). 늘어나는 데 대한 저항을 1 로 본 상대값.
+   *
+   * 코는 제 길이보다 **길어질 수 없지만** 짧아지는 건 훨씬 자유롭다 — 코가 기울면
+   * 이웃끼리 얼마든지 가까워진다. 그래서 양쪽을 같게 걸면 안 된다. 반대로 0 으로 두면
+   * 압력이 편물을 풍선처럼 무한정 부풀린다 (평평한 원판이 지름의 절반 높이까지 솟았다).
+   */
+  compression?: number;
 }
 
 export interface RelaxResult {
@@ -47,16 +56,17 @@ export interface RelaxResult {
   residual: number;
 }
 
+/** 한 반복에서 코 길이를 되잡는 횟수 */
+const LENGTH_PASSES = 3;
+
 const DEFAULTS: Required<RelaxOptions> = {
   iterations: 200,
   stuffing: 0.02,
   stiffness: 0.02,
   repulsion: 0.7,
   jitter: 0.05,
+  compression: 0.05,
 };
-
-/** 속 채우기를 하는 구간 — 전체 반복 중 앞쪽 이 비율까지만 */
-const STUFFING_PHASE = 0.5;
 
 /** 인덱스에서 [-1, 1) 을 뽑는 결정적 해시 — 재현 가능한 초기 흔들림용 */
 function hashNoise(i: number): number {
@@ -83,22 +93,27 @@ export function relax(graph: StitchGraph, options: RelaxOptions = {}): RelaxResu
     pz[i] = start[i]!.z + hashNoise(i) * opts.jitter;
   }
 
+  const surface = buildSurfaceFrame(graph, n);
+  orientSurface(px, py, pz, surface, n);
+
   // 변으로 이어진 짝은 밀어내기에서 뺀다 — 이웃끼리는 붙어 있는 게 정상이다
   const linked = new Set<number>();
   for (const e of edges) linked.add(pairKey(e.a, e.b));
 
   let residual = 0;
   for (let iter = 0; iter < opts.iterations; iter++) {
-    // 속 채우기는 **앞쪽 절반에서만** 하고 완전히 끈다. 끝까지 조금씩이라도 밀면
-    // 제약과 계속 밀당해서 수렴하지 못한다. 모양은 초반에 갈리고, 나머지 절반은
-    // 그 모양에서 변 길이를 정확히 맞추는 데 쓴다.
-    const phase = iter / opts.iterations;
-    if (phase < STUFFING_PHASE) {
-      applyStuffing(px, py, pz, n, opts.stuffing * (1 - phase / STUFFING_PHASE));
-    }
+    // 압력은 끝까지 유지한다. 도중에 끄면 남은 반복 동안 제약이 도로 오므려서, 결국
+    // 솜을 안 넣은 것과 같은 모양이 된다. 계속 밀어야 "코가 허락하는 만큼 부푼" 자리에서
+    // 균형이 잡힌다.
+    if (opts.stuffing !== 0) applyStuffing(px, py, pz, surface, opts.stuffing);
 
-    applyBending(px, py, pz, graph.chains, opts.stiffness);
-    residual = projectEdges(px, py, pz, edges);
+    applyBending(px, py, pz, graph.chains, surface, opts.stiffness);
+    // 코 길이는 여러 번 되잡는다. 한 번만 하면 압력이 코를 늘인 채로 남아, 부푼 게
+    // 아니라 **늘어난** 모양이 된다. 압력은 한 번, 되잡기는 여러 번이라야
+    // "코가 허락하는 만큼만 부푼" 형태가 나온다.
+    for (let pass = 0; pass < LENGTH_PASSES; pass++) {
+      residual = projectEdges(px, py, pz, edges, opts.compression);
+    }
 
     if (opts.repulsion > 0) applyRepulsion(px, py, pz, n, opts.repulsion, linked);
   }
@@ -121,6 +136,7 @@ function projectEdges(
   py: Float64Array,
   pz: Float64Array,
   edges: readonly StitchGraph['edges'][number][],
+  compression: number,
 ): number {
   let sum = 0;
   for (const e of edges) {
@@ -130,11 +146,15 @@ function projectEdges(
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (len < 1e-9) continue;
 
+    // 늘어나는 쪽과 눌리는 쪽을 다르게 건다. 코는 제 길이보다 길어질 수 없지만,
+    // 짧아지는 건 훨씬 자유롭다 — 코가 기울면 이웃끼리 얼마든지 가까워진다.
+    // 양쪽을 같게 걸면 편물을 억지로 펴는 힘이 생겨, 평평해야 할 원판이 반복이 쌓일수록
+    // 점점 휘었다.
     const error = len - e.rest;
-    sum += error * error;
+    if (error > 0) sum += error * error;
 
     // 양 끝이 절반씩 움직인다 (질량이 같다고 본다)
-    const k = (error / len) * 0.5;
+    const k = (error / len) * 0.5 * (error < 0 ? compression : 1);
     px[e.a] += dx * k; py[e.a] += dy * k; pz[e.a] += dz * k;
     px[e.b] -= dx * k; py[e.b] -= dy * k; pz[e.b] -= dz * k;
   }
@@ -160,9 +180,11 @@ function applyBending(
   py: Float64Array,
   pz: Float64Array,
   chains: readonly StitchGraph['chains'][number][],
+  f: SurfaceFrame,
   stiffness: number,
 ): void {
   if (stiffness <= 0) return;
+  const nrm: Vec = { x: 0, y: 0, z: 0 };
   for (const chain of chains) {
     const ids = chain.nodes;
     const n = ids.length;
@@ -196,14 +218,21 @@ function applyBending(
       if (count === 0) continue;
       sx /= count; sy /= count; sz /= count;
 
-      // 이웃과 다른 만큼만 되돌린다
-      const dx = (cx[k]! - sx) * stiffness;
-      const dy = (cy[k]! - sy) * stiffness;
-      const dz = (cz[k]! - sz) * stiffness;
-
       const a = ids[prev]!;
       const m = ids[k]!;
       const b = ids[next]!;
+
+      // 이웃과 다른 만큼을, **면에 수직인 방향으로만** 되돌린다.
+      //
+      // 면 안에서 도는 곡률은 편물이 접힌 게 아니다 — 단이 축을 감고 도는 것뿐이라
+      // 그건 코 수가 정하는 정상이다. 그것까지 펴려 들면 고리를 조금씩 조이게 되고,
+      // 반복이 쌓이면서 원판이 점점 휘어 버린다 (실측: 반복 500 에서 z폭 1.18,
+      // 2000 에서 2.05). 편물이 진짜로 접히는 건 면에 수직인 방향이다.
+      if (!surfaceNormal(px, py, pz, f, m, nrm)) continue;
+      const along = (cx[k]! - sx) * nrm.x + (cy[k]! - sy) * nrm.y + (cz[k]! - sz) * nrm.z;
+      const dx = nrm.x * along * stiffness;
+      const dy = nrm.y * along * stiffness;
+      const dz = nrm.z * along * stiffness;
       px[m] += dx; py[m] += dy; pz[m] += dz;
       px[a] -= dx / 2; py[a] -= dy / 2; pz[a] -= dz / 2;
       px[b] -= dx / 2; py[b] -= dy / 2; pz[b] -= dz / 2;
@@ -212,29 +241,154 @@ function applyBending(
 }
 
 /**
- * 무게중심에서 바깥으로 미는 힘 — 부풀 수 있는 형태만 부푼다.
+ * 편물의 면 방향 — 어느 쪽이 바깥인가.
  *
- * 미는 양이 **중심에서 떨어진 거리에 비례**해야 한다. 거리와 무관하게 일정하게 밀면
- * 중심에 있는 코(매직링)가 방향도 없이 아무 쪽으로나 한 걸음씩 밀려나 결국 축 방향으로
- * 튀어나가고, 원통은 가운데를 기준으로 방사되어 바나나처럼 휜다. 거리에 비례시키면
- * 전체를 고르게 부풀리는 것과 같아서, 둘레에 여유가 있는 형태만 부풀고 원판처럼
- * 여유가 없는 형태는 변 길이에 막혀 그대로 평평하게 남는다.
+ * 코마다 가로(단을 따라)와 세로(기둥을 따라) 두 방향을 이웃에서 얻고, 그 외적이 면에
+ * 수직인 방향이다. 단의 진행 방향과 단이 쌓이는 방향이 도안 전체에서 일관되므로 이
+ * 외적도 전체에서 같은 쪽을 가리킨다 — 어느 코는 안쪽, 어느 코는 바깥쪽을 가리키는 일이
+ * 없다. 전체가 어느 쪽인지만 마지막에 한 번 정하면 된다.
  */
-function applyStuffing(
-  px: Float64Array,
-  py: Float64Array,
-  pz: Float64Array,
-  n: number,
-  amount: number,
+interface SurfaceFrame {
+  /** 단을 따라 앞·뒤 코. 방향이 도안 전체에서 일관되어야 한다 */
+  rowPrev: Int32Array;
+  rowNext: Int32Array;
+  parents: number[][];
+  children: number[][];
+  /** 외적이 안쪽을 가리키면 -1 */
+  sign: number;
+}
+
+function buildSurfaceFrame(graph: StitchGraph, n: number): SurfaceFrame {
+  // 가로는 **사슬**에서 가져온다. 변 목록에서 이웃을 모으면 두 이웃의 순서가 변이 만들어진
+  // 순서대로라 코마다 접선이 앞뒤로 뒤집히고, 그러면 면 방향이 무작위로 안팎을 오간다.
+  const rowPrev = new Int32Array(n).fill(-1);
+  const rowNext = new Int32Array(n).fill(-1);
+  for (const chain of graph.chains) {
+    if (chain.kind !== 'row') continue;
+    const ids = chain.nodes;
+    const len = ids.length;
+    for (let k = 0; k < len; k++) {
+      const i = ids[k]!;
+      if (k > 0) rowPrev[i] = ids[k - 1]!;
+      else if (chain.closed) rowPrev[i] = ids[len - 1]!;
+      if (k < len - 1) rowNext[i] = ids[k + 1]!;
+      else if (chain.closed) rowNext[i] = ids[0]!;
+    }
+  }
+
+  // 세로는 **실제 부모·자식**에서 가져온다. 기둥 사슬은 한 부모에 자식 하나씩만 이어
+  // 붙이므로, `V` 가 만든 두 코 중 하나는 부모와 이어지고 하나는 끊긴다. 그러면 둘이
+  // 서로 다른 면 방향을 잡아 하나는 더 밀리고 하나는 덜 밀려 지그재그가 살아난다.
+  const parents: number[][] = Array.from({ length: n }, () => []);
+  const children: number[][] = Array.from({ length: n }, () => []);
+  for (const e of graph.edges) {
+    if (e.kind !== 'column') continue;
+    parents[e.b]!.push(e.a);
+    children[e.a]!.push(e.b);
+  }
+
+  return { rowPrev, rowNext, parents, children, sign: 1 };
+}
+
+interface Vec {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** 여러 코의 평균 위치 */
+function centroidOf(
+  px: Float64Array, py: Float64Array, pz: Float64Array, ids: readonly number[], out: Vec,
+): boolean {
+  if (ids.length === 0) return false;
+  let x = 0, y = 0, z = 0;
+  for (const i of ids) { x += px[i]!; y += py[i]!; z += pz[i]!; }
+  out.x = x / ids.length; out.y = y / ids.length; out.z = z / ids.length;
+  return true;
+}
+
+const A: Vec = { x: 0, y: 0, z: 0 };
+const B: Vec = { x: 0, y: 0, z: 0 };
+
+/**
+ * 코 하나의 면 방향. 방향을 정할 수 없으면 false.
+ *
+ * 가로는 양옆 이웃을 잇는 방향, 세로는 부모들에서 자식들로 가는 방향이다. 한쪽이
+ * 없으면 자기 자리를 대신 쓴다 (첫 단, 마지막 단, 띠의 양 끝).
+ */
+function surfaceNormal(
+  px: Float64Array, py: Float64Array, pz: Float64Array,
+  f: SurfaceFrame, i: number, out: Vec,
+): boolean {
+  const before = f.rowPrev[i]! >= 0 ? f.rowPrev[i]! : i;
+  const after = f.rowNext[i]! >= 0 ? f.rowNext[i]! : i;
+  if (before === after) return false;
+  const tx = px[after]! - px[before]!;
+  const ty = py[after]! - py[before]!;
+  const tz = pz[after]! - pz[before]!;
+
+  const hasUp = centroidOf(px, py, pz, f.children[i]!, A);
+  const hasDown = centroidOf(px, py, pz, f.parents[i]!, B);
+  if (!hasUp && !hasDown) return false;
+  const ux = (hasUp ? A.x : px[i]!) - (hasDown ? B.x : px[i]!);
+  const uy = (hasUp ? A.y : py[i]!) - (hasDown ? B.y : py[i]!);
+  const uz = (hasUp ? A.z : pz[i]!) - (hasDown ? B.z : pz[i]!);
+
+  const x = ty * uz - tz * uy;
+  const y = tz * ux - tx * uz;
+  const z = tx * uy - ty * ux;
+  const len = Math.sqrt(x * x + y * y + z * z);
+  if (len < 1e-9) return false;
+  out.x = x / len; out.y = y / len; out.z = z / len;
+  return true;
+}
+
+/**
+ * 전체 면 방향이 안쪽을 향하는지 바깥쪽을 향하는지 한 번만 정한다.
+ * 무게중심에서 바깥으로 향하는 쪽이 이긴다.
+ */
+function orientSurface(
+  px: Float64Array, py: Float64Array, pz: Float64Array, f: SurfaceFrame, n: number,
 ): void {
   let cx = 0, cy = 0, cz = 0;
   for (let i = 0; i < n; i++) { cx += px[i]!; cy += py[i]!; cz += pz[i]!; }
   cx /= n; cy /= n; cz /= n;
 
+  const nrm: Vec = { x: 0, y: 0, z: 0 };
+  let vote = 0;
   for (let i = 0; i < n; i++) {
-    px[i] = cx + (px[i]! - cx) * (1 + amount);
-    py[i] = cy + (py[i]! - cy) * (1 + amount);
-    pz[i] = cz + (pz[i]! - cz) * (1 + amount);
+    if (!surfaceNormal(px, py, pz, f, i, nrm)) continue;
+    vote += nrm.x * (px[i]! - cx) + nrm.y * (py[i]! - cy) + nrm.z * (pz[i]! - cz);
+  }
+  f.sign = vote < 0 ? -1 : 1;
+}
+
+/**
+ * 솜의 압력 — 편물을 면에 수직인 바깥 방향으로 민다.
+ *
+ * 중심에서 균일하게 확대하는 방식으로는 안 된다. 그건 코 길이 제약이 정면으로 막는
+ * 방향이라, 밀자마자 그대로 되돌아온다 (실측: 공의 높이가 압력을 5배로 올려도 0.7%
+ * 밖에 안 변했다). 면에 수직인 방향은 코 사이 거리를 1차적으로 바꾸지 않아서, 굽으며
+ * 생기는 장력이 압력과 맞설 때까지 실제로 부푼다.
+ *
+ * 둘레에 여유가 없는 형태(팽팽한 원판)는 밀어도 거의 안 부푼다 — 부풀려면 어딘가는
+ * 늘어나야 하는데 그럴 수 없기 때문이다. 저절로 그렇게 된다.
+ */
+function applyStuffing(
+  px: Float64Array,
+  py: Float64Array,
+  pz: Float64Array,
+  f: SurfaceFrame,
+  pressure: number,
+): void {
+  const n = px.length;
+  const nrm: Vec = { x: 0, y: 0, z: 0 };
+  const amount = pressure * f.sign;
+  for (let i = 0; i < n; i++) {
+    if (!surfaceNormal(px, py, pz, f, i, nrm)) continue;
+    px[i] += nrm.x * amount;
+    py[i] += nrm.y * amount;
+    pz[i] += nrm.z * amount;
   }
 }
 
