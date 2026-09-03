@@ -68,10 +68,10 @@ describe('knit parser', () => {
     expect(r.ops.map((o) => o.kind)).toEqual(['M1L', 'M1R']);
   });
 
-  it('lli/rli 는 consume 0 인 끌어올려 늘리기', () => {
+  it('lli/rli 는 k1 을 포함해 1코를 2코로', () => {
     const r = parseExpand(1, 'lli, rli');
-    expect(r.totalConsume).toBe(0);
-    expect(r.totalProduce).toBe(2);
+    expect(r.totalConsume).toBe(2);
+    expect(r.totalProduce).toBe(4);
     expect(r.ops.map((o) => o.kind)).toEqual(['LLI', 'RLI']);
   });
 
@@ -232,6 +232,19 @@ describe('knit 격자 레이아웃', () => {
       .map((s) => s.position.x).sort((a, b) => a - b);
     expect(holes(on).map((f) => f.x).sort((a, b) => a - b)).toEqual(m1x);
     expect(holes(off)).toHaveLength(0);
+  });
+
+  it('rli 는 k1 을 포함하므로 kfb 와 같은 격자를 만든다', () => {
+    const rli = ['k10', 'k4, rli, k5'].map((src, i) => parseExpand(i + 1, src));
+    const kfb = ['k10', 'k4, kfb, k5'].map((src, i) => parseExpand(i + 1, src));
+    // 10코 단 위에 그대로 얹힌다 — 소비 10 / 생성 11
+    expect(rli[1]!.totalConsume).toBe(10);
+    expect(rli[1]!.totalProduce).toBe(11);
+
+    const a = layoutKnitGrid(rli, { shape: 'round' });
+    const b = layoutKnitGrid(kfb, { shape: 'round' });
+    expect(a.stitches.find((s) => s.op.kind === 'RLI')!.cell!.span).toBe(2);
+    expect(holes(a)).toEqual(holes(b));
   });
 
   it('kfb 는 만든 코 수만큼 칸을 차지', () => {

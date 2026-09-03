@@ -47,8 +47,8 @@ export type KnitStitchKind =
   | 'M1L'      // m1l 왼코 늘리기
   | 'M1R'      // m1r 오른코 늘리기
   | 'M1P'      // m1p 안뜨기 늘리기
-  | 'LLI'      // lli 왼쪽 끌어올려 늘리기 (left lifted increase)
-  | 'RLI'      // rli 오른쪽 끌어올려 늘리기 (right lifted increase)
+  | 'LLI'      // lli 왼쪽 끌어올려 늘리기 (left lifted increase, k1 포함 1 → 2)
+  | 'RLI'      // rli 오른쪽 끌어올려 늘리기 (right lifted increase, k1 포함 1 → 2)
   | 'K2TOG'    // k2tog 왼코겹치기 (오른쪽 기욺)
   | 'SSK'      // ssk 오른코겹치기 (왼쪽 기욺)
   | 'CDD'      // cdd 중심 3코 모아뜨기

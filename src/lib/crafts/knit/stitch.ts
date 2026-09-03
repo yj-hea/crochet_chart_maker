@@ -42,8 +42,8 @@ const KNIT_META: Record<KnitStitchKind | CommonStitchKind, StitchMeta> = {
   M1L:       { kind: 'M1L',       canonical: 'm1l',   korean: '왼코 늘리기',   english: 'make 1 left',     baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   M1R:       { kind: 'M1R',       canonical: 'm1r',   korean: '오른코 늘리기', english: 'make 1 right',    baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   M1P:       { kind: 'M1P',       canonical: 'm1p',   korean: '안뜨기 늘리기', english: 'make 1 purl',     baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
-  LLI:       { kind: 'LLI',       canonical: 'lli',   korean: '왼쪽 끌어올려 늘리기', english: 'left lifted inc',  baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
-  RLI:       { kind: 'RLI',       canonical: 'rli',   korean: '오른쪽 끌어올려 늘리기', english: 'right lifted inc', baseConsume: 0, baseProduce: 1, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  LLI:       { kind: 'LLI',       canonical: 'lli',   korean: '왼쪽 끌어올려 늘리기', english: 'left lifted inc',  baseConsume: 1, baseProduce: 2, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
+  RLI:       { kind: 'RLI',       canonical: 'rli',   korean: '오른쪽 끌어올려 늘리기', english: 'right lifted inc', baseConsume: 1, baseProduce: 2, expandable: false, symbolHalfHeight: CELL_HALF_HEIGHT },
   K2TOG:     { kind: 'K2TOG',     canonical: 'k2tog', korean: '왼코겹치기',    english: 'k2tog',           baseConsume: 2, baseProduce: 1, expandable: true,  symbolHalfHeight: CELL_HALF_HEIGHT },
   SSK:       { kind: 'SSK',       canonical: 'ssk',   korean: '오른코겹치기',  english: 'ssk',             baseConsume: 2, baseProduce: 1, expandable: true,  symbolHalfHeight: CELL_HALF_HEIGHT },
   CDD:       { kind: 'CDD',       canonical: 'cdd',   korean: '중심 3코 모아', english: 'centered dbl dec', baseConsume: 3, baseProduce: 1, expandable: true,  symbolHalfHeight: CELL_HALF_HEIGHT },
@@ -109,7 +109,7 @@ const RAW_ALIASES: Record<string, KnitStitchKind | CommonStitchKind> = {
   // 늘림
   kfb: 'KFB', inc: 'KFB', kfbf: 'KFB',
   m1l: 'M1L', m1r: 'M1R', m1p: 'M1P', m1: 'M1L',
-  // 끌어올려 늘리기 (lifted increase) — 아래 단 코의 다리를 끌어올려 새 코를 만든다
+  // 끌어올려 늘리기 (lifted increase) — 아래 단 코의 다리를 끌어올려 뜨고 이어서 그 코를 뜬다 (k1 포함, 1 → 2)
   lli: 'LLI', 'l-inc': 'LLI', klli: 'LLI',
   rli: 'RLI', 'r-inc': 'RLI', krli: 'RLI',
   // 줄임 — 오른쪽 기욺
