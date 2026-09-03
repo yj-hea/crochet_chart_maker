@@ -38,6 +38,8 @@
     { id: 'knit-M1L',       aliases: 'm1l',          korean: '왼코 늘리기',   english: 'make 1 left' },
     { id: 'knit-M1R',       aliases: 'm1r',          korean: '오른코 늘리기', english: 'make 1 right' },
     { id: 'knit-M1P',       aliases: 'm1p',          korean: '안뜨기 늘리기', english: 'make 1 purl' },
+    { id: 'knit-LLI',       aliases: 'lli',          korean: '왼쪽 끌어올려 늘리기', english: 'left lifted inc' },
+    { id: 'knit-RLI',       aliases: 'rli',          korean: '오른쪽 끌어올려 늘리기', english: 'right lifted inc' },
     { id: 'knit-K2TOG',     aliases: 'k2tog, k3tog', korean: '왼코겹치기',    english: 'k2tog' },
     { id: 'knit-SSK',       aliases: 'ssk, sssk',    korean: '오른코겹치기',  english: 'ssk' },
     { id: 'knit-CDD',       aliases: 'cdd, s2kp',    korean: '중심 3코 모아', english: 'centered dbl dec' },
@@ -95,7 +97,7 @@
           <tbody>
             <tr><td>원통</td><td>모든 단이 <b>겉면</b>. 항상 오른쪽 → 왼쪽으로 읽음. 기호 반전 없음</td></tr>
             <tr><td>평면</td><td>홀수단 겉면(오→왼) / 짝수단 <b>안면</b>(왼→오). 안면 단은 겉면에서 본 모습으로 자동 반전</td></tr>
-            <tr><td>반전 규칙</td><td>안면의 <code>p</code> → 차트엔 겉뜨기, <code>p2tog</code> → <code>ssk</code> 모양, <code>m1l</code> ↔ <code>m1r</code>. <code>yo</code>·<code>sl</code> 은 불변</td></tr>
+            <tr><td>반전 규칙</td><td>안면의 <code>p</code> → 차트엔 겉뜨기, <code>p2tog</code> → <code>ssk</code> 모양, <code>m1l</code> ↔ <code>m1r</code>, <code>lli</code> ↔ <code>rli</code>. <code>yo</code>·<code>sl</code> 은 불변</td></tr>
             <tr><td>단 번호</td><td>겉면 단은 격자 <b>오른쪽</b>, 안면 단은 <b>왼쪽</b>에 표기 → 번호 위치로 방향을 알 수 있음</td></tr>
             <tr><td>면 뒤집기</td><td>단 번호 옆 <i class="fa-regular fa-eye"></i> 버튼으로 그 단의 면을 수동 지정 (짧은 단 등)</td></tr>
           </tbody>

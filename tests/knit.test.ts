@@ -68,6 +68,13 @@ describe('knit parser', () => {
     expect(r.ops.map((o) => o.kind)).toEqual(['M1L', 'M1R']);
   });
 
+  it('lli/rli 는 consume 0 인 끌어올려 늘리기', () => {
+    const r = parseExpand(1, 'lli, rli');
+    expect(r.totalConsume).toBe(0);
+    expect(r.totalProduce).toBe(2);
+    expect(r.ops.map((o) => o.kind)).toEqual(['LLI', 'RLI']);
+  });
+
   it('kfb 는 1코를 2코로', () => {
     const r = parseExpand(1, 'kfb');
     expect(r.ops[0]!.consume).toBe(1);
@@ -132,6 +139,12 @@ describe('knit 겉면/안면', () => {
   it('안면에서 뜬 안뜨기는 겉면에서 겉뜨기로 보인다', () => {
     const r = parseExpand(2, 'p1');
     expect(flipOp(r.ops[0]!).kind).toBe('KNIT');
+  });
+
+  it('안면 끌어올려 늘리기는 좌우가 바뀐다 (lli ↔ rli)', () => {
+    const r = parseExpand(1, 'lli, rli');
+    expect(flipOp(r.ops[0]!).kind).toBe('RLI');
+    expect(flipOp(r.ops[1]!).kind).toBe('LLI');
   });
 
   it('안면 줄임은 짝이 바뀐다 (p2tog → ssk 모양)', () => {

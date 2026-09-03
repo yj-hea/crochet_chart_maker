@@ -26,6 +26,8 @@ const WS_TO_RS: Partial<Record<StitchKind, StitchKind>> = {
   // 늘림: 좌/우가 뒤바뀐다
   M1L: 'M1R',
   M1R: 'M1L',
+  LLI: 'RLI',
+  RLI: 'LLI',
   // YO, SLIP_ST, NO_STITCH, KFB, M1P, CDD 는 불변
 };
 
