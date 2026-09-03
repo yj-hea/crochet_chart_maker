@@ -72,6 +72,17 @@ export const KNIT_SYMBOL_DEFS = `
   <path d="M -4,4 Q 0,-6 4,4" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
   <line x1="-3" y1="4" x2="3" y2="4" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
 </g>
+<g id="knit-LLI">
+  <!-- 끌어올려 늘리기: 겉뜨기 세로선 + 아래 단에서 다리를 끌어올린 사선 (왼쪽) -->
+  <line x1="0" y1="-5" x2="0" y2="1" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+  <path d="M 0,1 L -4,5" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="-6" y1="5" x2="-2" y2="5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+</g>
+<g id="knit-RLI">
+  <line x1="0" y1="-5" x2="0" y2="1" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+  <path d="M 0,1 L 4,5" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="2" y1="5" x2="6" y2="5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+</g>
 <g id="knit-K2TOG">
   <line x1="-5" y1="5" x2="5" y2="-5" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
 </g>
