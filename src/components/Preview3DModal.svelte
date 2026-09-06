@@ -104,6 +104,9 @@
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    // 기즈모는 화면 한쪽에 덧그리는 두 번째 렌더다. 자동 지우기를 켜 두면 그 렌더가
+    // 화면 전체를 지워 모델이 사라지므로, 지우는 시점을 draw() 가 직접 잡는다.
+    renderer.autoClear = false;
     wrap.appendChild(renderer.domElement);
 
     // 궤도 조작 — 회전(왼쪽 끌기) · 이동(오른쪽 끌기 / Shift+끌기 / 두 손가락) ·
@@ -136,6 +139,7 @@
     }
 
     function draw() {
+      renderer.clear();
       renderer.render(scene, camera);
       viewHelper.center.copy(controls.target);
       viewHelper.render(renderer);
