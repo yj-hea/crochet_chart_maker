@@ -2,7 +2,7 @@
   import { pattern } from '$stores/pattern';
   import {
     mode, currentRound, currentStitch, showGrid, showConnections,
-    flatFlipVertical, flatAlign, flatCascade, flatVAlign, fillMode, toggleColorMode,
+    flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, fillMode, toggleColorMode,
   } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
@@ -314,6 +314,21 @@
       >
         <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
       </button>
+      {#if showFlatTools && !isKnit}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          class:active={$flatCompact}
+          onclick={() => flatCompact.update((v) => !v)}
+          aria-pressed={$flatCompact}
+          title={$flatCompact
+            ? '늘림·줄임 기호도 한 칸만 차지 — 빈칸 없이 촘촘히. 클릭: 빈칸 유지'
+            : '늘림(v)·줄임(a)이 만드는 빈칸을 그대로 둠. 클릭: 빈칸 없이 촘촘히'}
+        >
+          <i class="fa-solid fa-{$flatCompact ? 'arrows-left-right-to-line' : 'arrows-left-right'}"></i>
+          {$flatCompact ? '빈칸 없음' : '빈칸 유지'}
+        </button>
+      {/if}
       {#if !isKnit}
         <button
           type="button"

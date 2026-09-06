@@ -36,6 +36,8 @@ export interface CraftLayoutOptions {
   flipVertical?: boolean;
   align?: 'L' | 'R' | 'C';
   cascade?: boolean;
+  /** 늘림/줄임 기호도 한 칸만 차지 (평면 코바늘 전용) */
+  compact?: boolean;
   vAlign?: 'same' | 'even';
 }
 

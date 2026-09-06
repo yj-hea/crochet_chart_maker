@@ -27,10 +27,14 @@ const MARKER_SIDE_OFFSET = 16;
  *  - bridge anchor (chain samehole consume>1): consume cells (사슬 호 영역).
  *  - SKIP: 1 cell (consume=1, produce=0; max=1).
  *  - 1:1 stitch / [Nch] anchor: 1 cell.
+ *
+ * `compact` 면 V/A 도 1 cell 만 차지한다 — 늘림·줄임이 만든 빈칸 없이 기호를
+ * 촘촘히 늘어놓고 보는 모드. 사슬 호(bridge anchor)의 폭은 호를 그릴 자리라서 줄이지 않는다.
  */
-function visualClaim(op: Op): number {
+function visualClaim(op: Op, compact = false): number {
   if (op.kind === 'MAGIC') return 0;
   if (op.produce === 0 && op.consume === 0) return 0;
+  if (compact && (op.kind === 'INC' || op.kind === 'DEC')) return 1;
   return Math.max(op.produce, op.consume);
 }
 
@@ -50,8 +54,12 @@ interface ClaimResult {
   phantomAfter: number[][];
 }
 
-function computeEffectiveClaims(rounds: ExpandedRound[], cascade: boolean): ClaimResult {
-  const own: number[][] = rounds.map((r) => r.ops.map(visualClaim));
+function computeEffectiveClaims(
+  rounds: ExpandedRound[],
+  cascade: boolean,
+  compact: boolean,
+): ClaimResult {
+  const own: number[][] = rounds.map((r) => r.ops.map((op) => visualClaim(op, compact)));
   const phantomAfter: number[][] = rounds.map((r) => r.ops.map(() => 0));
   if (!cascade) return { eff: own, phantomAfter };
 
@@ -172,6 +180,11 @@ export interface FlatOptions {
    */
   cascade?: boolean;
   /**
+   * 늘림/줄임 기호도 1 cell 만 차지 (기본 false).
+   * 늘림·줄임 때문에 생기는 빈칸 없이 기호를 촘촘히 보고 싶을 때.
+   */
+  compact?: boolean;
+  /**
    * 세로 정렬.
    *  - 'same': 같은 단의 모든 코가 동일 y (기본).
    *  - 'even': 각 코가 부모 코로부터 일정 간격 떨어져 배치 — 부모/자기 높이 따라 같은 단도 y 다름.
@@ -189,6 +202,7 @@ export function layoutFlat(inputRounds: ExpandedRound[], opts: FlatOptions = {})
   const slotMapByRound = new Map<number, number[]>();
   const align: 'L' | 'R' | 'C' = opts.align ?? 'C';
   const cascade = opts.cascade ?? true;
+  const compact = opts.compact ?? false;
   const vAlign: 'same' | 'even' = opts.vAlign ?? 'same';
 
   // 패턴에 사용된 max half-height 기준 row 간격 산정. SC/CHAIN 만 있으면 32 (기존 동일),
@@ -203,7 +217,7 @@ export function layoutFlat(inputRounds: ExpandedRound[], opts: FlatOptions = {})
   const cellH = Math.max(32, 2 * maxHalfH + Y_GAP);
 
   // op 별 effective claim — cascade ON 시 자식 claim 을 부모로 전파.
-  const { eff: effClaims, phantomAfter } = computeEffectiveClaims(rounds, cascade);
+  const { eff: effClaims, phantomAfter } = computeEffectiveClaims(rounds, cascade, compact);
 
   // 같은 단 chain 위로 stack 되는 ops (in-round chain queue consumer) 는 row cell 0 으로 처리 —
   // chain.x 위에 sub-row 로 그려지지 자기 row 의 자리를 차지하지 않는다.
@@ -639,7 +653,7 @@ function enforceRowMonotonic(stitches: PositionedStitch[]): void {
     for (const idx of indices) {
       const s = stitches[idx]!;
       if (s.op.kind === 'MAGIC') continue;
-      if (visualClaim(s.op) === 0) continue;
+      if (visualClaim(s.op) === 0) continue; // 장식 op — compact 여부와 무관
       const minX = prevX === -Infinity ? s.position.x : prevX + W;
       if (s.position.x < minX) {
         s.position = { x: minX, y: s.position.y };

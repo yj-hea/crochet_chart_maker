@@ -298,6 +298,9 @@
             <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>
             <tr><td>도안 메모</td><td>편집기 상단 "메모" 버튼 — 도안 전체에 대한 메모. 마크다운·이미지 지원</td></tr>
             <tr><td>1단 방향</td><td>미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>
+            {#if !isKnit}
+              <tr><td>빈칸 유지 / 없음</td><td>평면 도안 toolbar 의 <i class="fa-solid fa-arrows-left-right"></i> — 늘림(<code>v</code>)·줄임(<code>a</code>)은 만든/소비한 코 수만큼 칸을 차지해 옆에 빈칸이 생긴다. <b>빈칸 없음</b>으로 바꾸면 이 기호들도 한 칸만 차지해 코가 촘촘히 붙어 보인다 (사슬 호 자리는 그대로)</td></tr>
+            {/if}
             {#if isKnit}
               <tr><td>미리보기 toolbar</td><td>격자 도안이라 연결선·세로 정렬 토글은 없음. Grid(칸 테두리) / Cascade / 정렬 / 1단 방향만 사용</td></tr>
               <tr><td>좁은 화면</td><td>칸이 너무 작아지면 축소 대신 가로 스크롤 — 모바일에서도 기호가 보이도록</td></tr>

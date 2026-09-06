@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand } from '../src/lib/expand/expander';
 import { layoutFlat } from '../src/lib/crafts/crochet/flat';
+import { FLAT_CELL_WIDTH } from '../src/lib/layout/constants';
 
 function layoutFromSources(sources: string[]) {
   const expandedRounds = sources.map((src, i) => {
@@ -11,6 +12,39 @@ function layoutFromSources(sources: string[]) {
   });
   return layoutFlat(expandedRounds);
 }
+
+describe('layoutFlat compact — 늘림·줄임이 만드는 빈칸 없애기', () => {
+  function xs(sources: string[], compact: boolean) {
+    const rounds = sources.map((src, idx) => {
+      const r = parseRound(idx + 1, src);
+      if (!r.body) throw new Error(`parse failed: ${JSON.stringify(r.errors)}`);
+      return expand(r.body, idx + 1);
+    });
+    const layout = layoutFlat(rounds, { cascade: false, compact, align: 'L' });
+    return (round: number) => layout.stitches
+      .filter((s) => s.roundIndex === round)
+      .map((s) => s.position.x)
+      .sort((a, b) => a - b);
+  }
+
+  const gaps = (positions: number[]) =>
+    positions.slice(1).map((x, i) => x - positions[i]!);
+
+  it('기본: V 뒤에 한 칸 빈다', () => {
+    const g = gaps(xs(['6O', '2X, V, 3X'], false)(2));
+    expect(Math.max(...g)).toBeCloseTo(2 * FLAT_CELL_WIDTH, 5);
+  });
+
+  it('compact: V 도 한 칸만 차지해 간격이 균일하다', () => {
+    const g = gaps(xs(['6O', '2X, V, 3X'], true)(2));
+    for (const d of g) expect(d).toBeCloseTo(FLAT_CELL_WIDTH, 5);
+  });
+
+  it('compact: A 앞에도 빈칸이 생기지 않는다', () => {
+    const g = gaps(xs(['7O', '3X, A, 2X'], true)(2));
+    for (const d of g) expect(d).toBeCloseTo(FLAT_CELL_WIDTH, 5);
+  });
+});
 
 describe('layoutFlat', () => {
   it('단 1의 사슬 10개: 중앙 정렬, 같은 y', () => {

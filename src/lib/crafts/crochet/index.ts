@@ -38,6 +38,7 @@ export const crochet: CraftDefinition = {
       flipVertical: opts.flipVertical,
       align: opts.align,
       cascade: opts.cascade,
+      compact: opts.compact,
       vAlign: opts.vAlign,
     });
   },

@@ -43,6 +43,11 @@ export interface ViewOptions {
   flatAlign: FlatAlign;
   /** 부모-자식 폭/위치 맞춤 */
   flatCascade: boolean;
+  /**
+   * 늘림(`v`)·줄임(`a`) 기호도 한 칸만 차지 — 그 코들이 만드는 빈칸 없이 촘촘히 본다.
+   * 평면 코바늘 도안에만 쓰인다.
+   */
+  flatCompact: boolean;
   flatVAlign: FlatVAlign;
   /** 실 색을 기호에 칠할지, 코 자리를 채울지 */
   colorMode: ColorMode;
@@ -70,6 +75,7 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   flatFlipVertical: false,
   flatAlign: 'L',
   flatCascade: true,
+  flatCompact: false,
   flatVAlign: 'same',
   colorMode: 'auto',
   emptyColor: DEFAULT_EMPTY_COLOR,
@@ -99,6 +105,7 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
       ? (v.flatAlign as FlatAlign)
       : DEFAULT_VIEW_OPTIONS.flatAlign,
     flatCascade: bool(v.flatCascade, DEFAULT_VIEW_OPTIONS.flatCascade),
+    flatCompact: bool(v.flatCompact, DEFAULT_VIEW_OPTIONS.flatCompact),
     flatVAlign: VALIGNS.includes(v.flatVAlign as string)
       ? (v.flatVAlign as FlatVAlign)
       : DEFAULT_VIEW_OPTIONS.flatVAlign,

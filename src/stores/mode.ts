@@ -59,6 +59,9 @@ export const flatAlign = tabViewOption('flatAlign');
 /** 부모-자식 폭·위치 맞춤. */
 export const flatCascade = tabViewOption('flatCascade');
 
+/** 늘림·줄임이 만드는 빈칸 없이 기호를 촘촘히 배치 (평면 코바늘). */
+export const flatCompact = tabViewOption('flatCompact');
+
 /** 세로 정렬 모드 (same/even). */
 export const flatVAlign = tabViewOption('flatVAlign');
 
