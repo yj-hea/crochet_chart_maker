@@ -104,6 +104,9 @@
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    // 캔버스는 옅은 판보다 위, 축 클릭 판보다 아래
+    renderer.domElement.style.position = 'relative';
+    renderer.domElement.style.zIndex = '1';
     // 기즈모는 화면 한쪽에 덧그리는 두 번째 렌더다. 자동 지우기를 켜 두면 그 렌더가
     // 화면 전체를 지워 모델이 사라지므로, 지우는 시점을 draw() 가 직접 잡는다.
     renderer.autoClear = false;
@@ -123,17 +126,28 @@
 
     // 축 핸들 — 오른쪽 아래 X/Y/Z 기즈모. 클릭하면 그 축에서 본 시점으로 돌아간다
     const viewHelper = new ViewHelper(camera, renderer.domElement);
+    viewHelper.setLabels('X', 'Y', 'Z');
+    // 옅은 판 — 배경 그라데이션에 축이 묻히지 않도록. 캔버스가 투명하므로
+    // 캔버스 **뒤에** 깔아야 기즈모 색을 흐리지 않는다.
+    const gizmoPlate = document.createElement('div');
+    gizmoPlate.style.cssText =
+      'position:absolute;right:20px;bottom:20px;width:88px;height:88px;border-radius:50%;'
+      + 'background:rgba(255,255,255,0.55);box-shadow:0 1px 3px rgba(0,0,0,0.08);'
+      + 'pointer-events:none;z-index:0;';
+    wrap.insertBefore(gizmoPlate, renderer.domElement);
     // 기즈모가 가리는 자리에서는 회전 대신 축 클릭을 받는다
     const gizmoHit = document.createElement('div');
     gizmoHit.style.cssText =
-      'position:absolute;right:0;bottom:0;width:128px;height:128px;cursor:pointer;';
+      'position:absolute;right:0;bottom:0;width:128px;height:128px;cursor:pointer;z-index:3;';
     wrap.appendChild(gizmoHit);
 
     function resize() {
       const w = wrap!.clientWidth;
       const h = wrap!.clientHeight;
       if (w === 0 || h === 0) return;
-      renderer.setSize(w, h, false);
+      // CSS 크기까지 맞춘다 — 고해상도 화면에서 캔버스가 스테이지보다 커지는 것을 막고,
+      // 기즈모(ViewHelper)가 offsetWidth 로 잡는 자리도 맞아떨어진다
+      renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     }
@@ -197,6 +211,7 @@
       gizmoHit.removeEventListener('pointerdown', onGizmoDown);
       gizmoHit.removeEventListener('click', onGizmoClick);
       gizmoHit.remove();
+      gizmoPlate.remove();
       viewHelper.dispose();
       controls.dispose();
       model.dispose();
@@ -325,6 +340,7 @@
   .status {
     position: absolute;
     inset: 0;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
