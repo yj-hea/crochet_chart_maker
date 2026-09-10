@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { createTab, workspace, toSavedTab, addComment, setGauge, setViewOption } from '../src/stores/tabs';
+import {
+  createTab, workspace, toSavedTab, addComment, setGauge, setViewOption,
+  updateRoundSource, addRoundAtEnd, applyWorkspace,
+} from '../src/stores/tabs';
 import { serializeWorkspace, validateWorkspace } from '../src/lib/persistence';
 import { normalizeViewOptions, DEFAULT_VIEW_OPTIONS } from '../src/lib/model/view-options';
 
@@ -45,6 +48,31 @@ describe('탭 저장 직렬화 (toSavedTab)', () => {
 
     expect(tab.view?.flatCascade).toBe(false);
     expect(tab.comments?.some((c) => c.text === '메모 유지')).toBe(true);
+  });
+
+  it('단 메모가 새로고침(저장 → 복원) 뒤에도 같은 단에 붙어 있다', () => {
+    // 단 id 는 페이지를 열 때마다 새로 발급된다 — id 만 저장하면 복원 후 단을 못 찾는다
+    const id = createTab('knit');
+    const first = activeTab().rounds[0]!.id;
+    updateRoundSource(first, 'co10');
+    const second = addRoundAtEnd();
+    updateRoundSource(second, 'k10');
+    addComment({ kind: 'round', roundId: second }, '2단 메모');
+
+    const reload = () => {
+      const ws = get(workspace);
+      const wire = JSON.parse(JSON.stringify(
+        serializeWorkspace({ tabs: ws.tabs.map(toSavedTab), activeTabId: ws.activeTabId }),
+      ));
+      applyWorkspace(validateWorkspace(wire));
+    };
+
+    for (let i = 0; i < 2; i++) {
+      reload();
+      const tab = get(workspace).tabs.find((t) => t.id === id)!;
+      const memo = tab.comments.find((c) => c.text === '2단 메모')!;
+      expect(memo.target, `새로고침 ${i + 1}회`).toEqual({ kind: 'round', roundId: tab.rounds[1]!.id });
+    }
   });
 
   it('메모가 없으면 comments 를 넣지 않는다 (저장 크기)', () => {

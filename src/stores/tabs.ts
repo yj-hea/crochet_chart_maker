@@ -264,8 +264,26 @@ export function toSavedTab(t: Tab): SavedWorkspaceTab {
       if (r.direction) out.direction = r.direction;
       return out;
     }),
-    ...(t.comments.length > 0 ? { comments: t.comments } : {}),
+    ...(t.comments.length > 0 ? { comments: t.comments.map((c) => toSavedComment(c, t.rounds)) } : {}),
     ...(t.progress ? { progress: t.progress } : {}),
+  };
+}
+
+/**
+ * 단 메모에 **단 번호**를 함께 적는다.
+ *
+ * 단 id 는 페이지를 열 때마다 새로 발급되는 런타임 값이라, id 만 저장하면 새로고침 후
+ * 메모가 붙을 단을 찾지 못해 화면에서 사라진다 (텍스트는 남지만 보이지 않는다).
+ * 복원(`remapSavedComments`)은 `roundIndex` 를 우선으로 쓴다.
+ * 이미 단을 잃은 메모는 번호를 지어내지 않고 id 만 그대로 둔다.
+ */
+function toSavedComment(c: Comment, rounds: ReadonlyArray<PatternRoundState>): SavedComment {
+  if (c.target.kind !== 'round') return c;
+  const roundId = c.target.roundId;
+  const idx = rounds.findIndex((r) => r.id === roundId);
+  return {
+    ...c,
+    target: { kind: 'round', roundId, ...(idx >= 0 ? { roundIndex: idx } : {}) },
   };
 }
 
