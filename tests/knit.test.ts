@@ -4,6 +4,7 @@ import { expandKnit } from '../src/lib/crafts/knit/expander';
 import { layoutKnitGrid, KNIT_CELL_WIDTH, KNIT_CELL_HEIGHT } from '../src/lib/crafts/knit/grid';
 import { isRightSide, flipOp, toDisplayOrder } from '../src/lib/crafts/knit/flip';
 import { renderKnitSvg } from '../src/lib/crafts/knit/svg';
+import { planShortRows } from '../src/lib/crafts/knit/shortrow';
 import type { ExpandedRound } from '../src/lib/expand/op';
 
 /** 회색으로 채워지는 칸 (구멍·열 맞춤). 정렬용 여백(pad)은 제외 */
@@ -554,6 +555,53 @@ describe('되돌아뜨기 (short row)', () => {
     expect(xs(3)).toEqual(xs(4));
     expect(xs(3)).toHaveLength(2);
   });
+});
+
+describe('되돌아뜨기 × 읽는 방향', () => {
+  /** 각 단에서 미작업 코가 놓인 열 */
+  function unworkedCols(layout: ReturnType<typeof layoutKnitGrid>) {
+    const byRound = new Map<number, number[]>();
+    for (const s of layout.stitches) {
+      if (s.op.kind !== 'UNWORKED') continue;
+      byRound.set(s.roundIndex, [...(byRound.get(s.roundIndex) ?? []), s.cell!.col].sort((a, b) => a - b));
+    }
+    return byRound;
+  }
+
+  for (const turn of ['wt', 'ds', 'plain'] as const) {
+    for (const side of ['one', 'both'] as const) {
+      it(`${turn}/${side} — 좌→우 는 우→좌 의 거울상이고 미작업 구간이 짝을 이룬다`, () => {
+        const plan = planShortRows({ total: 20, step: 4, repeats: 2, turn, side, resolve: true });
+        expect(plan.kind).toBe('ok');
+        const rounds = ['co20', ...plan.rows.map((r) => r.source)]
+          .map((src, i) => parseExpand(i + 1, src));
+        const width = 20; // 되돌아뜨기는 코 수를 보존한다
+
+        const right = layoutKnitGrid(rounds, { shape: 'flat', align: 'C' });
+        const left = layoutKnitGrid(rounds, { shape: 'flat', align: 'C', startLeft: true });
+
+        // 되돌아뜨기 기호와 미작업 코가 좌우로 뒤집힌 자리에 그대로 온다
+        const cells = (l: ReturnType<typeof layoutKnitGrid>, kind: string) => l.stitches
+          .filter((s) => s.op.kind === kind)
+          .map((s) => `${s.roundIndex}:${s.cell!.col}`).sort();
+        const mirrored = (v: string[]) => v
+          .map((c) => { const [r, col] = c.split(':').map(Number); return `${r}:${width - 1 - col!}`; })
+          .sort();
+        for (const kind of ['UNWORKED', 'WRAP_TURN', 'DOUBLE_ST']) {
+          expect(cells(left, kind), kind).toEqual(mirrored(cells(right, kind)));
+        }
+
+        // 어느 방향이든 가는 단과 돌아오는 단이 같은 열을 비운다
+        for (const layout of [right, left]) {
+          const cols = unworkedCols(layout);
+          for (const [round, c] of cols) {
+            const next = cols.get(round + 1);
+            if (next && next.length === c.length) expect(next).toEqual(c);
+          }
+        }
+      });
+    }
+  }
 });
 
 describe('단 중간 코막음 / 감아코', () => {
