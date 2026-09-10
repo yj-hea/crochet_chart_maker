@@ -82,6 +82,7 @@
           <tbody>
             <tr><td><code>kN</code></td><td>같은 코 N번. 반복수는 <b>코 뒤</b>에. 예: <code>k6</code> = 겉뜨기 6코</td></tr>
             <tr><td><code>(...)·*N</code></td><td>반복. 예: <code>(k2, p2)*10</code></td></tr>
+            <tr><td><code>[...]</code></td><td>한 코에 여러 번 뜨기. 예: <code>[2k]</code> (= kfb 코 수), <code>[k, yo, k]</code> (1코 → 3코), <code>3[k, p]</code>. 안에는 k·p·ktbl·ptbl·yo 만</td></tr>
             <tr><td><code>,</code></td><td>코 구분자 (필수)</td></tr>
             <tr><td>게이지</td><td><b>평면 도안에서만</b> — 편집기 상단 <b>게이지</b> 버튼에 10cm 당 코수·단수를 넣으면
               미리보기 아래에 실측 치수가 뜬다. 코 종류가 단 높이를 결정하므로 격자를 게이지로 늘리지는 않는다.<br>
