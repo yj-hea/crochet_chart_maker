@@ -213,6 +213,20 @@ function nextTabName(existing: Tab[]): string {
   return `도안 ${next}`;
 }
 
+/**
+ * 복제본 이름 — `도안 1` → `도안 1 사본`, 이미 있으면 `도안 1 사본 2`.
+ * 원본 이름을 앞에 두어 탭 목록에서 무엇의 사본인지 바로 보이게 한다.
+ */
+function copyTabName(original: string, existing: Tab[]): string {
+  const taken = new Set(existing.map((t) => t.name));
+  const base = `${original} 사본`;
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base} ${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 function initialState(): WorkspaceState {
   const saved = loadWorkspace();
   if (saved && saved.tabs.length > 0) {
@@ -325,6 +339,57 @@ export function createTab(craft: CraftId = DEFAULT_CRAFT): string {
     };
     newId = tab.id;
     return { tabs: [...ws.tabs, tab], activeTabId: tab.id };
+  });
+  return newId;
+}
+
+/**
+ * 도안 복제 — 원본 바로 뒤에 사본을 만들고 그 탭으로 옮겨 간다.
+ *
+ * 단·메모의 id 는 새로 만든다 (탭끼리 id 를 공유하면 한쪽을 고칠 때 다른 쪽 메모가
+ * 따라 움직인다). 단은 **다시 파싱**해서 파스 트리를 공유하지 않게 한다.
+ * 게이지·표시 옵션·진행 상태까지 그대로 복사한 **온전한 사본**이다.
+ */
+export function duplicateTab(id: string): string {
+  let newId = '';
+  workspace.update((ws) => {
+    const idx = ws.tabs.findIndex((t) => t.id === id);
+    if (idx < 0) return ws;
+    const src = ws.tabs[idx]!;
+
+    // 단 id 를 새로 발급하고, 그 단을 가리키던 메모도 새 id 로 옮긴다
+    const roundIdMap = new Map<string, string>();
+    const rounds = reparseAll(
+      src.rounds.map((r) => {
+        const nextId = makeRoundId();
+        roundIdMap.set(r.id, nextId);
+        return { id: nextId, source: r.source, direction: r.direction };
+      }),
+      src.craft,
+    );
+    const comments: Comment[] = src.comments.map((c) => ({
+      ...c,
+      id: makeCommentId(),
+      target: c.target.kind === 'round'
+        ? { kind: 'round', roundId: roundIdMap.get(c.target.roundId) ?? c.target.roundId }
+        : { kind: 'pattern' },
+    }));
+
+    const tab: Tab = {
+      ...src,
+      id: makeTabId(),
+      name: copyTabName(src.name, ws.tabs),
+      rounds,
+      comments,
+      ...(src.view ? { view: { ...src.view } } : {}),
+      ...(src.gauge ? { gauge: { ...src.gauge } } : {}),
+      ...(src.progress ? { progress: { ...src.progress } } : {}),
+    };
+    newId = tab.id;
+
+    const tabs = [...ws.tabs];
+    tabs.splice(idx + 1, 0, tab);
+    return { tabs, activeTabId: tab.id };
   });
   return newId;
 }

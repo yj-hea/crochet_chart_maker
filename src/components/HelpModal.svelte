@@ -299,6 +299,7 @@
             {/if}
             <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>
             <tr><td>도안 메모</td><td>편집기 상단 "메모" 버튼 — 도안 전체에 대한 메모. 마크다운·이미지 지원</td></tr>
+            <tr><td>도안 복제</td><td>탭 바의 <b>+</b> 메뉴 → <i class="fa-regular fa-copy"></i> <b>'…' 복제</b> — 지금 보고 있는 도안을 단·메모·게이지·표시 설정까지 그대로 복사해 <b>바로 옆 탭</b>으로 만든다. 이름은 <code>사본</code>이 붙고, 사본을 고쳐도 원본은 그대로다 (변형을 시험해 볼 때)</td></tr>
             <tr><td>1단 방향</td><td>미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>
             {#if isKnit}
               <tr><td>빈칸 유지 / 없음</td><td>미리보기 toolbar 의 <i class="fa-solid fa-arrows-left-right"></i> — 기본은 <b>1코 = 1칸</b>이라 늘림 코가 만든 코 수만큼 칸을 차지하고 열 맞춤 빈칸도 생긴다. <b>빈칸 없음</b>은 <b>기호 하나 = 한 칸</b>으로 바꿔 촘촘히 보여 준다 (코막음 구멍은 그대로)</td></tr>

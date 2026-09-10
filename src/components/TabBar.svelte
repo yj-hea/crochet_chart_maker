@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { workspace, switchTab, createTab, closeTab, renameTab } from '$stores/tabs';
+  import { workspace, switchTab, createTab, duplicateTab, closeTab, renameTab } from '$stores/tabs';
   import { CRAFT_LIST, getCraft } from '$lib/crafts';
   import { placeDropdown } from '$lib/dropdown-place';
 
@@ -12,6 +12,14 @@
   function addTab(craft: 'crochet' | 'knit') {
     addMenuOpen = false;
     createTab(craft);
+  }
+
+  // 복제는 "도안 추가"의 한 갈래 — 활성 도안을 통째로 베껴 그 옆에 새 탭으로 둔다
+  const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
+
+  function duplicateActive() {
+    addMenuOpen = false;
+    if (activeTab) duplicateTab(activeTab.id);
   }
 
   // .tab-bar 가 overflow 로 잘라내므로 메뉴는 position:fixed 로 띄우고 뷰포트에 clamp
@@ -132,6 +140,19 @@
             <span>{craft.label} 도안</span>
           </button>
         {/each}
+        {#if activeTab}
+          <div class="add-menu-divider"></div>
+          <button
+            type="button"
+            class="add-menu-item"
+            role="menuitem"
+            onclick={duplicateActive}
+            title="단·메모·게이지·표시 설정까지 그대로 복사해 옆에 새 탭으로 만듭니다"
+          >
+            <span class="add-menu-icon"><i class="fa-regular fa-copy"></i></span>
+            <span>'{activeTab.name}' 복제</span>
+          </button>
+        {/if}
       </div>
     {/if}
   </div>
@@ -157,6 +178,11 @@
     border: 1px solid var(--border, #e2e2e2);
     border-radius: var(--radius-sm, 5px);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  }
+  .add-menu-divider {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border-light, #eee);
   }
   .add-menu-item {
     display: flex;
