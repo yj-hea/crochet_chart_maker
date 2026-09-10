@@ -234,6 +234,26 @@ describe('knit 격자 레이아웃', () => {
     expect(holes(off)).toHaveLength(0);
   });
 
+  it('빈칸 없음(compact) — 늘림도 한 칸, 열 맞춤 빈칸 없음', () => {
+    const rounds = ['k6', 'k1, kfb, k4', 'k8'].map((src, i) => parseExpand(i + 1, src));
+
+    const normal = layoutKnitGrid(rounds, { shape: 'round' });
+    expect(normal.stitches.find((s) => s.op.kind === 'KFB')!.cell!.span).toBe(2);
+    expect(holes(normal).length).toBeGreaterThan(0);
+
+    const compact = layoutKnitGrid(rounds, { shape: 'round', compact: true });
+    expect(compact.stitches.every((s) => s.cell!.span === 1)).toBe(true);
+    expect(holes(compact)).toHaveLength(0);
+    // 단마다 기호 수만큼만 칸을 쓴다 — 가장 넓은 단(8기호)이 차트 폭
+    expect(compact.bounds.width - 36).toBe(8 * KNIT_CELL_WIDTH);
+  });
+
+  it('빈칸 없음이어도 코막음 구멍은 남는다', () => {
+    const rounds = ['k8', 'k3, bo2, k3', 'k3, k3'].map((src, i) => parseExpand(i + 1, src));
+    const compact = layoutKnitGrid(rounds, { shape: 'round', compact: true });
+    expect(holes(compact).length).toBeGreaterThan(0);
+  });
+
   it('rli 는 k1 을 포함하므로 kfb 와 같은 격자를 만든다', () => {
     const rli = ['k10', 'k4, rli, k5'].map((src, i) => parseExpand(i + 1, src));
     const kfb = ['k10', 'k4, kfb, k5'].map((src, i) => parseExpand(i + 1, src));

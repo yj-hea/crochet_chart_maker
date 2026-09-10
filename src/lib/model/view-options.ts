@@ -44,8 +44,9 @@ export interface ViewOptions {
   /** 부모-자식 폭/위치 맞춤 */
   flatCascade: boolean;
   /**
-   * 늘림(`v`)·줄임(`a`) 기호도 한 칸만 차지 — 그 코들이 만드는 빈칸 없이 촘촘히 본다.
-   * 평면 코바늘 도안에만 쓰인다.
+   * 늘림·줄임 기호도 한 칸만 차지 — 그 코들이 만드는 빈칸 없이 촘촘히 본다.
+   * 코바늘은 평면 도안에서, 대바늘은 격자에서 쓴다
+   * (대바늘은 "1코 = 1칸" 대신 "기호 하나 = 한 칸" 이 된다).
    */
   flatCompact: boolean;
   flatVAlign: FlatVAlign;

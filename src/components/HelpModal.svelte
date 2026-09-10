@@ -136,6 +136,7 @@
             <tr><td>코 수가 같으면</td><td>격자를 건드리지 않음 — 레이스처럼 <code>yo</code> 와 <code>ssk</code> 가 상쇄되면 직사각형 유지</td></tr>
             <tr><td>Cascade <b>On</b></td><td>늘림·줄임으로 달라진 코 수만큼 빈 칸을 넣어 <b>열을 맞춤</b> (늘림 아래 / 줄임 옆)</td></tr>
             <tr><td>Cascade <b>Off</b></td><td>그 빈 칸을 넣지 않아 <b>코가 붙어 보임</b>. 단 중간 코막음으로 생긴 구멍은 그대로 유지</td></tr>
+            <tr><td>빈칸 <b>없음</b></td><td>늘림 코도 한 칸만 차지 — <b>기호 하나 = 한 칸</b>. 열 맞춤 빈칸도 넣지 않아 격자가 가장 촘촘해진다 (코 수보다 기호의 흐름을 볼 때)</td></tr>
             <tr><td>빈 칸</td><td>코가 없는 칸은 모두 회색 — 코막음 구멍, 열 맞춤 자리, 좌우 여백, 되돌아뜨기의 미작업 코</td></tr>
             <tr><td>구멍 메우기</td><td><code>bo2</code> 로 뚫은 자리를 다음 단에서 <code>co2</code>(감아코) 로 메우면 구멍이 사라지고 열이 맞음</td></tr>
             <tr><td>게이지</td><td>편집기 상단 <b>게이지</b> 버튼 → <code>[코] × [단] / 10cm</code> — 칸 세로 비율에 반영되고, 미리보기 아래에 실측 치수 표시 (가로는 고정)</td></tr>
@@ -298,7 +299,9 @@
             <tr><td>단 메모</td><td>단 번호 옆 <i class="fa-regular fa-comment"></i> 아이콘 클릭 → 마크다운 메모 추가. 서술 도안과 미리보기 상단에도 표시</td></tr>
             <tr><td>도안 메모</td><td>편집기 상단 "메모" 버튼 — 도안 전체에 대한 메모. 마크다운·이미지 지원</td></tr>
             <tr><td>1단 방향</td><td>미리보기 toolbar 의 <i class="fa-solid fa-arrows-up-down"></i> — 1단을 위/아래로 뒤집기</td></tr>
-            {#if !isKnit}
+            {#if isKnit}
+              <tr><td>빈칸 유지 / 없음</td><td>미리보기 toolbar 의 <i class="fa-solid fa-arrows-left-right"></i> — 기본은 <b>1코 = 1칸</b>이라 늘림 코가 만든 코 수만큼 칸을 차지하고 열 맞춤 빈칸도 생긴다. <b>빈칸 없음</b>은 <b>기호 하나 = 한 칸</b>으로 바꿔 촘촘히 보여 준다 (코막음 구멍은 그대로)</td></tr>
+            {:else}
               <tr><td>빈칸 유지 / 없음</td><td>평면 도안 toolbar 의 <i class="fa-solid fa-arrows-left-right"></i> — 늘림(<code>v</code>)·줄임(<code>a</code>)은 만든/소비한 코 수만큼 칸을 차지해 옆에 빈칸이 생긴다. <b>빈칸 없음</b>으로 바꾸면 이 기호들도 한 칸만 차지해 코가 촘촘히 붙어 보인다 (사슬 호 자리는 그대로)</td></tr>
             {/if}
             {#if isKnit}

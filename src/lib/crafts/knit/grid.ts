@@ -49,6 +49,11 @@ export interface KnitGridOptions {
   flipVertical?: boolean;
   /** 부모-자식 폭 맞춤 (기본 true) */
   cascade?: boolean;
+  /**
+   * 늘림도 한 칸만 차지하고 열 맞춤 빈칸도 넣지 않는다 (기본 false).
+   * 코 수보다 **기호의 흐름**을 보고 싶을 때. 코막음 구멍은 그대로 남는다.
+   */
+  compact?: boolean;
   /** 게이지 (10cm 당 코수/단수). 셀 세로 길이에 반영. 미입력이면 기본 비율 */
   gauge?: Gauge;
 }
@@ -62,9 +67,15 @@ interface Cell {
   opIndex?: number;
 }
 
-/** 이 op 자체가 요구하는 최소 폭 — 만든 코 수(늘림)를 반영 */
-function ownSpan(op: Op): number {
+/**
+ * 이 op 자체가 요구하는 최소 폭 — 만든 코 수(늘림)를 반영.
+ *
+ * `compact` 면 늘림도 한 칸만 차지한다 — 격자가 "1코 = 1칸" 이 아니라
+ * **"기호 하나 = 한 칸"** 이 되어, 늘림·줄임이 만든 빈자리 없이 촘촘해진다.
+ */
+function ownSpan(op: Op, compact: boolean): number {
   if (op.kind === 'NO_STITCH') return 1;
+  if (compact) return 1;
   return Math.max(1, op.produce);
 }
 
@@ -116,9 +127,14 @@ function sum(ns: readonly number[]): number {
   return ns.reduce((a, b) => a + b, 0);
 }
 
-function planRows(rows: Op[][], parents: number[][][], cascade: boolean): RowPlan[] {
+function planRows(
+  rows: Op[][],
+  parents: number[][][],
+  cascade: boolean,
+  compact: boolean,
+): RowPlan[] {
   const plans: RowPlan[] = rows.map((ops) => ({
-    spans: ops.map(ownSpan),
+    spans: ops.map((op) => ownSpan(op, compact)),
     gapsBefore: new Map<number, number[]>(),
   }));
 
@@ -266,6 +282,7 @@ export function layoutKnitGrid(
   const flipSymbols = opts.flipSymbols ?? true;
   const flipVertical = opts.flipVertical ?? false;
   const cascade = opts.cascade ?? true;
+  const compact = opts.compact ?? false;
   const cellHeight = KNIT_CELL_WIDTH * cellRatio(opts.gauge);
 
   // 1) 단별 표시 ops (좌→우)
@@ -281,7 +298,7 @@ export function layoutKnitGrid(
 
   // 2) 부모 연결 → 칸 계획(순 증감분만 조정) → 표시 칸 배열
   const parents = computeParents(opRows);
-  const plans = planRows(opRows, parents, cascade);
+  const plans = planRows(opRows, parents, cascade && !compact, compact);
   const cellRows = opRows.map((ops, r) => toCells(ops, plans[r]!));
 
   const rowSpans = cellRows.map((cells) => cells.reduce((sum, c) => sum + c.span, 0));

@@ -314,16 +314,20 @@
       >
         <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
       </button>
-      {#if showFlatTools && !isKnit}
+      {#if showFlatTools}
         <button
           type="button"
           class="tool-btn toggle-btn"
           class:active={$flatCompact}
           onclick={() => flatCompact.update((v) => !v)}
           aria-pressed={$flatCompact}
-          title={$flatCompact
-            ? '늘림·줄임 기호도 한 칸만 차지 — 빈칸 없이 촘촘히. 클릭: 빈칸 유지'
-            : '늘림(v)·줄임(a)이 만드는 빈칸을 그대로 둠. 클릭: 빈칸 없이 촘촘히'}
+          title={isKnit
+            ? ($flatCompact
+              ? '기호 하나 = 한 칸 — 늘림이 만든 빈칸 없이 촘촘히. 클릭: 1코 = 1칸으로'
+              : '1코 = 1칸 — 늘림 코는 만든 코 수만큼 칸을 차지. 클릭: 빈칸 없이 촘촘히')
+            : ($flatCompact
+              ? '늘림·줄임 기호도 한 칸만 차지 — 빈칸 없이 촘촘히. 클릭: 빈칸 유지'
+              : '늘림(v)·줄임(a)이 만드는 빈칸을 그대로 둠. 클릭: 빈칸 없이 촘촘히')}
         >
           <i class="fa-solid fa-{$flatCompact ? 'arrows-left-right-to-line' : 'arrows-left-right'}"></i>
           {$flatCompact ? '빈칸 없음' : '빈칸 유지'}
