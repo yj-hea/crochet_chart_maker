@@ -6,7 +6,9 @@
     deleteRound,
     updateRoundSource,
   } from '$stores/pattern';
-  import { setRoundDirection, addComment, workspace, insertRoundsAfter, usedColors } from '$stores/tabs';
+  import {
+    setRoundDirection, addComment, workspace, insertRoundsAfter, usedColors, orphanComments,
+  } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import { validateRound } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
@@ -16,6 +18,7 @@
   import GaugeInput from './GaugeInput.svelte';
   import ShortRowModal from './ShortRowModal.svelte';
   import PatternColors from './PatternColors.svelte';
+  import OrphanCommentsModal from './OrphanCommentsModal.svelte';
 
   let focusRequests = $state<Record<string, FocusRequest>>({});
   // 현재 에디터 포커스를 가진 단 id — "단 추가" 시 삽입 위치 기준
@@ -24,6 +27,7 @@
   let gaugeOpen = $state(false);
   let colorsOpen = $state(false);
   let shortRowOpen = $state(false);
+  let orphanOpen = $state(false);
 
   // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
   const validationByRound = $derived.by(() => {
@@ -200,6 +204,16 @@
       {#if $usedColors.length > 0}<span class="badge">{$usedColors.length}</span>{/if}
     </button>
     <div class="header-spacer"></div>
+    {#if $orphanComments.length > 0}
+      <button
+        type="button"
+        class="orphan-btn"
+        onclick={() => (orphanOpen = true)}
+        title="단과의 연결이 끊긴 메모 — 눌러서 붙일 단을 고르세요"
+      >
+        <i class="fa-solid fa-link-slash"></i> 끊긴 메모 {$orphanComments.length}
+      </button>
+    {/if}
     {#if patternComment}
       <CommentPin comment={patternComment} />
     {:else}
@@ -285,6 +299,10 @@
   />
 {/if}
 
+{#if orphanOpen}
+  <OrphanCommentsModal onClose={() => (orphanOpen = false)} />
+{/if}
+
 <style>
   .pattern-editor {
     display: flex;
@@ -354,6 +372,19 @@
     color: var(--text);
     border-color: var(--border);
   }
+  /* 끊긴 메모 알림 — 눈에 띄되 오류처럼 보이지 않게 */
+  .orphan-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    border: 1px solid #f0c36d;
+    border-radius: var(--radius-sm);
+    background: #fff8e6;
+    color: #8a5a00;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .orphan-btn:hover { background: #ffefc7; }
   .rounds-area {
     flex: 1;
     overflow-y: auto;

@@ -658,6 +658,57 @@ export function deleteComment(id: string): void {
   }));
 }
 
+/**
+ * 단과의 연결이 끊긴 메모 — 가리키는 단이 이 탭에 없다.
+ *
+ * 예전 자동 저장이 단 번호 없이 런타임 단 id 만 적어서, 새로고침하면 메모가 붙을 단을
+ * 잃었다 (내용은 남고 화면에서만 사라짐). 원래 위치는 저장돼 있지 않으므로 추측해서
+ * 붙이지 않고, 사용자가 골라 다시 붙이도록 목록으로 내놓는다.
+ */
+export const orphanComments = derived(workspace, ($ws): Comment[] => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  if (!active) return [];
+  const roundIds = new Set(active.rounds.map((r) => r.id));
+  return active.comments.filter((c) => c.target.kind === 'round' && !roundIds.has(c.target.roundId));
+});
+
+/**
+ * 끊긴 메모를 고른 단에 다시 붙인다.
+ *
+ * 편집기는 단마다 메모를 하나만 보여준다 — 이미 메모가 있는 단이면 그 메모 뒤에
+ * 내용을 이어 붙이고 끊긴 메모는 지운다. 어느 쪽 내용도 가려지거나 사라지지 않게.
+ */
+export function reattachComment(commentId: string, roundId: string): 'attached' | 'merged' | undefined {
+  let result: 'attached' | 'merged' | undefined;
+  updateActiveTab((t) => {
+    const orphan = t.comments.find((c) => c.id === commentId);
+    if (!orphan || !t.rounds.some((r) => r.id === roundId)) return t;
+
+    const existing = t.comments.find(
+      (c) => c.id !== commentId && c.target.kind === 'round' && c.target.roundId === roundId,
+    );
+    if (existing) {
+      result = 'merged';
+      const text = [existing.text, orphan.text].filter((s) => s.trim()).join('\n\n');
+      return {
+        ...t,
+        comments: t.comments
+          .filter((c) => c.id !== commentId)
+          .map((c) => (c.id === existing.id ? { ...c, text } : c)),
+      };
+    }
+
+    result = 'attached';
+    return {
+      ...t,
+      comments: t.comments.map((c) => (c.id === commentId
+        ? { ...c, target: { kind: 'round' as const, roundId }, open: false }
+        : c)),
+    };
+  });
+  return result;
+}
+
 export function setRoundDirection(id: string, direction: RoundDirection): void {
   updateActiveTab((t) => ({
     ...t,
