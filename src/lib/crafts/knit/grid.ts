@@ -45,6 +45,11 @@ export interface KnitGridOptions {
   align?: 'L' | 'R' | 'C';
   /** 안면 단 기호 반전. false 면 "뜨는 대로" 표시 */
   flipSymbols?: boolean;
+  /**
+   * 단을 왼쪽부터 읽는다 (기본 false = 관행대로 오른쪽부터).
+   * 코 순서와 단 번호 위치만 뒤집고 기호는 건드리지 않는다.
+   */
+  startLeft?: boolean;
   /** 상하 반전: true 면 1단이 위쪽 */
   flipVertical?: boolean;
   /** 부모-자식 폭 맞춤 (기본 true) */
@@ -283,6 +288,7 @@ export function layoutKnitGrid(
   const flipVertical = opts.flipVertical ?? false;
   const cascade = opts.cascade ?? true;
   const compact = opts.compact ?? false;
+  const startLeft = opts.startLeft ?? false;
   const cellHeight = KNIT_CELL_WIDTH * cellRatio(opts.gauge);
 
   // 1) 단별 표시 ops (좌→우)
@@ -290,7 +296,7 @@ export function layoutKnitGrid(
   //    "앞에 몇 코" 도 함께 뒤집혀야 화면상 위치가 맞는다.
   const meta = rounds.map((round) => {
     const rightSide = isRightSide(shape, round.index, round.direction);
-    const display = toDisplayOrder(round, rightSide, flipSymbols);
+    const display = toDisplayOrder(round, rightSide, flipSymbols, startLeft);
     const { ops, markers } = splitMarkers(display, round.index);
     return { round, ops, markers, rightSide };
   });
@@ -365,13 +371,14 @@ export function layoutKnitGrid(
 
     for (let c = 0; c < rightPad; c++) emitFiller(1);
 
-    // 단 번호 — 겉면은 오른쪽, 안면은 왼쪽
+    // 단 번호는 그 단이 **시작하는 쪽**에 — 번호 위치로 작업 방향을 알 수 있다
+    const numberRight = meta[r]!.rightSide !== startLeft;
     roundMarkers.push({
       roundIndex: meta[r]!.round.index,
-      position: meta[r]!.rightSide
+      position: numberRight
         ? { x: chartSpan * KNIT_CELL_WIDTH + NUMBER_GUTTER / 2, y: yCenter }
         : { x: -NUMBER_GUTTER / 2, y: yCenter },
-      direction: meta[r]!.rightSide ? 'right' : 'left',
+      direction: numberRight ? 'right' : 'left',
     });
   }
 

@@ -57,8 +57,20 @@ export function flipOp(op: Op): Op {
  * - 안면(WS) 단: 왼쪽에서 오른쪽으로 뜨므로 뜬 순서가 곧 좌→우. 대신 기호를 겉면 기준으로 반전.
  *
  * `flipSymbols` 가 false 면 기호 반전을 하지 않는다 ("뜨는 대로 표시" 모드).
+ *
+ * `startLeft` 는 **읽는 방향**만 뒤집는다 — 단의 첫 코를 왼쪽 끝에 두고 좌→우로 읽게 한다.
+ * 기호는 그대로 두므로(`k2tog` 는 여전히 오른쪽 기욺) 차트가 편물의 좌우 반전된 그림이 된다.
+ * 관행은 오른쪽부터(기본)이고, 이것은 읽기 편의를 위한 표시 옵션이다.
  */
-export function toDisplayOrder(round: ExpandedRound, rightSide: boolean, flipSymbols = true): Op[] {
-  if (rightSide) return [...round.ops].reverse();
-  return flipSymbols ? round.ops.map(flipOp) : [...round.ops];
+export function toDisplayOrder(
+  round: ExpandedRound,
+  rightSide: boolean,
+  flipSymbols = true,
+  startLeft = false,
+): Op[] {
+  const ops = rightSide
+    ? [...round.ops]
+    : (flipSymbols ? round.ops.map(flipOp) : [...round.ops]);
+  // 뜬 순서를 화면 순서로 — 겉면 단은 오른쪽부터 떴으므로 뒤집어야 좌→우가 된다
+  return rightSide !== startLeft ? ops.reverse() : ops;
 }

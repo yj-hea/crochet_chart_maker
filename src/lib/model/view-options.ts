@@ -50,6 +50,12 @@ export interface ViewOptions {
    */
   flatCompact: boolean;
   flatVAlign: FlatVAlign;
+  /**
+   * 대바늘 차트를 어느 쪽부터 읽을지.
+   * 기본은 관행대로 오른쪽('R') — 겉면 단은 오른바늘 쪽에서 왼쪽으로 떠 나간다.
+   * 'L' 은 읽기 편의용이며, 차트가 편물을 좌우로 뒤집은 그림이 된다.
+   */
+  knitStartSide: 'R' | 'L';
   /** 실 색을 기호에 칠할지, 코 자리를 채울지 */
   colorMode: ColorMode;
   /** 코가 **없는** 자리의 색 (대바늘 빈칸 / 코바늘 바탕) */
@@ -78,6 +84,7 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   flatCascade: true,
   flatCompact: false,
   flatVAlign: 'same',
+  knitStartSide: 'R',
   colorMode: 'auto',
   emptyColor: DEFAULT_EMPTY_COLOR,
   mainColor: DEFAULT_MAIN_COLOR,
@@ -89,6 +96,7 @@ export type ViewOptionKey = keyof ViewOptions;
 const ALIGNS: readonly string[] = ['L', 'R', 'C'];
 const VALIGNS: readonly string[] = ['same', 'even'];
 const COLOR_MODES: readonly string[] = ['auto', 'symbol', 'fill'];
+const START_SIDES: readonly string[] = ['R', 'L'];
 
 /**
  * 외부 데이터(localStorage·파일·Dropbox)에서 읽은 값을 관대하게 정규화한다.
@@ -110,6 +118,9 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
     flatVAlign: VALIGNS.includes(v.flatVAlign as string)
       ? (v.flatVAlign as FlatVAlign)
       : DEFAULT_VIEW_OPTIONS.flatVAlign,
+    knitStartSide: START_SIDES.includes(v.knitStartSide as string)
+      ? (v.knitStartSide as 'R' | 'L')
+      : DEFAULT_VIEW_OPTIONS.knitStartSide,
     colorMode: COLOR_MODES.includes(v.colorMode as string)
       ? (v.colorMode as ColorMode)
       : DEFAULT_VIEW_OPTIONS.colorMode,

@@ -2,7 +2,8 @@
   import { pattern } from '$stores/pattern';
   import {
     mode, currentRound, currentStitch, showGrid, showConnections,
-    flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, fillMode, toggleColorMode,
+    flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, knitStartSide,
+    fillMode, toggleColorMode,
   } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
@@ -314,6 +315,21 @@
       >
         <span class="grid-dot" class:on={$flatCascade}></span> Cascade {$flatCascade ? 'On' : 'Off'}
       </button>
+      {#if isKnit}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          class:active={$knitStartSide === 'L'}
+          onclick={() => knitStartSide.update((v) => (v === 'R' ? 'L' : 'R'))}
+          aria-pressed={$knitStartSide === 'L'}
+          title={$knitStartSide === 'R'
+            ? '단을 오른쪽부터 읽음 (기호도 관행) — 겉면 단은 오른쪽에서 왼쪽으로 떠 나간다. 클릭: 왼쪽부터'
+            : '단을 왼쪽부터 읽음 — 코 순서와 단 번호만 뒤집은 표시이고, 차트는 편물을 좌우로 뒤집은 그림이 된다. 클릭: 오른쪽부터'}
+        >
+          <i class="fa-solid fa-arrow-{$knitStartSide === 'R' ? 'left' : 'right'}"></i>
+          {$knitStartSide === 'R' ? '우→좌' : '좌→우'}
+        </button>
+      {/if}
       {#if showFlatTools}
         <button
           type="button"

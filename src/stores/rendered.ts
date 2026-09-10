@@ -13,6 +13,7 @@ import { derived } from 'svelte/store';
 import { pattern } from './tabs';
 import {
   showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign,
+  knitStartSide,
   colorMode, emptyColor, mainColor, symbolColor,
 } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
@@ -37,9 +38,9 @@ export interface ChartLayout {
 }
 
 export const chartLayout = derived(
-  [pattern, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign],
+  [pattern, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, knitStartSide],
   ([$pattern, $flatFlipVertical, $flatAlign, $flatCascade, $flatCompact,
-    $flatVAlign]): ChartLayout | null => {
+    $flatVAlign, $knitStartSide]): ChartLayout | null => {
     const validRounds: ExpandedRound[] = [];
     for (const r of $pattern.rounds) {
       if (!r.expanded) break;
@@ -58,6 +59,7 @@ export const chartLayout = derived(
         align: $flatAlign,
         cascade: $flatCascade,
         compact: $flatCompact,
+        startLeft: $knitStartSide === 'L',
         vAlign: $flatVAlign,
       }),
       totalRounds: validRounds.length,

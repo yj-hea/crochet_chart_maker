@@ -99,6 +99,7 @@
             <tr><td>평면</td><td>홀수단 겉면(오→왼) / 짝수단 <b>안면</b>(왼→오). 안면 단은 겉면에서 본 모습으로 자동 반전</td></tr>
             <tr><td>반전 규칙</td><td>안면의 <code>p</code> → 차트엔 겉뜨기, <code>p2tog</code> → <code>ssk</code> 모양, <code>m1l</code> ↔ <code>m1r</code>, <code>lli</code> ↔ <code>rli</code>. <code>yo</code>·<code>sl</code> 은 불변</td></tr>
             <tr><td>단 번호</td><td>겉면 단은 격자 <b>오른쪽</b>, 안면 단은 <b>왼쪽</b>에 표기 → 번호 위치로 방향을 알 수 있음</td></tr>
+            <tr><td>읽는 방향</td><td>기본은 <b>우→좌</b> — 겉면 단은 오른바늘 쪽에서 왼쪽으로 떠 나가고, 원통은 모든 단이 겉면이라 매 단이 오른쪽에서 시작. toolbar 의 <b>우→좌 / 좌→우</b> 버튼으로 왼쪽부터 읽게 바꿀 수 있다 (코 순서와 단 번호만 뒤집히고 기호는 그대로 — 차트가 편물의 <b>좌우 반전</b> 그림이 되므로 남에게 줄 도안이면 표기 필요)</td></tr>
             <tr><td>면 뒤집기</td><td>단 번호 옆 <i class="fa-regular fa-eye"></i> 버튼으로 그 단의 면을 수동 지정 (짧은 단 등)</td></tr>
           </tbody>
         </table>

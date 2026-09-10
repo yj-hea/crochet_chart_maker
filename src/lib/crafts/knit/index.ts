@@ -36,6 +36,7 @@ export const knit: CraftDefinition = {
       flipVertical: opts.flipVertical,
       cascade: opts.cascade,
       compact: opts.compact,
+      startLeft: opts.startLeft,
       gauge: opts.gauge,
     });
   },

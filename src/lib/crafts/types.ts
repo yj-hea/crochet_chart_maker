@@ -38,6 +38,8 @@ export interface CraftLayoutOptions {
   cascade?: boolean;
   /** 늘림/줄임 기호도 한 칸만 차지 — 그 코들이 만드는 빈칸 없이 촘촘히 */
   compact?: boolean;
+  /** 단을 왼쪽부터 읽는다 (대바늘 전용) */
+  startLeft?: boolean;
   vAlign?: 'same' | 'even';
 }
 

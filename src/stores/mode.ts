@@ -65,6 +65,9 @@ export const flatCompact = tabViewOption('flatCompact');
 /** 세로 정렬 모드 (same/even). */
 export const flatVAlign = tabViewOption('flatVAlign');
 
+/** 대바늘 차트를 오른쪽('R')부터 읽을지 왼쪽('L')부터 읽을지. */
+export const knitStartSide = tabViewOption('knitStartSide');
+
 /** 실 색을 기호에 칠할지, 코 자리를 채울지. */
 export const colorMode = tabViewOption('colorMode');
 

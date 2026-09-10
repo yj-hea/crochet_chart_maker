@@ -173,6 +173,50 @@ describe('knit 겉면/안면', () => {
   });
 });
 
+describe('knit 읽는 방향 (startLeft)', () => {
+  it('기본은 오른쪽부터 — 겉면 단의 첫 코가 오른쪽 끝', () => {
+    const rounds = [parseExpand(1, 'k1, p1, k1, p1')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round' });
+    const kinds = [...layout.stitches]
+      .sort((a, b) => a.position.x - b.position.x)
+      .map((s) => s.op.kind);
+    // 뜬 순서 k,p,k,p 를 뒤집은 모습이 좌→우
+    expect(kinds).toEqual(['PURL', 'KNIT', 'PURL', 'KNIT']);
+  });
+
+  it('startLeft 면 뜬 순서 그대로 좌→우', () => {
+    const rounds = [parseExpand(1, 'k1, p1, k1, p1')];
+    const layout = layoutKnitGrid(rounds, { shape: 'round', startLeft: true });
+    const kinds = [...layout.stitches]
+      .sort((a, b) => a.position.x - b.position.x)
+      .map((s) => s.op.kind);
+    expect(kinds).toEqual(['KNIT', 'PURL', 'KNIT', 'PURL']);
+  });
+
+  it('단 번호도 시작하는 쪽으로 따라간다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k4')];
+    const right = layoutKnitGrid(rounds, { shape: 'round' });
+    const left = layoutKnitGrid(rounds, { shape: 'round', startLeft: true });
+    expect(right.roundMarkers.every((m) => m.direction === 'right')).toBe(true);
+    expect(left.roundMarkers.every((m) => m.direction === 'left')).toBe(true);
+  });
+
+  it('평면은 홀/짝이 함께 뒤집힌다', () => {
+    const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'k4')];
+    const flat = layoutKnitGrid(rounds, { shape: 'flat' });
+    const flipped = layoutKnitGrid(rounds, { shape: 'flat', startLeft: true });
+    expect(flat.roundMarkers.map((m) => m.direction)).toEqual(['right', 'left']);
+    expect(flipped.roundMarkers.map((m) => m.direction)).toEqual(['left', 'right']);
+  });
+
+  it('기호는 건드리지 않는다 — 안면 단 반전 규칙은 그대로', () => {
+    const rounds = [parseExpand(2, 'p2tog, k2')];
+    const layout = layoutKnitGrid(rounds, { shape: 'flat', startLeft: true });
+    // 2단(안면)의 p2tog 는 겉면에서 ssk 모양으로 보인다
+    expect(layout.stitches.some((s) => s.op.kind === 'SSK')).toBe(true);
+  });
+});
+
 describe('knit 격자 레이아웃', () => {
   it('1코 = 1칸, 1단이 맨 아래', () => {
     const rounds = [parseExpand(1, 'k4'), parseExpand(2, 'p4')];
