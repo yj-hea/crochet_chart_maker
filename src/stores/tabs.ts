@@ -10,8 +10,6 @@ import { writable, derived, get } from 'svelte/store';
 import type { ParsedRound } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
 import {
-  saveWorkspace,
-  loadWorkspace,
   clearWorkspace,
   downloadAsFile,
   readFromFile,
@@ -275,17 +273,21 @@ function copyTabName(original: string, existing: Tab[]): string {
   }
 }
 
-function initialState(): WorkspaceState {
-  const saved = loadWorkspace();
-  if (saved && saved.tabs.length > 0) {
-    const tabs = saved.tabs.map(tabFromSaved);
-    const activeTabId = tabs.some((t) => t.id === saved.activeTabId)
-      ? saved.activeTabId
-      : tabs[0]!.id;
-    return { tabs, activeTabId };
-  }
+/**
+ * 도안 하나짜리 빈 작업대.
+ * 프로젝트를 만들거나 아직 아무것도 열지 않았을 때의 상태다.
+ */
+export function emptyWorkspace(): WorkspaceState {
   const t = defaultTab();
   return { tabs: [t], activeTabId: t.id };
+}
+
+/**
+ * 부팅 상태 — **프로젝트를 열기 전까지는 빈 작업대**다.
+ * 어떤 작품을 열지는 시작 화면에서 고른다 (`stores/projects.ts`).
+ */
+function initialState(): WorkspaceState {
+  return emptyWorkspace();
 }
 
 export const workspace = writable<WorkspaceState>(initialState());
@@ -338,12 +340,37 @@ function toSavedComment(c: Comment, rounds: ReadonlyArray<PatternRoundState>): S
   };
 }
 
-// 자동 저장 — 매 변경마다
-workspace.subscribe((ws) => {
-  saveWorkspace({
-    tabs: ws.tabs.map(toSavedTab),
-    activeTabId: ws.activeTabId,
-  });
+/**
+ * 자동 저장 — 매 변경마다 **열어 둔 프로젝트**에 쓴다.
+ *
+ * 저장할 곳을 정하는 건 프로젝트 스토어의 몫이라(순환 참조를 피하려고) 그쪽에서
+ * 함수를 끼워 넣는다. 아직 아무 프로젝트도 열지 않았으면 아무 데도 쓰지 않는다 —
+ * 예전처럼 전역 워크스페이스 하나에 흘려 넣으면 어느 작품의 내용인지 잃는다.
+ */
+let persist: (() => void) | undefined;
+/**
+ * 프로젝트를 바꾸는 **동안에는 저장하지 않는다**.
+ * 새 작품의 내용이 들어오는 순간 저장 대상이 아직 이전 작품이면 이전 작품을 덮어쓴다.
+ */
+let suspended = false;
+
+export function setWorkspacePersister(fn: () => void): void {
+  persist = fn;
+}
+
+/** 저장을 멈춘 채로 작업대를 갈아 끼운다 (프로젝트 전환) */
+export function withoutPersist(fn: () => void): void {
+  suspended = true;
+  try {
+    fn();
+  } finally {
+    suspended = false;
+  }
+}
+
+workspace.subscribe(() => {
+  if (!persist || suspended) return;
+  persist();
   lastSavedAt.set(new Date());
 });
 

@@ -5,6 +5,8 @@
   import ModeToggle from './components/ModeToggle.svelte';
   import RoundNavigator from './components/RoundNavigator.svelte';
   import TabBar from './components/TabBar.svelte';
+  import ProjectBar from './components/ProjectBar.svelte';
+  import ProjectPicker from './components/ProjectPicker.svelte';
   import HelpModal from './components/HelpModal.svelte';
   import ConflictModal from './components/ConflictModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
@@ -19,6 +21,8 @@
   import { mode, currentRound, currentStitch } from './stores/mode';
   import { setTabProgress } from './stores/tabs';
   import { renderedChart, chartRows } from './stores/rendered';
+  import { openProjectId, initProjects, persistOpenProject } from './stores/projects';
+  import { setWorkspacePersister } from './stores/tabs';
   import { placeDropdown } from './lib/dropdown-place';
   import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
@@ -60,6 +64,12 @@
       }
     }
   }
+
+  // 프로젝트 — 자동 저장을 "열어 둔 작품" 으로 돌리고 목록을 채운다.
+  // 아무 작품도 열지 않은 동안에는 아무 데도 쓰지 않는다 (예전처럼 전역 워크스페이스
+  // 하나로 흘러 들어가면 어느 작품의 내용인지 잃는다).
+  setWorkspacePersister(persistOpenProject);
+  initProjects();
 
   // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화 + 워크스페이스 동기화 시작.
   onMount(() => {
@@ -400,7 +410,12 @@
   </div>
 </header>
 
-<TabBar />
+{#if $openProjectId}
+  <ProjectBar />
+  <TabBar />
+{:else}
+  <ProjectPicker />
+{/if}
 
 <!-- Dropbox 동기화 충돌 — 어느 버전을 남길지 사용자가 결정 -->
 <ConflictModal />
