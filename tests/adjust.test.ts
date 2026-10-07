@@ -23,6 +23,11 @@ function layout(...srcs: string[]) {
   return layoutKnitGrid(rounds, { shape: 'flat' });
 }
 
+/** SVG 가 쓰는 숫자 표기 (정수는 그대로, 아니면 소수점 2자리) */
+function num(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 function activeTab() {
   const ws = get(workspace);
   return ws.tabs.find((t) => t.id === ws.activeTabId)!;
@@ -82,12 +87,23 @@ describe('레이아웃에 보정 입히기', () => {
     expect(out.bounds.minY).toBeLessThan(base.bounds.minY);
   });
 
-  it('렌더러가 키와 transform 을 SVG 에 싣는다', () => {
-    const out = applyAdjustments(layout('co4', 'k4'), { 's:2:1': { dx: 5, dy: -3 } });
+  it('렌더러가 키·중심·transform 을 SVG 에 싣는다', () => {
+    const base = layout('co4', 'k4');
+    const out = applyAdjustments(base, { 's:2:1': { dx: 5, dy: -3 } });
     const svg = renderKnitSvg({ layout: out, showGrid: true });
     expect(svg).toContain('data-el="s:1:0"');
     expect(svg).toContain('data-el="n:2"');
-    expect(svg).toContain('<g data-el="s:2:1" transform="translate(5 -3)">');
+    // 크기·회전의 기준점 — 잉크 경계가 아니라 코의 자리를 그대로 싣는다
+    const moved = base.stitches[5]!;
+    expect(svg).toContain(
+      `<g data-el="s:2:1" data-cx="${num(moved.position.x)}" data-cy="${num(moved.position.y)}" transform="translate(5 -3)">`,
+    );
+  });
+
+  it('모든 코와 단 번호가 중심을 싣는다', () => {
+    const svg = renderKnitSvg({ layout: applyAdjustments(layout('co4', 'k4')), showGrid: true });
+    const withCenter = svg.match(/data-el="[^"]+" data-cx="/g) ?? [];
+    expect(withCenter.length).toBe(8 + 2); // 코 8 + 단 번호 2
   });
 });
 

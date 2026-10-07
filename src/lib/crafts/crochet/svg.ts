@@ -136,7 +136,7 @@ function renderStitchMarkers(
         `font-family="system-ui, sans-serif" fill="${color}" ` +
         `dominant-baseline="central">${escapeAttr(m.label)}</text>`
       : '';
-    return selectable(m.key, m.transform,
+    return selectable(m.key, m.transform, m.position,
       `<line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" ` +
       `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
       `vector-effect="non-scaling-stroke"/>` + label,
@@ -156,12 +156,12 @@ function renderRoundMarkers(markers: import('$lib/layout/types').RoundMarker[]):
       // ▶: 꼭짓점이 오른쪽, 시작코를 가리킴. 숫자는 왼쪽에.
       const tri = `<path d="M ${fmt(x - TRI)},${fmt(y - TRI)} L ${fmt(x + TRI)},${fmt(y)} L ${fmt(x - TRI)},${fmt(y + TRI)} Z" fill="${STITCH_COLOR}"/>`;
       const text = `<text x="${fmt(x - TRI - GAP)}" y="${fmt(y)}" font-size="8" font-family="system-ui, sans-serif" font-weight="600" fill="${STITCH_COLOR}" text-anchor="end" dominant-baseline="central">${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
-      return selectable(m.key, m.transform, tri + text);
+      return selectable(m.key, m.transform, m.position, tri + text);
     }
     // ◀: 꼭짓점이 왼쪽. 숫자는 오른쪽에.
     const tri = `<path d="M ${fmt(x + TRI)},${fmt(y - TRI)} L ${fmt(x - TRI)},${fmt(y)} L ${fmt(x + TRI)},${fmt(y + TRI)} Z" fill="${STITCH_COLOR}"/>`;
     const text = `<text x="${fmt(x + TRI + GAP)}" y="${fmt(y)}" font-size="8" font-family="system-ui, sans-serif" font-weight="600" fill="${STITCH_COLOR}" text-anchor="start" dominant-baseline="central">${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
-    return selectable(m.key, m.transform, tri + text);
+    return selectable(m.key, m.transform, m.position, tri + text);
   });
   return `<g class="round-markers">${parts.join('')}</g>`;
 }
@@ -385,15 +385,23 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   return groups.join('');
 }
 
-/** 캔버스에서 고를 수 있도록 키(와 손으로 다듬은 transform)를 붙인다 */
-function selectable(key: string | undefined, transform: string | undefined, body: string): string {
+/**
+ * 캔버스에서 고를 수 있도록 키를 붙인다.
+ * `data-cx`/`data-cy` 는 이 요소의 **중심**(도안 좌표) — 캔버스가 크기·회전 기준으로 쓴다.
+ */
+function selectable(
+  key: string | undefined,
+  transform: string | undefined,
+  center: { x: number; y: number },
+  body: string,
+): string {
   if (!key) return body;
   const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
-  return `<g data-el="${escapeAttr(key)}"${t}>${body}</g>`;
+  return `<g data-el="${escapeAttr(key)}" data-cx="${fmt(center.x)}" data-cy="${fmt(center.y)}"${t}>${body}</g>`;
 }
 
 function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
-  return selectable(s.key, s.transform, renderStitchBody(s, fillMode));
+  return selectable(s.key, s.transform, s.position, renderStitchBody(s, fillMode));
 }
 
 function renderStitchBody(s: PositionedStitch, fillMode: boolean): string {

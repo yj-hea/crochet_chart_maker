@@ -144,11 +144,22 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   return groups.join('');
 }
 
-/** 캔버스에서 고를 수 있도록 키(와 손으로 다듬은 transform)를 붙인다 */
-function selectable(key: string | undefined, transform: string | undefined, body: string): string {
+/**
+ * 캔버스에서 고를 수 있도록 키를 붙인다.
+ *
+ * `data-cx`/`data-cy` 는 이 요소의 **중심**(도안 좌표) — 캔버스가 크기·회전의 기준점으로
+ * 쓴다. 기호의 잉크 경계로 중심을 짐작하면 빈 기호(미작업 코)나 한쪽으로 치우친 기호에서
+ * 기준이 어긋난다.
+ */
+function selectable(
+  key: string | undefined,
+  transform: string | undefined,
+  center: { x: number; y: number },
+  body: string,
+): string {
   if (!key) return body;
   const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
-  return `<g data-el="${escapeAttr(key)}"${t}>${body}</g>`;
+  return `<g data-el="${escapeAttr(key)}" data-cx="${fmt(center.x)}" data-cy="${fmt(center.y)}"${t}>${body}</g>`;
 }
 
 function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
@@ -158,7 +169,7 @@ function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
   const colorStyle = ink ? ` style="color: ${escapeAttr(ink)}"` : '';
   // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
   const use = `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
-  return selectable(s.key, s.transform, use);
+  return selectable(s.key, s.transform, s.position, use);
 }
 
 /**
@@ -220,7 +231,8 @@ function renderLegend(
     );
   });
   const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
-  return `<g class="legend" data-el="${LEGEND_KEY}"${t}>${rows.join('')}</g>`;
+  const cy = y + (rows.length * LEGEND_ROW_HEIGHT) / 2;
+  return `<g class="legend" data-el="${LEGEND_KEY}" data-cx="${fmt(x)}" data-cy="${fmt(cy)}"${t}>${rows.join('')}</g>`;
 }
 
 /** 단 번호 — 겉면 단은 격자 오른쪽, 안면 단은 왼쪽 */
@@ -232,7 +244,7 @@ function renderRoundNumbers(markers: RoundMarker[]): string {
       `font-family="system-ui, sans-serif" fill="${STITCH_COLOR}" ` +
       `text-anchor="${anchor}" dominant-baseline="central">` +
       `${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
-    return selectable(m.key, m.transform, text);
+    return selectable(m.key, m.transform, m.position, text);
   });
   return `<g class="round-numbers">${parts.join('')}</g>`;
 }
@@ -258,7 +270,7 @@ function renderStitchMarkers(
         `font-family="system-ui, sans-serif" fill="${color}" ` +
         `dominant-baseline="ideographic">${escapeAttr(m.label)}</text>`
       : '';
-    return selectable(m.key, m.transform,
+    return selectable(m.key, m.transform, m.position,
       `<line x1="${fmt(x)}" y1="${fmt(y - h)}" x2="${fmt(x)}" y2="${fmt(y + h)}" ` +
       `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
       `vector-effect="non-scaling-stroke"/>` + label,

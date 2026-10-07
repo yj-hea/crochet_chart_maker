@@ -37,6 +37,15 @@
   let areaW = $state(0);
   let areaH = $state(0);
 
+  /**
+   * SVG 가 실제로 쓰는 viewBox — 무대 크기와 화면 좌표의 기준.
+   *
+   * 도안 경계는 기호를 밖으로 끌어낼 때 넓어진다. 그러면 viewBox 의 원점이 움직여
+   * 화면 전체가 밀리므로, 바뀐 만큼 pan 을 보정해 **보던 자리를 그대로** 둔다.
+   */
+  let view = $state({ x: 0, y: 0, w: 0, h: 0 });
+  let viewReady = false;
+
   let zoom = $state(1);
   let panX = $state(0);
   let panY = $state(0);
@@ -49,6 +58,24 @@
   let marquee = $state<{ x: number; y: number; w: number; h: number } | null>(null);
 
   $effect(() => { onHost?.(host); });
+
+  /** 다시 그릴 때마다 viewBox 를 따라간다 */
+  $effect(() => {
+    void svg; void $adjustments;
+    tick().then(syncViewBox);
+  });
+
+  function syncViewBox(): void {
+    const b = svgEl()?.viewBox?.baseVal;
+    if (!b || !b.width) return;
+    const next = { x: b.x, y: b.y, w: b.width, h: b.height };
+    if (viewReady && (next.x !== view.x || next.y !== view.y)) {
+      panX += (next.x - view.x) * zoom;
+      panY += (next.y - view.y) * zoom;
+    }
+    view = next;
+    viewReady = true;
+  }
 
   /** 도안 크기가 바뀌면 (아직 손대지 않았으면) 화면에 맞춘다 */
   $effect(() => {
@@ -64,12 +91,14 @@
   });
 
   export function fit(): void {
-    if (!areaW || !areaH || !width || !height) return;
+    const w = view.w || width;
+    const h = view.h || height;
+    if (!areaW || !areaH || !w || !h) return;
     const pad = 24;
-    const z = Math.min((areaW - pad) / width, (areaH - pad) / height);
+    const z = Math.min((areaW - pad) / w, (areaH - pad) / h);
     zoom = clamp(Number.isFinite(z) && z > 0 ? z : 1);
-    panX = (areaW - width * zoom) / 2;
-    panY = (areaH - height * zoom) / 2;
+    panX = (areaW - w * zoom) / 2;
+    panY = (areaH - h * zoom) / 2;
     touched = false;
   }
 
@@ -103,6 +132,67 @@
   function keyAt(target: EventTarget | null): string | undefined {
     const el = (target as Element | null)?.closest?.('[data-el]');
     return (el as SVGElement | null)?.dataset?.el;
+  }
+
+  /**
+   * 화면 좌표 ↔ 도안 좌표.
+   *
+   * 도안은 `viewBox`(여백·범례 포함)로 한 번, 캔버스의 확대·이동으로 또 한 번 변환된다.
+   * 직접 계산하면 어긋나므로 SVG 가 들고 있는 실제 행렬을 쓴다.
+   */
+  function svgEl(): SVGSVGElement | null {
+    return host?.querySelector('svg') ?? null;
+  }
+
+  function toChart(clientX: number, clientY: number): { x: number; y: number } | null {
+    const svg = svgEl();
+    const m = svg?.getScreenCTM?.();
+    if (!svg || !m) return null;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(m.inverse());
+    return { x: p.x, y: p.y };
+  }
+
+  function toScreen(x: number, y: number): { x: number; y: number } | null {
+    const svg = svgEl();
+    const m = svg?.getScreenCTM?.();
+    if (!svg || !m) return null;
+    const p = new DOMPoint(x, y).matrixTransform(m);
+    return { x: p.x, y: p.y };
+  }
+
+  /** 요소가 스스로 알려주는 중심 (도안 좌표) — 잉크 경계로 짐작하지 않는다 */
+  function centerOf(el: SVGGraphicsElement): { x: number; y: number } | null {
+    const cx = Number(el.dataset.cx);
+    const cy = Number(el.dataset.cy);
+    return Number.isFinite(cx) && Number.isFinite(cy) ? { x: cx, y: cy } : null;
+  }
+
+  /**
+   * 고른 요소들의 **지금 보이는** 중심 (도안 좌표).
+   * `data-cx/cy` 는 자동 배치의 자리라, 이미 옮겨 둔 요소는 그만큼 더해 준다.
+   */
+  function centersOf(keys: ReadonlyArray<string>): Map<string, { x: number; y: number }> {
+    const map = elementsByKey();
+    const out = new Map<string, { x: number; y: number }>();
+    for (const key of keys) {
+      const el = map.get(key);
+      const c = el ? centerOf(el) : null;
+      if (!c) continue;
+      const a = $adjustments[key];
+      out.set(key, { x: c.x + (a?.dx ?? 0), y: c.y + (a?.dy ?? 0) });
+    }
+    return out;
+  }
+
+  /** 크기·회전의 기준점 — 하나면 그 기호의 중심, 여럿이면 중심들의 한가운데 */
+  function pivotOf(centers: Map<string, { x: number; y: number }>): { x: number; y: number } | null {
+    if (centers.size === 0) return null;
+    const xs = [...centers.values()].map((c) => c.x);
+    const ys = [...centers.values()].map((c) => c.y);
+    return {
+      x: (Math.min(...xs) + Math.max(...xs)) / 2,
+      y: (Math.min(...ys) + Math.max(...ys)) / 2,
+    };
   }
 
   function elementsByKey(): Map<string, SVGGraphicsElement> {
@@ -153,11 +243,18 @@
   type DragKind = 'move' | 'scale' | 'rotate' | 'pan' | 'marquee';
   interface DragState {
     kind: DragKind;
+    /** 시작 지점 (캔버스 화면 좌표) — 마키·화면 이동용 */
     startX: number;
     startY: number;
+    /** 시작 지점 (도안 좌표) — 옮긴 거리를 재는 기준 */
+    startChart: { x: number; y: number } | null;
     /** 드래그 시작 시점의 transform 속성 — 미리보기를 되돌릴 때 쓴다 */
     base: Map<string, string | null>;
-    /** 선택 묶음의 중심 (화면 좌표) */
+    /** 고른 요소들의 원래 중심 (도안 좌표) */
+    centers: Map<string, { x: number; y: number }>;
+    /** 크기·회전의 기준점 (도안 좌표) */
+    pivot: { x: number; y: number } | null;
+    /** 기준점의 화면 좌표 — 끄는 거리·각도를 재는 데 쓴다 */
     cx: number;
     cy: number;
     startDist: number;
@@ -172,19 +269,24 @@
     const r = area.getBoundingClientRect();
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
-    const g = groupBox;
-    const cx = g ? g.x + g.w / 2 : x;
-    const cy = g ? g.y + g.h / 2 : y;
     const base = new Map<string, string | null>();
+    let centers = new Map<string, { x: number; y: number }>();
     if (kind === 'move' || kind === 'scale' || kind === 'rotate') {
       const map = elementsByKey();
       for (const key of selected) {
         const el = map.get(key);
         if (el) base.set(key, el.getAttribute('transform'));
       }
+      // 미리보기 transform 이 붙기 **전**의 중심을 기억해 둔다
+      centers = centersOf(selected);
     }
+    const pivot = pivotOf(centers);
+    const pivotScreen = pivot ? toScreen(pivot.x, pivot.y) : null;
+    const cx = pivotScreen ? pivotScreen.x - r.left : x;
+    const cy = pivotScreen ? pivotScreen.y - r.top : y;
     drag = {
-      kind, startX: x, startY: y, base, cx, cy,
+      kind, startX: x, startY: y, base, centers, pivot, cx, cy,
+      startChart: toChart(e.clientX, e.clientY),
       startDist: Math.hypot(x - cx, y - cy) || 1,
       startAngle: Math.atan2(y - cy, x - cx),
       panX0: panX, panY0: panY,
@@ -227,12 +329,16 @@
       marquee = { x: Math.min(x, drag.startX), y: Math.min(y, drag.startY), w: Math.abs(dx), h: Math.abs(dy) };
       return;
     }
-    previewTransform(previewDelta(drag, x, y, dx, dy));
+    previewTransform(previewDelta(drag, e, x, y));
   }
 
   /** 지금 드래그가 만들어 내는 보정값 (도안 좌표계) */
-  function previewDelta(d: DragState, x: number, y: number, dx: number, dy: number): Adjust {
-    if (d.kind === 'move') return { dx: dx / zoom, dy: dy / zoom };
+  function previewDelta(d: DragState, e: PointerEvent, x: number, y: number): Adjust {
+    if (d.kind === 'move') {
+      const now = toChart(e.clientX, e.clientY);
+      if (!now || !d.startChart) return {};
+      return { dx: now.x - d.startChart.x, dy: now.y - d.startChart.y };
+    }
     if (d.kind === 'scale') {
       const dist = Math.hypot(x - d.cx, y - d.cy);
       return { scale: Math.max(0.2, Math.min(5, dist / d.startDist)) };
@@ -245,10 +351,8 @@
   function previewTransform(delta: Adjust): void {
     if (!drag || !area) return;
     const map = elementsByKey();
-    const base = area.getBoundingClientRect();
-    // 묶음 중심을 도안 좌표로 — 확대·이동을 걷어낸 값
-    const gx = (drag.cx - panX) / zoom;
-    const gy = (drag.cy - panY) / zoom;
+    const gx = drag.pivot?.x ?? 0;
+    const gy = drag.pivot?.y ?? 0;
     for (const key of selected) {
       const el = map.get(key);
       if (!el) continue;
@@ -263,7 +367,6 @@
       if (next) el.setAttribute('transform', next);
       else el.removeAttribute('transform');
     }
-    void base;
     measure();
   }
 
@@ -283,27 +386,25 @@
       return;
     }
 
-    const delta = previewDelta(d, x, y, x - d.startX, y - d.startY);
+    const delta = previewDelta(d, e, x, y);
     if (isNoop(delta)) { restore(d); return; }
+
+    // 옮긴 기호가 도안 밖으로 나가면 경계가 넓어진다 — 그때 화면이 다시 맞춰지면
+    // 작업하던 자리가 흔들리므로, 한 번 다듬기 시작하면 자동 맞춤을 멈춘다
+    touched = true;
 
     if (d.kind === 'move') {
       nudgeElements(selected, delta);
     } else {
-      // 묶음 중심 둘레로 키우거나 돌리면 각 요소는 제자리도 함께 옮겨진다
-      const gx = (d.cx - panX) / zoom;
-      const gy = (d.cy - panY) / zoom;
+      // 기준점 둘레로 키우거나 돌리면 각 요소는 제자리도 함께 옮겨진다
+      const gx = d.pivot?.x ?? 0;
+      const gy = d.pivot?.y ?? 0;
       const entries: Record<string, Adjust> = {};
-      const map = elementsByKey();
-      const base = area.getBoundingClientRect();
       for (const key of selected) {
-        const el = map.get(key);
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        // 보정 전 요소 중심 (도안 좌표)
-        const px = (rect.x + rect.width / 2 - base.x - panX) / zoom;
-        const py = (rect.y + rect.height / 2 - base.y - panY) / zoom;
-        const vx = px - gx;
-        const vy = py - gy;
+        const c = d.centers.get(key);
+        if (!c) continue;
+        const vx = c.x - gx;
+        const vy = c.y - gy;
         let nx = vx;
         let ny = vy;
         if (delta.scale) { nx *= delta.scale; ny *= delta.scale; }
@@ -404,7 +505,7 @@
   >
     <div
       class="stage"
-      style="width:{width}px;height:{height}px;transform:translate({panX}px,{panY}px) scale({zoom});"
+      style="width:{view.w || width}px;height:{view.h || height}px;transform:translate({panX}px,{panY}px) scale({zoom});"
     >
       <div class="svg-host" bind:this={host}>{@html svg}</div>
     </div>
