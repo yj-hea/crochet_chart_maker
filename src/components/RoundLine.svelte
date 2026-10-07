@@ -577,7 +577,9 @@
     {#if validationErrors.length > 0}
       <ul class="validation-list">
         {#each validationErrors as ve (ve.kind)}
-          <li class={ve.kind === 'over_consumed' ? 'over' : 'under'}>{ve.message}</li>
+          <li class={ve.kind === 'over_consumed' || ve.kind === 'folded_changed'
+            ? 'over'
+            : ve.kind === 'number_mismatch' ? 'note' : 'under'}>{ve.message}</li>
         {/each}
       </ul>
     {/if}
@@ -881,5 +883,12 @@
   }
   .validation-list li.under::before {
     content: '⚠️ ';
+  }
+  /* 적어 둔 단 번호가 실제와 다를 때 — 도안은 그대로 그려지므로 조용한 안내 */
+  .validation-list li.note {
+    color: var(--text-secondary);
+  }
+  .validation-list li.note::before {
+    content: 'ℹ️ ';
   }
 </style>

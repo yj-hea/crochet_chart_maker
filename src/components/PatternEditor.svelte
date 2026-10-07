@@ -11,7 +11,7 @@
     usedColors, orphanComments,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
-  import { validateRound } from '$lib/validate';
+  import { validateRound, validateRoundSpec } from '$lib/validate';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
@@ -36,10 +36,14 @@
     const map = new Map<string, ValidationError[]>();
     for (let i = 0; i < rounds.length; i++) {
       const r = rounds[i]!;
-      if (i === 0 || !r.expanded) { map.set(r.id, []); continue; }
+      const specErrors = validateRoundSpec(r.expanded, r.spec, r.number ?? i + 1);
+      if (i === 0 || !r.expanded) { map.set(r.id, specErrors); continue; }
       const prev = rounds[i - 1];
-      if (!prev?.expanded) { map.set(r.id, []); continue; }
-      map.set(r.id, validateRound(r.expanded, prev.expanded));
+      if (!prev?.expanded) { map.set(r.id, specErrors); continue; }
+      map.set(r.id, [
+        ...validateRound(r.expanded, prev.expanded),
+        ...validateRoundSpec(r.expanded, r.spec, r.number ?? i + 1),
+      ]);
     }
     return map;
   });

@@ -28,7 +28,8 @@
     for (const r of $pattern.rounds) {
       const total = r.expanded?.totalProduce ?? 0;
       if (total === 0) continue;
-      rows++;
+      // 접어 적은 줄(`11~25단:`)은 그 수만큼 센다 — 실제 뜨개 높이는 그만큼이다
+      rows += Math.max(1, r.spec?.span ?? 1);
       if (total > maxStitches) maxStitches = total;
     }
     if (rows === 0 || maxStitches === 0) return null;

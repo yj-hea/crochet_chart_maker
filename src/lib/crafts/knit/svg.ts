@@ -85,6 +85,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     showGrid ? renderCellBorders(layout, cell) : '',
     renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
+    renderFoldMarks(layout.roundMarkers, cell, bounds),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP, layout.legendTransform),
     `</svg>`,
@@ -233,6 +234,30 @@ function renderLegend(
   const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
   const cy = y + (rows.length * LEGEND_ROW_HEIGHT) / 2;
   return `<g class="legend" data-el="${LEGEND_KEY}" data-cx="${fmt(x)}" data-cy="${fmt(cy)}"${t}>${rows.join('')}</g>`;
+}
+
+/**
+ * 접은 단 표시 — `11~25단:` 처럼 여러 단을 한 줄로 적으면 그 줄 위에 물결선을 긋는다.
+ * "여기에 같은 단이 더 있다"는 뜻이라, 번호(`11~25`)와 함께 읽힌다.
+ */
+function renderFoldMarks(
+  markers: RoundMarker[],
+  cell: { width: number; height: number },
+  bounds: LayoutResult['bounds'],
+): string {
+  const folded = markers.filter((m) => (m.label ?? '').includes('~'));
+  if (folded.length === 0) return '';
+  const parts = folded.map((m) => {
+    const y = m.position.y - cell.height / 2;
+    const step = 8;
+    const d: string[] = [`M ${fmt(bounds.minX)},${fmt(y)}`];
+    for (let x = bounds.minX; x < bounds.maxX; x += step) {
+      d.push(`q ${fmt(step / 2)},-3 ${fmt(step)},0`);
+    }
+    return `<path d="${d.join(' ')}" fill="none" stroke="${STITCH_COLOR}" stroke-width="0.9" ` +
+      `stroke-linecap="round" opacity="0.5"/>`;
+  });
+  return `<g class="fold-marks">${parts.join('')}</g>`;
 }
 
 /** 단 번호 — 겉면 단은 격자 오른쪽, 안면 단은 왼쪽 */

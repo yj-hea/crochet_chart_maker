@@ -224,6 +224,22 @@
       </section>
 
       <section>
+        <h3>여러 단을 한 줄로 (단 접두어)</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>11~25단: k30</code></td><td>증감 없이 같은 단이 이어질 때 <b>한 줄로 접어</b> 적는다.
+              도안에는 <code>11~25</code> 라벨로 한 줄만 그려지고 위에 물결선이 붙는다.<br>
+              <code>11-25:</code> · <code>11 ~ 25 단 :</code> 처럼 적어도 된다</td></tr>
+            <tr><td><code>7단: k30</code></td><td>번호만 적어 두는 것 — 한 단</td></tr>
+            <tr><td>번호가 밀리면</td><td>위에 단을 끼워 넣어 번호가 달라지면 <b>안내만</b> 하고 도안은 그대로 그린다
+              (적어 둔 번호를 앱이 말없이 고치지 않는다)</td></tr>
+            <tr><td>주의</td><td>접은 줄은 같은 단을 되풀이하므로 <b>코 수가 변하면 오류</b>다 —
+              늘림·줄임이 있는 단은 접을 수 없다</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
         <h3>마커 (place marker)</h3>
         <table class="syntax-table">
           <tbody>

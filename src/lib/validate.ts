@@ -10,6 +10,7 @@
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { ValidationError, SourceRange } from '$lib/model/errors';
+import { isFolded, type RoundSpec } from '$lib/model/round-spec';
 
 /**
  * 같은 단 내 standalone chain → 이후 op 가 chain 위에 코를 떠는 (chain-as-parent) 만큼
@@ -109,4 +110,58 @@ function findOverflowRange(
     }
   }
   return undefined;
+}
+
+/**
+ * 줄 맨 앞의 단 접두어(`11~25단:`)에 대한 검증.
+ *
+ *  - 접은 줄은 **같은 단을 되풀이**하는 것이므로 코 수가 변하면 안 된다.
+ *  - 적어 둔 번호가 실제 번호와 다르면 알려 준다 (위에 단을 끼워 넣으면 밀린다).
+ *    도안은 그대로 그려지므로 경고로만 둔다.
+ */
+export function validateRoundSpec(
+  current: ExpandedRound | undefined,
+  spec: RoundSpec | undefined,
+  actualNumber: number,
+): ValidationError[] {
+  if (!spec) return [];
+  const out: ValidationError[] = [];
+  const roundIndex = current?.index ?? actualNumber;
+
+  if (spec.reversed) {
+    out.push({
+      kind: 'number_mismatch',
+      roundIndex,
+      message: `단 범위가 거꾸로입니다 (${spec.from}~${spec.to}) — 한 단으로 봅니다`,
+      warning: true,
+      expected: spec.from,
+      actual: spec.to,
+    });
+  } else if (spec.from !== actualNumber) {
+    const label = spec.span > 1
+      ? `${actualNumber}~${actualNumber + spec.span - 1}단`
+      : `${actualNumber}단`;
+    out.push({
+      kind: 'number_mismatch',
+      roundIndex,
+      message: `적어 둔 번호(${spec.from}단)와 실제 번호가 다릅니다 — 여기는 ${label}입니다`,
+      warning: true,
+      expected: actualNumber,
+      actual: spec.from,
+    });
+  }
+
+  if (isFolded(spec) && current && current.totalConsume !== current.totalProduce) {
+    out.push({
+      kind: 'folded_changed',
+      roundIndex,
+      message:
+        `접어 적은 단은 같은 단을 되풀이하므로 코 수가 변하면 안 됩니다 ` +
+        `(${current.totalConsume}코 → ${current.totalProduce}코)`,
+      expected: current.totalConsume,
+      actual: current.totalProduce,
+    });
+  }
+
+  return out;
 }

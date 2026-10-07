@@ -29,7 +29,9 @@ export interface ParseError {
 export type ValidationErrorKind =
   | 'over_consumed'   // 부모 단의 코 수보다 많이 소비
   | 'under_consumed'  // 부모 단의 코 수보다 적게 소비
-  | 'parent_missing'; // 이전 단이 없음 (단 1의 경우는 제외)
+  | 'parent_missing'  // 이전 단이 없음 (단 1의 경우는 제외)
+  | 'folded_changed'  // 접은 줄(11~25단:)인데 코 수가 변한다
+  | 'number_mismatch';// 적어 둔 단 번호가 실제 번호와 다르다
 
 export interface ValidationError {
   kind: ValidationErrorKind;
@@ -37,6 +39,8 @@ export interface ValidationError {
   message: string;
   /** 초과의 경우: 초과를 유발한 첫 Op의 AST 소스 위치 (빨간 표시용) */
   offendingRange?: SourceRange;
+  /** 경고 성격 — 도안은 그려지지만 확인이 필요한 경우 */
+  warning?: boolean;
   expected: number;
   actual: number;
 }
