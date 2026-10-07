@@ -375,6 +375,7 @@ export function layoutKnitGrid(
     const numberRight = meta[r]!.rightSide !== startLeft;
     roundMarkers.push({
       roundIndex: meta[r]!.round.index,
+      ...(meta[r]!.round.label ? { label: meta[r]!.round.label } : {}),
       position: numberRight
         ? { x: chartSpan * KNIT_CELL_WIDTH + NUMBER_GUTTER / 2, y: yCenter }
         : { x: -NUMBER_GUTTER / 2, y: yCenter },

@@ -71,6 +71,16 @@ export interface CraftDefinition {
   parseRound(index: number, source: string): ParsedRound;
   expand(tree: SequenceNode, index: number): ExpandedRound;
   layout(rounds: ExpandedRound[], opts: CraftLayoutOptions): LayoutResult;
+
+  /**
+   * 단 하나만으로는 알 수 없는 것을 **도안 전체**를 보고 채우는 단계 (expand 다음).
+   * 대바늘 되돌아뜨기의 미작업 코(`unw`) 자동 채우기가 여기 들어간다.
+   * 파싱이 안 된 단은 `undefined` 로 들어오고, 길이와 순서는 그대로 돌려준다.
+   * 미구현이면 expand 결과를 그대로 쓴다.
+   */
+  resolveRounds?(
+    rounds: ReadonlyArray<ExpandedRound | undefined>,
+  ): Array<ExpandedRound | undefined>;
   render(layout: LayoutResult, opts: CraftRenderOptions): string;
 
   /** 코 메타 조회 (서술형 변환·도움말 등에서 사용). 모르는 코면 undefined */

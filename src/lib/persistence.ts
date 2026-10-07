@@ -22,6 +22,8 @@ export const FILE_EXTENSION = '.crochet.json';
 export interface SavedRound {
   source: string;
   direction?: 'forward' | 'reverse';
+  /** 앞 줄에 이어지는 줄 (되돌아뜨기처럼 한 단이 끝나지 않은 상태) */
+  continued?: boolean;
 }
 
 /** Read 모드 진행 상태 — 파일에 포함되어 다른 기기에서 이어볼 수 있게 함 */
@@ -67,7 +69,12 @@ export interface SerializeInput {
   view?: ViewOptions;
   shape: ShapeKind;
   /** id 는 옵션 — 코멘트의 round 참조를 직렬화 시 index 로 정규화하는 데 사용 */
-  rounds: ReadonlyArray<{ id?: string; source: string; direction?: 'forward' | 'reverse' }>;
+  rounds: ReadonlyArray<{
+    id?: string;
+    source: string;
+    direction?: 'forward' | 'reverse';
+    continued?: boolean;
+  }>;
   comments?: ReadonlyArray<SavedComment>;
   progress?: SavedProgress;
 }
@@ -94,6 +101,7 @@ export function serialize(state: SerializeInput): SavedPattern {
     rounds: state.rounds.map((r) => {
       const out: SavedRound = { source: r.source };
       if (r.direction) out.direction = r.direction;
+      if (r.continued) out.continued = true;
       return out;
     }),
     ...(normalizedComments && normalizedComments.length > 0 ? { comments: normalizedComments } : {}),
@@ -139,6 +147,7 @@ export function validate(data: unknown): SavedPattern {
     if (rr.direction === 'forward' || rr.direction === 'reverse') {
       out.direction = rr.direction;
     }
+    if (rr.continued === true) out.continued = true;
     return out;
   });
   const comments = Array.isArray(d.comments) ? (d.comments as SavedComment[]) : undefined;
@@ -274,6 +283,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
       rounds: t.rounds.map((r) => {
         const out: SavedRound = { source: r.source };
         if (r.direction) out.direction = r.direction;
+        if (r.continued) out.continued = true;
         return out;
       }),
       ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
@@ -307,6 +317,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
       if (!rr || typeof rr.source !== 'string') continue;
       const out: SavedRound = { source: rr.source };
       if (rr.direction === 'forward' || rr.direction === 'reverse') out.direction = rr.direction;
+      if (rr.continued === true) out.continued = true;
       rounds.push(out);
     }
     const craft = validateCraft(tt.craft);

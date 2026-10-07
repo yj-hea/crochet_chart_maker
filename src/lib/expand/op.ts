@@ -36,6 +36,11 @@ export interface Op {
    *   - `tr(N)` 구문으로 N≥4 지정 가능 (네길·다섯길… 긴뜨기)
    */
   yarnOverCount?: number;
+  /**
+   * 되돌아뜨기 단에서 **적지 않아도 앱이 채운** 미작업 코(unw).
+   * 바늘 상태로부터 계산한 값이라, 다시 계산할 때는 먼저 걷어내고 새로 채운다.
+   */
+  autoFilled?: boolean;
   /** 인라인 코멘트 — 각 코별 주의사항 */
   comment?: string;
   /** 인라인 색상 — 배색 도안용 (기호 색상) */
@@ -49,6 +54,12 @@ export interface Op {
  */
 export interface ExpandedRound {
   index: number;
+  /**
+   * 표시용 단 번호 (`12`, `12-2`). 되돌아뜨기로 아직 끝나지 않은 단은
+   * 다음 줄과 번호를 나눠 쓴다 — `$lib/model/round-numbers` 가 계산한다.
+   * 없으면 `index` 를 그대로 쓴다.
+   */
+  label?: string;
   ops: Op[];
   totalConsume: number;
   totalProduce: number;

@@ -7,7 +7,8 @@
     updateRoundSource,
   } from '$stores/pattern';
   import {
-    setRoundDirection, addComment, workspace, insertRoundsAfter, usedColors, orphanComments,
+    setRoundDirection, toggleRoundContinued, addComment, workspace, insertRoundsAfter,
+    usedColors, orphanComments,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import { validateRound } from '$lib/validate';
@@ -95,7 +96,8 @@
     const afterId = focusedRoundId && rounds.some((r) => r.id === focusedRoundId)
       ? focusedRoundId
       : rounds[rounds.length - 1]?.id ?? null;
-    const ids = insertRoundsAfter(afterId, sources);
+    // 되돌아뜨기 묶음은 한 단 — 둘째 줄부터 "이어짐" 으로 넣는다
+    const ids = insertRoundsAfter(afterId, sources, { asOneRound: true });
     const last = ids[ids.length - 1];
     if (last) bumpFocus(last, 'end');
     shortRowOpen = false;
@@ -233,6 +235,8 @@
     <RoundLine
       source={round.source}
       index={i + 1}
+      label={round.expanded?.label}
+      continued={round.continued === true}
       errors={round.parsed?.errors ?? []}
       parsed={round.parsed}
       usedColors={usedColorList}
@@ -248,6 +252,7 @@
       onShiftEnter={() => handleShiftEnter(round.id)}
       onDelete={() => handleDelete(round.id)}
       onToggleDirection={() => handleToggleDirection(round.id)}
+      onToggleContinued={isKnit && i > 0 ? () => toggleRoundContinued(round.id) : undefined}
       onAddComment={() => handleAddRoundComment(round.id)}
       onArrowUp={(col) => handleArrowUp(round.id, col)}
       onArrowDown={(col) => handleArrowDown(round.id, col)}

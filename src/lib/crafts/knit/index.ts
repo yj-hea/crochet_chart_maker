@@ -13,6 +13,7 @@ import { parseKnitRound } from './parser';
 import { expandKnit } from './expander';
 import { layoutKnitGrid } from './grid';
 import { renderKnitSvg } from './svg';
+import { fillUnworked } from './unworked';
 import { KNIT_STITCH_META, knitCanonicalFor } from './stitch';
 
 export const knit: CraftDefinition = {
@@ -28,6 +29,8 @@ export const knit: CraftDefinition = {
 
   parseRound: parseKnitRound,
   expand: expandKnit,
+  // 되돌아뜨기 단에서 적지 않은 미작업 코(unw)를 바늘 상태로부터 채운다
+  resolveRounds: fillUnworked,
 
   layout(rounds: ExpandedRound[], opts: CraftLayoutOptions): LayoutResult {
     return layoutKnitGrid(rounds, {

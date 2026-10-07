@@ -22,6 +22,7 @@ import {
 } from '$lib/persistence';
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
+import { roundNumbers, formatRoundNumber } from '$lib/model/round-numbers';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
   replaceColorInRound,
@@ -62,6 +63,11 @@ export interface PatternRoundState {
   source: string;
   /** 이 단의 작업 방향. 미지정시 'forward' */
   direction?: RoundDirection;
+  /**
+   * 앞 줄에 이어지는 줄 — 되돌아뜨기처럼 **한 단이 아직 끝나지 않은** 상태.
+   * 단 번호를 앞 줄과 나눠 쓴다 (`$lib/model/round-numbers`).
+   */
+  continued?: boolean;
   parsed?: ParsedRound;
   expanded?: ExpandedRound;
 }
@@ -110,9 +116,30 @@ function reparse(craftId: CraftId, idx: number, source: string, direction?: Roun
 }
 
 function reparseAll(rounds: PatternRoundState[], craftId: CraftId): PatternRoundState[] {
-  return rounds.map((r, i) => {
+  return resolveRounds(rounds.map((r, i) => {
     const { parsed, expanded } = reparse(craftId, i + 1, r.source, r.direction);
     return { ...r, parsed, expanded };
+  }), craftId);
+}
+
+/**
+ * 단 하나만으로는 알 수 없는 것을 도안 전체를 보고 채우는 단계.
+ *  - 크래프트별 보정 (대바늘: 되돌아뜨기 미작업 코 자동 채우기)
+ *  - 표시용 단 번호 — 앞 줄에 이어지는 줄은 번호를 나눠 쓴다
+ *
+ * 한 단만 고쳐도 뒤 단의 계산이 달라지므로 늘 전체에 대해 다시 돌린다.
+ */
+function resolveRounds(rounds: PatternRoundState[], craftId: CraftId): PatternRoundState[] {
+  const craft = getCraft(craftId);
+  const resolved = craft.resolveRounds
+    ? craft.resolveRounds(rounds.map((r) => r.expanded))
+    : rounds.map((r) => r.expanded);
+  const numbers = roundNumbers(rounds.map((r) => r.continued));
+  return rounds.map((r, i) => {
+    const expanded = resolved[i];
+    if (!expanded) return r.expanded === expanded ? r : { ...r, expanded };
+    const label = formatRoundNumber(numbers[i]!);
+    return { ...r, expanded: { ...expanded, label } };
   });
 }
 
@@ -140,6 +167,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     id: newRoundIds[i]!,
     source: r.source,
     direction: r.direction,
+    ...(r.continued ? { continued: true } : {}),
   }));
   const craft: CraftId = saved.craft ?? DEFAULT_CRAFT;
   const gauge = normalizeGauge(saved.gauge);
@@ -260,8 +288,10 @@ export function toSavedTab(t: Tab): SavedWorkspaceTab {
     ...(t.view ? { view: t.view } : {}),
     shape: t.shape,
     rounds: t.rounds.map((r) => {
-      const out: { source: string; direction?: RoundDirection } = { source: r.source };
+      const out: { source: string; direction?: RoundDirection; continued?: boolean } =
+        { source: r.source };
       if (r.direction) out.direction = r.direction;
+      if (r.continued) out.continued = true;
       return out;
     }),
     ...(t.comments.length > 0 ? { comments: t.comments.map((c) => toSavedComment(c, t.rounds)) } : {}),
@@ -453,7 +483,8 @@ export function updateRoundSource(id: string, source: string): void {
     const { parsed, expanded } = reparse(t.craft, idx + 1, source, current.direction);
     const newRounds = [...t.rounds];
     newRounds[idx] = { ...current, source, parsed, expanded };
-    return { ...t, rounds: newRounds };
+    // 이 단의 코 수가 바뀌면 뒤 단의 미작업 코 계산도 달라진다
+    return { ...t, rounds: resolveRounds(newRounds, t.craft) };
   });
 }
 
@@ -473,16 +504,22 @@ export function addRoundAfter(id: string): string {
  * 여러 단을 한 번에 삽입 (되돌아뜨기처럼 여러 단이 한 묶음일 때).
  * `afterId` 가 없으면 맨 끝에 붙인다. 반환값은 삽입된 단들의 id.
  */
-export function insertRoundsAfter(afterId: string | null, sources: string[]): string[] {
+export function insertRoundsAfter(
+  afterId: string | null,
+  sources: string[],
+  opts: { asOneRound?: boolean } = {},
+): string[] {
   const ids: string[] = [];
   if (sources.length === 0) return ids;
   updateActiveTab((t) => {
     const idx = afterId ? t.rounds.findIndex((r) => r.id === afterId) : -1;
     const at = idx < 0 ? t.rounds.length : idx + 1;
-    const inserted = sources.map((source) => {
+    const inserted = sources.map((source, i) => {
       const id = makeRoundId();
       ids.push(id);
-      return { id, source };
+      // 되돌아뜨기 묶음은 뜨개에서 한 단이 끝나지 않은 것 — 첫 줄만 새 단으로 센다
+      const continued = opts.asOneRound === true && i > 0 && at + i > 0;
+      return continued ? { id, source, continued } : { id, source };
     });
     const newRounds = [...t.rounds];
     newRounds.splice(at, 0, ...inserted);
@@ -707,6 +744,19 @@ export function reattachComment(commentId: string, roundId: string): 'attached' 
     };
   });
   return result;
+}
+
+/**
+ * "앞 줄에 이어짐" 토글 — 되돌아뜨기처럼 한 단이 아직 끝나지 않은 줄.
+ * 첫 줄은 이어질 앞 줄이 없어 켤 수 없다.
+ */
+export function toggleRoundContinued(id: string): void {
+  updateActiveTab((t) => {
+    const idx = t.rounds.findIndex((r) => r.id === id);
+    if (idx <= 0) return t;
+    const rounds = t.rounds.map((r, i) => (i === idx ? { ...r, continued: !r.continued } : r));
+    return { ...t, rounds: resolveRounds(rounds, t.craft) };
+  });
 }
 
 export function setRoundDirection(id: string, direction: RoundDirection): void {

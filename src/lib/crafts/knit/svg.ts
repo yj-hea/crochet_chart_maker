@@ -219,7 +219,8 @@ function renderRoundNumbers(markers: RoundMarker[]): string {
     const anchor = m.direction === 'right' ? 'start' : 'end';
     return `<text x="${fmt(m.position.x)}" y="${fmt(m.position.y)}" font-size="7" ` +
       `font-family="system-ui, sans-serif" fill="${STITCH_COLOR}" ` +
-      `text-anchor="${anchor}" dominant-baseline="central">${m.roundIndex}</text>`;
+      `text-anchor="${anchor}" dominant-baseline="central">` +
+      `${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
   });
   return `<g class="round-numbers">${parts.join('')}</g>`;
 }

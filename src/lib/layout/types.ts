@@ -84,6 +84,11 @@ export type GridGuide =
  */
 export interface RoundMarker {
   roundIndex: number;
+  /**
+   * 번호 자리에 적을 글자. 되돌아뜨기로 한 단이 여러 줄이면 `12-2` 처럼 된다.
+   * 없으면 `roundIndex` 를 그대로 적는다.
+   */
+  label?: string;
   position: Point;
   direction: 'right' | 'left';
 }

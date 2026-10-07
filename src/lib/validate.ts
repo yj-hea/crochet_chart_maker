@@ -38,6 +38,11 @@ function inRoundChainConsumed(ops: ReadonlyArray<Op>): { consumed: number; hidde
   return { consumed, hiddenProduce: consumed };
 }
 
+/** 사람에게 보여줄 단 번호 — 되돌아뜨기로 번호를 나눠 쓰는 단은 `12-2` 처럼 된다 */
+function roundName(r: ExpandedRound): string {
+  return r.label ?? String(r.index);
+}
+
 /**
  * 현재 단과 이전 단을 비교하여 의미 오류를 반환.
  * 오류가 없으면 빈 배열.
@@ -59,7 +64,8 @@ export function validateRound(
     return [{
       kind: 'over_consumed',
       roundIndex: current.index,
-      message: `${previous.index}단의 코 수(${expected}코)를 초과하여 소비합니다 (${actual}코 소비, ${actual - expected}코 초과)`,
+      message: `${roundName(previous)}단의 코 수(${expected}코)를 초과하여 소비합니다 `
+        + `(${actual}코 소비, ${actual - expected}코 초과)`,
       offendingRange: findOverflowRange(current, expected),
       expected,
       actual,
@@ -70,7 +76,8 @@ export function validateRound(
   return [{
     kind: 'under_consumed',
     roundIndex: current.index,
-    message: `${previous.index}단의 ${expected}코 중 ${actual}코만 소비합니다 (${expected - actual}코 부족)`,
+    message: `${roundName(previous)}단의 ${expected}코 중 ${actual}코만 소비합니다 `
+      + `(${expected - actual}코 부족)`,
     expected,
     actual,
   }];

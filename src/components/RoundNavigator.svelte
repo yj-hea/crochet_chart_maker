@@ -20,6 +20,8 @@
     return counts;
   });
   const currentStitchTotal = $derived(stitchCountByRound[$currentRound - 1] ?? 0);
+  // 되돌아뜨기로 번호를 나눠 쓰는 단은 `12-2` — 편집기·도안과 같은 번호를 보여준다
+  const currentRoundLabel = $derived(currentRoundData?.expanded?.label ?? String($currentRound));
   const narrative = $derived.by(() => {
     if (!currentRoundData) return { html: '', comments: [] as string[] };
     return renderNarrative(currentRoundData.parsed, currentRoundData.source, activeTab?.craft);
@@ -133,7 +135,7 @@
     />
   {:else}
     <button type="button" class="round-display" onclick={startEdit} title="클릭하여 단 번호 직접 입력">
-      {$currentRound} / {totalRounds} 단
+      {currentRoundLabel} / {totalRounds} 단
     </button>
   {/if}
 

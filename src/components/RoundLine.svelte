@@ -26,6 +26,10 @@
   interface Props {
     source: string;
     index: number;
+    /** 번호 칸에 적을 글자 (`12`, `12-2`). 없으면 index */
+    label?: string;
+    /** 앞 줄에 이어지는 줄 — 되돌아뜨기처럼 한 단이 끝나지 않은 상태 */
+    continued?: boolean;
     errors?: ParseError[];
     validationErrors?: ValidationError[];
     /** 이 단의 파싱 결과 — 색 스와치 위치·색 편집에 사용 */
@@ -42,6 +46,8 @@
     directionIcon?: { forward: string; reverse: string };
     /** 방향 라벨 (툴팁) */
     directionLabel?: { forward: string; reverse: string };
+    /** 켜면 "앞 줄에 이어짐" 토글 버튼을 보여준다 (대바늘 되돌아뜨기용) */
+    onToggleContinued?: () => void;
     /** 외부 포커스 요청. token 증가 시 포커스 이동, cursor로 커서 위치 지정 */
     focusRequest?: FocusRequest;
     onChange: (source: string) => void;
@@ -61,6 +67,9 @@
   let {
     source,
     index,
+    label,
+    continued = false,
+    onToggleContinued,
     errors = [],
     validationErrors = [],
     parsed,
@@ -545,7 +554,9 @@
 </script>
 
 <div class="round-line">
-  <span class="round-index">{index}:</span>
+  <span class="round-index" class:continued title={continued ? `${(label ?? String(index)).split('-')[0]}단 — 앞 줄에 이어지는 줄` : undefined}>
+    {continued ? '↳' : `${(label ?? String(index)).split('-')[0]}:`}
+  </span>
   {#if roundComment}
     <!-- 추가 버튼과 같은 크기의 상자에 담는다 — 메모가 생겨도 아이콘이 제자리에 -->
     <span class="round-comment-pin"><CommentPin comment={roundComment} size={11} /></span>
@@ -584,6 +595,21 @@
   >
     <i class="fa-solid fa-palette"></i>
   </button>
+  {#if onToggleContinued}
+    <button
+      type="button"
+      class="cont-btn"
+      class:on={continued}
+      onclick={onToggleContinued}
+      title={continued
+        ? '앞 줄에 이어지는 줄 (클릭하여 새 단으로)'
+        : '새 단 (클릭하여 앞 줄에 이어 붙이기 — 되돌아뜨기처럼 한 단이 끝나지 않을 때)'}
+      aria-label="앞 줄에 이어짐"
+      aria-pressed={continued}
+    >
+      <i class="fa-solid fa-turn-down"></i>
+    </button>
+  {/if}
   {#if onToggleDirection && directionIcon && directionLabel}
     <button
       type="button"
@@ -601,7 +627,7 @@
     onclick={onDelete}
     disabled={!canDelete}
     title={canDelete ? '이 단 삭제' : '마지막 단은 삭제할 수 없습니다'}
-    aria-label="단 {index} 삭제"
+    aria-label="단 {label ?? index} 삭제"
   >×</button>
 </div>
 
@@ -667,6 +693,9 @@
     align-items: stretch;
     gap: 8px;
     padding: 2px 0;
+  }
+  .round-index.continued {
+    color: var(--accent, #7c3aed);
   }
   .round-index {
     min-width: 28px;
@@ -767,6 +796,37 @@
     background: var(--bg-hover);
     border-color: var(--border);
     color: var(--text);
+  }
+  /* 앞 줄에 이어짐 — 방향 버튼과 같은 상자, 켜져 있을 때만 또렷하게 */
+  .cont-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin-top: 4px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.55;
+  }
+  .cont-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text);
+    opacity: 1;
+  }
+  .cont-btn.on {
+    opacity: 1;
+    color: var(--accent, #7c3aed);
+    border-color: var(--border);
   }
   .delete-btn {
     flex-shrink: 0;

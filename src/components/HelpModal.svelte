@@ -184,13 +184,22 @@
         <table class="syntax-table">
           <tbody>
             <tr><td><code>wt</code> / <code>ds</code></td><td>되돌아뜨기 turn — 감아뜨기(wrap &amp; turn) / 독일식(double stitch)</td></tr>
-            <tr><td><code>unw</code></td><td><b>미작업 코</b> — 뜨지 않고 바늘에 남겨둔 코. 코 수가 보존되므로 경고가 뜨지 않고, 격자에는 회색으로 표시</td></tr>
-            <tr><td>쓰는 위치</td><td><b>그 단의 작업 순서대로</b> 적는다. 아직 안 지난 코면 뒤에, 이미 지나온 코면 앞에.<br>
-              예) <code>3: k12, wt, unw7</code> (가는 단 — 남은 7코는 앞쪽)<br>
-              <code>4: unw7, p13</code> (돌아오는 단 — 그 7코는 이미 지나옴)</td></tr>
+            <tr><td><b>unw 는 적지 않아도 된다</b></td><td><b>뜨는 코만</b> 적으면 양 끝의 미작업 코는
+              바늘 상태에서 계산해 자동으로 채운다. 격자에는 회색 칸으로 그려지고 코 수 경고도 뜨지 않는다.<br>
+              예) <code>k11, wt</code> → <code>k11, wt, unw7</code><br>
+              <code>p4, wt</code> → <code>unw7, p4, wt, unw7</code><br>
+              <code>k12</code> → <code>unw7, k12</code> (남은 코를 되살리는 마무리 단)</td></tr>
+            <tr><td><code>unw</code></td><td><b>미작업 코</b> — 직접 적어도 된다. 적은 단은 그대로 그려진다
+              (<b>그 단의 작업 순서대로</b> — 아직 안 지난 코면 뒤에, 이미 지나온 코면 앞에)</td></tr>
+            <tr><td>채우지 않는 경우</td><td>새로 남기는 코가 있는데 <code>wt</code>·<code>ds</code> 가 없으면
+              오타와 구분할 수 없어 채우지 않고 <b>코 수 부족</b>으로 알려준다. 기호 없이 그냥 돌리는 단은
+              이미 남아 있던 코 자리에서 끝나므로 기호 없이도 채워진다</td></tr>
+            <tr><td>번호 — 한 단이 안 끝났을 때</td><td>되돌아뜨기는 보통 <b>한 단이 끝나지 않은 것</b>으로 센다.
+              단 번호 옆 <i class="fa-solid fa-turn-down"></i> 버튼을 켜면 그 줄은 앞 줄과 번호를 나눠 쓴다
+              (<code>12-1</code>, <code>12-2</code> … / 편집기에서는 <code>↳</code>)</td></tr>
             <tr><td>확인</td><td>가는 단과 오는 단의 회색 구간이 <b>같은 열</b>에 오면 올바르게 적은 것</td></tr>
             <tr><td>자동 계산</td><td>에디터 아래 <b>되돌아뜨기</b> 버튼 — 전체 코수·한 번에 남길 코·횟수만 넣으면
-              <code>unw</code> 위치와 마무리 단까지 계산해 여러 단으로 한 번에 넣는다.<br>
+              <code>unw</code> 위치와 마무리 단까지 계산해 여러 단으로 한 번에 넣는다 (한 단으로 묶어서).<br>
               어깨 경사는 <b>한쪽만</b>, 뒷목·힐·요크는 <b>양쪽 번갈아</b>.</td></tr>
           </tbody>
         </table>
@@ -347,8 +356,8 @@
 k2, (p2, k2)*9, p2          → 고무뜨기
 k1, yo, ssk, k34, k2tog, yo, k1   → 레이스 (코 수 유지)
 k1, m1l, k38, m1r, k1       → 래글런 늘림 (42코)
-k12, wt, unw30              → 되돌아뜨기 (가는 단)
-unw30, p12                  → 되돌아뜨기 (오는 단)
+k12, wt                     → 되돌아뜨기 (가는 단 — unw 는 자동)
+p12, wt                     → 되돌아뜨기 (오는 단)
 k2:navy, (k2:cream, k2:navy)*9    → 배색
 k8, bo10, k8                → 진동 파기 (중간 코막음)
 bo36                        → 코막음</code></pre>
