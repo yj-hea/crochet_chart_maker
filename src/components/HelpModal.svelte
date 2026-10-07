@@ -243,6 +243,22 @@
       </section>
 
       <section>
+        <h3>걸어뜨기 (앞걸어 · 뒤걸어)</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>fp</code> / <code>bp</code></td><td>다음 코를 <b>아래 코의 기둥</b>에 걸어 뜬다 — 골지·꽈배기 무늬.<br>
+              <code>fpF</code>(앞걸어 한길긴뜨기) · <code>bpT</code>(뒤걸어 긴뜨기) · <code>fp3F</code>(세 번)<br>
+              붙여 써도 띄어 써도 된다. 반복수는 변형자 뒤에 적는다</td></tr>
+            <tr><td>예</td><td><code>(fpF, bpF)*6</code> — 한길긴뜨기 골지</td></tr>
+            <tr><td>기호</td><td>기둥 아래에 갈고리가 붙는다 — <b>앞걸어는 오른쪽, 뒤걸어는 왼쪽</b>으로 굽는 거울상</td></tr>
+            <tr><td>코 수</td><td>코 자체는 그대로라 1 → 1 — 코 수 검증이 달라지지 않는다</td></tr>
+            <tr><td>아직 없는 것</td><td>걸 코를 직접 지정하거나(<code>1단 2번째 코</code>) 윗단에서 이어 거는 표기.
+              지금은 <b>바로 아래 코</b>의 기둥에 건 것으로 그린다</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
         <h3>마커 (place marker)</h3>
         <table class="syntax-table">
           <tbody>

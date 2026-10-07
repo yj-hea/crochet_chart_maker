@@ -69,8 +69,12 @@ export type CommonStitchKind = 'MARKER';
 /** 두 크래프트의 코 종류 합집합. Op·AST·레이아웃 등 공용 자료구조에서 사용. */
 export type StitchKind = CrochetStitchKind | KnitStitchKind | CommonStitchKind;
 
-/** 변형자. 현재는 코바늘 전용 (blo 뒤이랑뜨기). */
-export type ModifierKind = 'BLO';
+/**
+ * 변형자 — 코 자체는 그대로 두고 **어디에 거는지**를 바꾼다. 코바늘 전용.
+ *  - `blo` 뒤이랑뜨기
+ *  - `fp`/`bp` 앞걸어·뒤걸어뜨기 (아래 코의 머리가 아니라 **기둥**을 감아 뜬다)
+ */
+export type ModifierKind = 'BLO' | 'FP' | 'BP';
 
 /**
  * 코 하나의 메타데이터.
@@ -114,8 +118,10 @@ export const MARKER_ALIASES = Object.freeze({
 /** 입력 별칭 → 정규화된 코/변형자. 토크나이저가 longest-match 로 사용. */
 export type AliasTable = Readonly<Record<string, StitchKind | ModifierKind>>;
 
+const MODIFIER_KINDS = new Set<string>(['BLO', 'FP', 'BP']);
+
 export function isModifierKind(v: StitchKind | ModifierKind): v is ModifierKind {
-  return v === 'BLO';
+  return MODIFIER_KINDS.has(v);
 }
 
 export function isStitchKind(v: StitchKind | ModifierKind): v is StitchKind {

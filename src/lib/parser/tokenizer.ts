@@ -5,7 +5,7 @@
  * 숫자, 구조 문자(`,`, `(`, `)`, `*`, `^`), 공백, 알 수 없는 문자를 분류.
  */
 
-import type { StitchKind, ModifierKind, AliasTable } from '$lib/model/stitch-kind';
+import { isModifierKind, type StitchKind, type ModifierKind, type AliasTable } from '$lib/model/stitch-kind';
 // 기본 바인딩은 코바늘 테이블. 대바늘 등 다른 크래프트는 config 로 자기 별칭을 주입한다.
 import { ALIAS_MAP, ALIAS_KEYS_BY_LENGTH } from '$lib/crafts/crochet/stitch';
 import type { SourceRange } from '$lib/model/errors';
@@ -170,7 +170,7 @@ export function tokenize(input: string, config: TokenizerConfig = CROCHET_CONFIG
     const aliasMatch = tryAliasMatch(input, i, config);
     if (aliasMatch) {
       const { key, kind, length } = aliasMatch;
-      const type: TokenType = kind === 'BLO' ? 'MODIFIER' : 'STITCH';
+      const type: TokenType = isModifierKind(kind) ? 'MODIFIER' : 'STITCH';
       tokens.push({
         type,
         range: { start: i, end: i + length },
@@ -244,13 +244,15 @@ function tryAliasMatch(input: string, start: number, config: TokenizerConfig): A
       // 다자 식별자 별칭(sc, hdc, blo 등)의 경우 뒤 문자가 또다른 알파벳이면
       // 부분 일치일 가능성이 있음 → 매칭 거부. 단일 문자 별칭(V, A, X, T, F, E 등)은
       // 연속 작성(VT, AF) 허용을 위해 거부하지 않음.
+      const kind = config.aliasMap[key];
+      if (!kind) continue;
       const last = key[key.length - 1]!;
-      if (key.length > 1 && /[A-Za-z]/.test(last)) {
+      // 변형자(blo·fp·bp)는 **코 앞에 붙여 쓰는** 말이라 뒤에 글자가 와도 부분 일치가 아니다.
+      // (`fpF` = 앞걸어 한길긴뜨기. 예전에는 `blo X` 처럼 띄어 써야만 했다)
+      if (key.length > 1 && /[A-Za-z]/.test(last) && !isModifierKind(kind)) {
         const next = input[start + key.length];
         if (next !== undefined && /[A-Za-z]/.test(next)) continue;
       }
-      const kind = config.aliasMap[key];
-      if (!kind) continue;
       return { key, kind, length: key.length };
     }
   }

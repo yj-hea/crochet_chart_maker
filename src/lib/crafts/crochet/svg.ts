@@ -424,7 +424,28 @@ function renderStitchBody(s: PositionedStitch, fillMode: boolean): string {
   }
 
   const sym = stitchSymbolId(s.op.kind);
+  // 걸어뜨기 — 기둥 아래에 갈고리를 덧그린다. 기호와 같은 기울기로 돌아야 해서
+  // 기호를 제자리(0,0)에 두고 그룹째 옮긴 뒤 돌린다.
+  if (s.op.modifier === 'FP' || s.op.modifier === 'BP') {
+    const hook = postHook(s.op.kind, s.op.modifier, s.op.yarnOverCount);
+    return `<g transform="translate(${x} ${y}) rotate(${angleDeg})"${colorStyle}>` +
+      `<use href="#${sym}"/>${hook}</g>`;
+  }
   return `<use href="#${sym}" x="${x}" y="${y}" transform="rotate(${angleDeg} ${x} ${y})"${colorStyle}/>`;
+}
+
+/**
+ * 걸어뜨기 갈고리.
+ *
+ * 아래 코의 머리가 아니라 **기둥**을 감아 뜨는 코라, 기호 기둥의 아래 끝을 갈고리로
+ * 굽혀 표시한다. 앞걸어는 오른쪽, 뒤걸어는 왼쪽으로 굽힌다 (서로 거울상).
+ */
+function postHook(kind: StitchKind, modifier: 'FP' | 'BP', yarnOverCount?: number): string {
+  const h = legHalfLength(kind, yarnOverCount);
+  const dir = modifier === 'FP' ? 1 : -1;
+  // 기둥 끝에서 살짝 위부터 꺾어 ㄴ 자로 감아 돈다
+  const d = `M 0,${fmt(h - 3.5)} q 0,${fmt(3.5)} ${fmt(dir * 4)},${fmt(3.5)}`;
+  return `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`;
 }
 
 /** N 개 yarn-over 기둥긴뜨기 를 동적으로 렌더 (N≥4). TR(n=2)/DTR(n=3) 와 같은 스타일. */

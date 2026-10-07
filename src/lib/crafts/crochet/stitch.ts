@@ -181,6 +181,15 @@ export const ALIAS_MAP: AliasTable = Object.freeze({
   'BLO': 'BLO',
   'Blo': 'BLO',
 
+  // 걸어뜨기 modifier — 아래 코의 **기둥**을 감아 뜬다 (골지·꽈배기)
+  // `fp`/`bp` 는 코 두 개를 쉼표 없이 붙여 쓴 꼴이라 지금까지 오류였다 → 충돌 없음
+  'fp':  'FP',
+  'FP':  'FP',
+  'Fp':  'FP',
+  'bp':  'BP',
+  'BP':  'BP',
+  'Bp':  'BP',
+
   // MARKER — 코 사이 경계 (두 크래프트 공용)
   ...MARKER_ALIASES,
 });
