@@ -11,6 +11,7 @@ import type { ShapeKind } from '$stores/pattern';
 import type { CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import { normalizeViewOptions, type ViewOptions } from '$lib/model/view-options';
+import { isEmptyAdjust, type Adjustments } from '$lib/layout/adjust';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
 /** v2: `craft` 필드 추가 (코바늘/대바늘). v1 파일은 코바늘로 마이그레이션. */
@@ -59,6 +60,8 @@ export interface SavedPattern {
   view?: ViewOptions;
   shape: ShapeKind;
   rounds: SavedRound[];
+  /** 캔버스에서 손으로 다듬은 배치 (키 → 보정값, `layout/adjust`) */
+  adjust?: Adjustments;
   comments?: SavedComment[];
   progress?: SavedProgress;
 }
@@ -75,6 +78,7 @@ export interface SerializeInput {
     direction?: 'forward' | 'reverse';
     continued?: boolean;
   }>;
+  adjust?: Adjustments;
   comments?: ReadonlyArray<SavedComment>;
   progress?: SavedProgress;
 }
@@ -104,9 +108,38 @@ export function serialize(state: SerializeInput): SavedPattern {
       if (r.continued) out.continued = true;
       return out;
     }),
+    ...(hasAdjust(state.adjust) ? { adjust: state.adjust } : {}),
     ...(normalizedComments && normalizedComments.length > 0 ? { comments: normalizedComments } : {}),
     ...(state.progress ? { progress: state.progress } : {}),
   };
+}
+
+/** 보정값이 하나라도 들어 있는지 — 비어 있으면 저장하지 않는다 */
+function hasAdjust(adjust: Adjustments | undefined): boolean {
+  return !!adjust && Object.values(adjust).some((a) => !isEmptyAdjust(a));
+}
+
+/**
+ * 손으로 다듬은 배치 검증 — 숫자만 받고, 비어 있는 값은 버린다.
+ * 외부 파일에서 온 값이라 모르는 키·이상한 값이 섞여 있어도 도안을 버리지 않는다.
+ */
+function normalizeAdjust(raw: unknown): Adjustments | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Adjustments = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const v = value as Record<string, unknown>;
+    const num = (n: unknown): number | undefined =>
+      typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+    const a = {
+      ...(num(v.dx) !== undefined ? { dx: num(v.dx)! } : {}),
+      ...(num(v.dy) !== undefined ? { dy: num(v.dy)! } : {}),
+      ...(num(v.scale) !== undefined ? { scale: num(v.scale)! } : {}),
+      ...(num(v.rot) !== undefined ? { rot: num(v.rot)! } : {}),
+    };
+    if (!isEmptyAdjust(a)) out[key] = a;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** 파일·localStorage 에서 읽은 값에 대한 progress 검증. 유효하지 않으면 undefined. */
@@ -162,6 +195,7 @@ export function validate(data: unknown): SavedPattern {
     ...(view ? { view } : {}),
     shape: d.shape,
     rounds,
+    ...(normalizeAdjust(d.adjust) ? { adjust: normalizeAdjust(d.adjust) } : {}),
     ...(comments ? { comments } : {}),
     ...(progress ? { progress } : {}),
   };
@@ -254,6 +288,8 @@ export interface SavedWorkspaceTab {
   view?: ViewOptions;
   shape: ShapeKind;
   rounds: SavedRound[];
+  /** 캔버스에서 손으로 다듬은 배치 (키 → 보정값, `layout/adjust`) */
+  adjust?: Adjustments;
   comments?: SavedComment[];
   progress?: SavedProgress;
 }
@@ -286,6 +322,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
         if (r.continued) out.continued = true;
         return out;
       }),
+      ...(hasAdjust(t.adjust) ? { adjust: t.adjust } : {}),
       ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
       ...(t.progress ? { progress: t.progress } : {}),
     })),
@@ -332,6 +369,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
       // 모르는 도형 id 는 크래프트 기본값으로 — 탭을 통째로 버리지 않는다
       shape: isKnownShape(tt.shape) ? tt.shape : defaultShapeFor(craft),
       rounds: rounds.length > 0 ? rounds : [{ source: '' }],
+      ...(normalizeAdjust(tt.adjust) ? { adjust: normalizeAdjust(tt.adjust) } : {}),
       ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
       ...(validateProgress(tt.progress) ? { progress: validateProgress(tt.progress) as SavedProgress } : {}),
     });

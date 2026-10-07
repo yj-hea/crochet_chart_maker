@@ -7,8 +7,8 @@
   } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
+  import ChartCanvas from './ChartCanvas.svelte';
   import { isValidGauge, stitchesToCm, rowsToCm } from '$lib/model/gauge';
-  import { computeDisplayFit } from '$lib/render/fit';
 
   // 대바늘은 격자 도안이라 코바늘 전용 토글(연결선·세로 정렬)이 의미가 없다.
   const isKnit = $derived($pattern.craft === 'knit');
@@ -38,33 +38,6 @@
       widthCm: stitchesToCm(maxStitches, g),
       heightCm: rowsToCm(rows, g),
     };
-  });
-
-  /**
-   * 격자 도안(대바늘) 최소 칸 크기.
-   * contain-fit 으로 축소하면 좁은 화면에서 칸이 5px 이하가 되어 선이 sub-pixel 로
-   * 사라진다 (모바일 340px 패널 + 60코 차트 → 칸 4.9px, 격자선 0.15px).
-   * 이보다 작아지면 축소 대신 스크롤한다.
-   */
-  const MIN_CELL_PX = 14;
-  const AREA_PADDING = 40; // .scroll-area 좌우/상하 padding 합
-  let areaW = $state(0);
-  let areaH = $state(0);
-
-  /**
-   * 표시 크기(px). 코바늘은 null → 기존 contain-fit(100% × 100%) 유지.
-   * 대바늘은 칸이 너무 작아지면 최소 크기로 고정하고 스크롤한다.
-   */
-  const displaySize = $derived.by(() => {
-    if (!rendered?.cellWidth || areaW === 0 || areaH === 0) return null;
-    return computeDisplayFit({
-      chartWidth: rendered.width,
-      chartHeight: rendered.height,
-      availWidth: Math.max(60, areaW - AREA_PADDING),
-      availHeight: Math.max(60, areaH - AREA_PADDING),
-      cellWidth: rendered.cellWidth,
-      minCellPx: MIN_CELL_PX,
-    });
   });
 
   let modalOpen = $state(false);
@@ -366,27 +339,18 @@
       {/if}
     </div>
   </div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="scroll-area"
-    class:scrollable={displaySize?.scroll}
-    bind:clientWidth={areaW}
-    bind:clientHeight={areaH}
-    ondblclick={openModal}
-    title={rendered ? '더블클릭으로 확대' : ''}
-  >
-    {#if rendered}
-      <div
-        class="svg-wrap"
-        bind:this={svgWrap}
-        style={displaySize ? `width:${displaySize.width}px;height:${displaySize.height}px;` : ''}
-      >
-        {@html rendered.svg}
-      </div>
-    {:else}
-      <p class="empty">도안 입력을 시작하세요</p>
-    {/if}
-  </div>
+  {#if rendered}
+    <ChartCanvas
+      svg={rendered.svg}
+      width={rendered.width}
+      height={rendered.height}
+      editable={$mode !== 'read'}
+      onHost={(el) => (svgWrap = el)}
+      onZoomRequest={openModal}
+    />
+  {:else}
+    <div class="scroll-area"><p class="empty">도안 입력을 시작하세요</p></div>
+  {/if}
   {#if physicalSize}
     <div class="size-bar" title="게이지 기준 완성 크기 (가장 넓은 단 기준)">
       <i class="fa-solid fa-ruler-combined"></i>
@@ -490,25 +454,8 @@
     justify-content: center;
   }
   /* 칸이 최소 크기보다 작아질 때 — 축소 대신 스크롤 (좁은 화면에서 격자가 보이도록) */
-  .scroll-area.scrollable {
-    overflow: auto;
-    align-items: flex-start;
-    justify-content: flex-start;
-  }
-  .svg-wrap {
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-    flex: none;
-  }
   /* SVG viewBox 는 preserveAspectRatio=xMidYMid meet(기본)로 contain-fit.
      도안 전체가 컨테이너에 항상 들어오고, 디테일은 더블클릭으로 확대. */
-  .svg-wrap :global(svg) {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
   .size-bar {
     flex-shrink: 0;
     padding: 4px 10px;

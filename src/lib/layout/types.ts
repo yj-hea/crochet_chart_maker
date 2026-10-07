@@ -14,6 +14,10 @@ export interface Point {
 
 export interface PositionedStitch {
   op: Op;
+  /** 캔버스에서 이 코를 가리키는 키 (`layout/adjust`). 레이아웃 뒤에 채워진다 */
+  key?: string;
+  /** 손으로 다듬은 배치의 transform. 없으면 자동 배치 그대로 */
+  transform?: string;
   /** 1-based 단 번호 */
   roundIndex: number;
   position: Point;
@@ -84,6 +88,10 @@ export type GridGuide =
  */
 export interface RoundMarker {
   roundIndex: number;
+  /** 캔버스 선택용 키 (`layout/adjust`) */
+  key?: string;
+  /** 손으로 다듬은 배치의 transform */
+  transform?: string;
   /**
    * 번호 자리에 적을 글자. 되돌아뜨기로 한 단이 여러 줄이면 `12-2` 처럼 된다.
    * 없으면 `roundIndex` 를 그대로 적는다.
@@ -102,6 +110,10 @@ export interface RoundMarker {
  */
 export interface PositionedMarker {
   roundIndex: number;
+  /** 캔버스 선택용 키 (`layout/adjust`) */
+  key?: string;
+  /** 손으로 다듬은 배치의 transform */
+  transform?: string;
   /** 경계의 중심 좌표 */
   position: Point;
   /**
@@ -116,6 +128,8 @@ export interface PositionedMarker {
 
 export interface LayoutResult {
   stitches: PositionedStitch[];
+  /** 범례를 손으로 옮겼을 때의 transform */
+  legendTransform?: string;
   bounds: LayoutBounds;
   gridGuide?: GridGuide;
   roundMarkers: RoundMarker[];

@@ -23,6 +23,7 @@ import {
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
 import { roundNumbers, formatRoundNumber } from '$lib/model/round-numbers';
+import { isEmptyAdjust, mergeAdjust, type Adjust, type Adjustments } from '$lib/layout/adjust';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
   replaceColorInRound,
@@ -86,6 +87,8 @@ export interface Tab {
   view?: ViewOptions;
   shape: ShapeKind;
   rounds: PatternRoundState[];
+  /** 캔버스에서 손으로 다듬은 배치 (키 → 보정값). 자동 배치 위에 덧입혀진다 */
+  adjust?: Adjustments;
   comments: Comment[];
   /** Read 모드 진행 상태 — 파일에 포함해 다른 기기에서 이어보기 가능 */
   progress?: SavedProgress;
@@ -181,6 +184,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     view: normalizeViewOptions(saved.view) ?? readViewSeed(),
     shape: saved.shape,
     rounds: reparseAll(rounds, craft),
+    ...(saved.adjust ? { adjust: saved.adjust } : {}),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
     ...(saved.progress ? { progress: saved.progress } : {}),
   };
@@ -294,6 +298,7 @@ export function toSavedTab(t: Tab): SavedWorkspaceTab {
       if (r.continued) out.continued = true;
       return out;
     }),
+    ...(t.adjust && Object.keys(t.adjust).length > 0 ? { adjust: t.adjust } : {}),
     ...(t.comments.length > 0 ? { comments: t.comments.map((c) => toSavedComment(c, t.rounds)) } : {}),
     ...(t.progress ? { progress: t.progress } : {}),
   };
@@ -349,6 +354,7 @@ export const pattern = derived(workspace, ($ws) => {
       gauge: active.gauge,
       shape: active.shape,
       rounds: active.rounds,
+      adjust: active.adjust,
     };
   }
   return {
@@ -356,6 +362,7 @@ export const pattern = derived(workspace, ($ws) => {
     gauge: undefined as Gauge | undefined,
     shape: 'circular' as ShapeKind,
     rounds: [] as PatternRoundState[],
+    adjust: undefined as Adjustments | undefined,
   };
 });
 
@@ -432,6 +439,7 @@ export function duplicateTab(id: string): string {
       ...(src.view ? { view: { ...src.view } } : {}),
       ...(src.gauge ? { gauge: { ...src.gauge } } : {}),
       ...(src.progress ? { progress: { ...src.progress } } : {}),
+      ...(src.adjust ? { adjust: { ...src.adjust } } : {}),
     };
     newId = tab.id;
 
@@ -744,6 +752,90 @@ export function reattachComment(commentId: string, roundId: string): 'attached' 
     };
   });
   return result;
+}
+
+// ============================================================
+// 캔버스 — 손으로 다듬은 배치
+// ============================================================
+
+/** 활성 탭의 보정값 */
+export const adjustments = derived(workspace, ($ws): Adjustments => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  return active?.adjust ?? {};
+});
+
+/** 손으로 옮긴 요소 수 — 도구바 표시용 */
+export const adjustCount = derived(adjustments, ($a) => Object.keys($a).length);
+
+/** 되돌리기 스택 — 탭마다 직전 보정값들을 쌓아 둔다 (세션 한정) */
+const adjustHistory = new Map<string, Adjustments[]>();
+const ADJUST_HISTORY_MAX = 50;
+
+/** 보정을 바꾸기 직전 상태를 스택에 넣는다 */
+function pushAdjustHistory(tabId: string, before: Adjustments): void {
+  const stack = adjustHistory.get(tabId) ?? [];
+  stack.push(before);
+  if (stack.length > ADJUST_HISTORY_MAX) stack.shift();
+  adjustHistory.set(tabId, stack);
+}
+
+function writeAdjust(next: (current: Adjustments) => Adjustments): void {
+  updateActiveTab((t) => {
+    const current = t.adjust ?? {};
+    const updated = next(current);
+    // 빈 보정은 지워서 "손으로 옮긴 N개" 가 실제 개수와 맞게 둔다
+    const cleaned: Adjustments = {};
+    for (const [k, v] of Object.entries(updated)) if (!isEmptyAdjust(v)) cleaned[k] = v;
+    pushAdjustHistory(t.id, current);
+    if (Object.keys(cleaned).length === 0) {
+      const { adjust: _drop, ...rest } = t;
+      return rest as Tab;
+    }
+    return { ...t, adjust: cleaned };
+  });
+}
+
+/** 고른 요소들을 같은 양만큼 옮기거나 키우거나 돌린다 (기존 보정에 더한다) */
+export function nudgeElements(keys: ReadonlyArray<string>, delta: Adjust): void {
+  if (keys.length === 0 || isEmptyAdjust(delta)) return;
+  writeAdjust((current) => {
+    const next = { ...current };
+    for (const key of keys) next[key] = mergeAdjust(current[key], delta);
+    return next;
+  });
+}
+
+/** 보정값을 그대로 지정 (여러 개를 한 번에 — 되돌리기 한 칸으로 묶인다) */
+export function setElementAdjust(entries: Readonly<Record<string, Adjust>>): void {
+  if (Object.keys(entries).length === 0) return;
+  writeAdjust((current) => ({ ...current, ...entries }));
+}
+
+/** 배치 초기화 — 키를 주지 않으면 이 도안 전체 */
+export function resetAdjustments(keys?: ReadonlyArray<string>): void {
+  writeAdjust((current) => {
+    if (!keys) return {};
+    const next = { ...current };
+    for (const key of keys) delete next[key];
+    return next;
+  });
+}
+
+/** 마지막 배치 변경을 되돌린다 */
+export function undoAdjust(): boolean {
+  let undone = false;
+  updateActiveTab((t) => {
+    const stack = adjustHistory.get(t.id);
+    const before = stack?.pop();
+    if (!before) return t;
+    undone = true;
+    if (Object.keys(before).length === 0) {
+      const { adjust: _drop, ...rest } = t;
+      return rest as Tab;
+    }
+    return { ...t, adjust: before };
+  });
+  return undone;
 }
 
 /**

@@ -19,6 +19,7 @@ import {
 import type { ExpandedRound } from '$lib/expand/op';
 import type { LayoutResult } from '$lib/layout/types';
 import { getCraft, type CraftId } from '$lib/crafts';
+import { applyAdjustments } from '$lib/layout/adjust';
 
 export interface RenderedChart {
   svg: string;
@@ -52,7 +53,8 @@ export const chartLayout = derived(
     const craft = getCraft($pattern.craft);
     return {
       craft: $pattern.craft,
-      layout: craft.layout(validRounds, {
+      // 캔버스에서 고를 수 있도록 키를 붙이고, 손으로 다듬은 배치를 덧입힌다
+      layout: applyAdjustments(craft.layout(validRounds, {
         shape: $pattern.shape,
         gauge: $pattern.gauge,
         flipVertical: $flatFlipVertical,
@@ -61,7 +63,7 @@ export const chartLayout = derived(
         compact: $flatCompact,
         startLeft: $knitStartSide === 'L',
         vAlign: $flatVAlign,
-      }),
+      }), $pattern.adjust),
       totalRounds: validRounds.length,
     };
   },
