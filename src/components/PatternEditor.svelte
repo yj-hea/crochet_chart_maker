@@ -11,7 +11,8 @@
     usedColors, orphanComments,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
-  import { validateRound, validateRoundSpec } from '$lib/validate';
+  import { validateRound, validateRoundSpec, validateRoundRepeat } from '$lib/validate';
+  import { planRounds } from '$lib/model/round-plan';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
@@ -30,21 +31,37 @@
   let shortRowOpen = $state(false);
   let orphanOpen = $state(false);
 
-  // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
+  /**
+   * 의미 오류 계산.
+   *
+   * 줄과 도안 행이 1:1 이 아니다 — 되풀이 줄(`1~2단 반복*3`)은 여러 행으로 펼쳐지고
+   * 접은 줄(`11~25단:`)은 한 행이다. 그래서 **도안 행 순서**로 코 수를 맞춰 보고,
+   * 그 행을 만든 줄에 오류를 붙인다.
+   */
   const validationByRound = $derived.by(() => {
     const rounds = $pattern.rounds;
     const map = new Map<string, ValidationError[]>();
-    for (let i = 0; i < rounds.length; i++) {
-      const r = rounds[i]!;
-      const specErrors = validateRoundSpec(r.expanded, r.spec, r.number ?? i + 1);
-      if (i === 0 || !r.expanded) { map.set(r.id, specErrors); continue; }
-      const prev = rounds[i - 1];
-      if (!prev?.expanded) { map.set(r.id, specErrors); continue; }
-      map.set(r.id, [
-        ...validateRound(r.expanded, prev.expanded),
-        ...validateRoundSpec(r.expanded, r.spec, r.number ?? i + 1),
-      ]);
+    for (const r of rounds) map.set(r.id, []);
+
+    const plan = planRounds(rounds);
+    for (let i = 1; i < plan.chart.length; i++) {
+      const cur = plan.chart[i]!;
+      const line = rounds[cur.lineIndex];
+      if (!line) continue;
+      const errors = validateRound(cur.expanded, plan.chart[i - 1]!.expanded);
+      const list = map.get(line.id)!;
+      // 되풀이로 같은 오류가 여러 행에서 나와도 한 번만 보여 준다
+      for (const e of errors) if (!list.some((x) => x.kind === e.kind)) list.push(e);
     }
+
+    rounds.forEach((r, i) => {
+      const number = r.number ?? i + 1;
+      const copies = plan.chart.filter((row) => row.lineIndex === i).length;
+      map.get(r.id)!.push(
+        ...validateRoundSpec(r.expanded, r.spec, number),
+        ...validateRoundRepeat(r.repeat, copies, number),
+      );
+    });
     return map;
   });
 
@@ -245,7 +262,7 @@
       parsed={round.parsed}
       usedColors={usedColorList}
       validationErrors={validationByRound.get(round.id) ?? []}
-      stitchCount={round.expanded?.totalProduce}
+      stitchCount={round.repeat ? undefined : round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}
       roundComment={roundCommentByRound.get(round.id)}
       direction={round.direction ?? 'forward'}

@@ -61,6 +61,36 @@ export function readRoundSpec(source: string): ReadResult {
   };
 }
 
+/**
+ * 앞의 단들을 통째로 되풀이하는 줄 — `1~2단 반복*3`.
+ *
+ * 무늬를 이루는 단이 계속 반복될 때 한 단 한 단 다시 적지 않는다.
+ * 접어 적기(`11~25단:`)와 달리 **모두 그려진다** — 무늬가 보여야 하기 때문.
+ */
+export interface RoundRepeat {
+  /** 되풀이할 단 번호 범위 */
+  from: number;
+  to: number;
+  /** 몇 번 되풀이할지 (기본 1) */
+  times: number;
+  range: SourceRange;
+}
+
+/** `1~2단 반복*3` / `1~2단 반복` / `5단 반복 × 2` */
+const REPEAT_RE =
+  /^(\s*)(\d+)(?:\s*[~\-–]\s*(\d+))?\s*단\s*반복\s*(?:[*×xX]\s*(\d+))?\s*$/;
+
+export function readRoundRepeat(source: string): RoundRepeat | undefined {
+  const m = REPEAT_RE.exec(source);
+  if (!m) return undefined;
+  const from = Number(m[2]);
+  const to = m[3] === undefined ? from : Number(m[3]);
+  if (!Number.isFinite(from) || from < 1 || to < from) return undefined;
+  const times = m[4] === undefined ? 1 : Number(m[4]);
+  if (!Number.isFinite(times) || times < 1) return undefined;
+  return { from, to, times, range: { start: m[1]!.length, end: source.length } };
+}
+
 /** 이 줄이 나타내는 단 수 */
 export function spanOf(spec: RoundSpec | undefined): number {
   return spec?.span ?? 1;

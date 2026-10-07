@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
-import { readRoundSpec, rewriteSpec, spanOf, isFolded } from '../src/lib/model/round-spec';
+import {
+  readRoundSpec, readRoundRepeat, rewriteSpec, spanOf, isFolded,
+} from '../src/lib/model/round-spec';
+import { planRounds } from '../src/lib/model/round-plan';
 import { roundNumbers, formatRoundNumber, countRounds } from '../src/lib/model/round-numbers';
-import { validateRoundSpec } from '../src/lib/validate';
+import { validateRoundSpec, validateRoundRepeat } from '../src/lib/validate';
 import { parseKnitRound } from '../src/lib/crafts/knit/parser';
 import { expandKnit } from '../src/lib/crafts/knit/expander';
 import { layoutKnitGrid } from '../src/lib/crafts/knit/grid';
@@ -150,5 +153,59 @@ describe('접은 줄 — 스토어', () => {
     const saved = activeTab().rounds[0]!;
     expect(saved.source).toBe('1~5단: co30');
     expect(saved.spec?.span).toBe(5);
+  });
+});
+
+describe('앞 단 되풀이 (1~2단 반복*3)', () => {
+  it('지시문을 읽는다', () => {
+    expect(readRoundRepeat('1~2단 반복*3')).toMatchObject({ from: 1, to: 2, times: 3 });
+    expect(readRoundRepeat('1~2단 반복')).toMatchObject({ from: 1, to: 2, times: 1 });
+    expect(readRoundRepeat('5단 반복 × 2')).toMatchObject({ from: 5, to: 5, times: 2 });
+    expect(readRoundRepeat('k30')).toBeUndefined();
+    expect(readRoundRepeat('1~2단: k30')).toBeUndefined();
+  });
+
+  it('앞 단을 복사해 도안 행으로 펼친다', () => {
+    createTab('knit');
+    updateRoundSource(activeTab().rounds[0]!.id, 'co12');
+    updateRoundSource(addRoundAtEnd(), 'k2, (p2, k2)*2, p2');
+    updateRoundSource(addRoundAtEnd(), 'p2, (k2, p2)*2, k2');
+    updateRoundSource(addRoundAtEnd(), '2~3단 반복*3');
+
+    const t = activeTab();
+    expect(t.rounds.map((r) => r.expanded?.label)).toEqual(['1', '2', '3', '4~9']);
+
+    const plan = planRounds(t.rounds);
+    // 1단 + 2단 + 3단 + (2·3단) × 3 = 9행
+    expect(plan.chart).toHaveLength(9);
+    expect(plan.chart.map((r) => r.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(plan.chart.map((r) => r.expanded.index)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // 복사된 행은 원본과 같은 코 구성
+    expect(plan.chart[3]!.expanded.ops.map((o) => o.kind))
+      .toEqual(plan.chart[1]!.expanded.ops.map((o) => o.kind));
+    expect(plan.chart[3]!.copyOf).toBe(1);
+  });
+
+  it('되풀이 뒤의 단 번호가 이어진다', () => {
+    createTab('knit');
+    updateRoundSource(activeTab().rounds[0]!.id, 'co12');
+    updateRoundSource(addRoundAtEnd(), 'k12');
+    updateRoundSource(addRoundAtEnd(), '1~2단 반복*2');
+    updateRoundSource(addRoundAtEnd(), 'k12');
+    expect(activeTab().rounds.map((r) => r.expanded?.label)).toEqual(['1', '2', '3~6', '7']);
+  });
+
+  it('찾지 못하는 단을 가리키면 알려 준다', () => {
+    const repeat = readRoundRepeat('8~9단 반복*2')!;
+    expect(validateRoundRepeat(repeat, 0, 3).map((e) => e.kind)).toEqual(['repeat_missing']);
+    expect(validateRoundRepeat(repeat, 4, 3)).toEqual([]);
+  });
+
+  it('접어 적기와 섞여도 번호가 맞는다', () => {
+    createTab('knit');
+    updateRoundSource(activeTab().rounds[0]!.id, 'co12');
+    updateRoundSource(addRoundAtEnd(), '2~11단: k12');
+    updateRoundSource(addRoundAtEnd(), '1단 반복*2');
+    expect(activeTab().rounds.map((r) => r.expanded?.label)).toEqual(['1', '2~11', '12~13']);
   });
 });

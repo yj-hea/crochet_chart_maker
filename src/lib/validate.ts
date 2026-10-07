@@ -10,7 +10,7 @@
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { ValidationError, SourceRange } from '$lib/model/errors';
-import { isFolded, type RoundSpec } from '$lib/model/round-spec';
+import { isFolded, type RoundSpec, type RoundRepeat } from '$lib/model/round-spec';
 
 /**
  * 같은 단 내 standalone chain → 이후 op 가 chain 위에 코를 떠는 (chain-as-parent) 만큼
@@ -164,4 +164,23 @@ export function validateRoundSpec(
   }
 
   return out;
+}
+
+/**
+ * `1~2단 반복*3` 줄 검증 — 가리킨 단을 찾지 못하면 아무것도 그려지지 않으므로 알려 준다.
+ */
+export function validateRoundRepeat(
+  repeat: RoundRepeat | undefined,
+  found: number,
+  roundIndex: number,
+): ValidationError[] {
+  if (!repeat || found > 0) return [];
+  const range = repeat.from === repeat.to ? `${repeat.from}단` : `${repeat.from}~${repeat.to}단`;
+  return [{
+    kind: 'repeat_missing',
+    roundIndex,
+    message: `되풀이할 ${range}을 앞에서 찾지 못했습니다`,
+    expected: repeat.to - repeat.from + 1,
+    actual: 0,
+  }];
 }

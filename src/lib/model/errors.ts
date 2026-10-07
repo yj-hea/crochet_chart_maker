@@ -31,7 +31,8 @@ export type ValidationErrorKind =
   | 'under_consumed'  // 부모 단의 코 수보다 적게 소비
   | 'parent_missing'  // 이전 단이 없음 (단 1의 경우는 제외)
   | 'folded_changed'  // 접은 줄(11~25단:)인데 코 수가 변한다
-  | 'number_mismatch';// 적어 둔 단 번호가 실제 번호와 다르다
+  | 'number_mismatch' // 적어 둔 단 번호가 실제 번호와 다르다
+  | 'repeat_missing'; // 되풀이할 단을 앞에서 찾지 못했다
 
 export interface ValidationError {
   kind: ValidationErrorKind;

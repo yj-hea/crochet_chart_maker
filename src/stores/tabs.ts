@@ -22,8 +22,10 @@ import {
 } from '$lib/persistence';
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
-import { roundNumbers, formatRoundNumber } from '$lib/model/round-numbers';
-import { readRoundSpec, spanOf, type RoundSpec } from '$lib/model/round-spec';
+import {
+  readRoundSpec, readRoundRepeat, type RoundSpec, type RoundRepeat,
+} from '$lib/model/round-spec';
+import { planRounds } from '$lib/model/round-plan';
 import { isEmptyAdjust, mergeAdjust, type Adjust, type Adjustments } from '$lib/layout/adjust';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
@@ -75,6 +77,8 @@ export interface PatternRoundState {
    * `spec.span` 이 2 이상이면 그 줄 하나가 여러 단을 나타낸다 (접은 줄).
    */
   spec?: RoundSpec;
+  /** `1~2단 반복*3` — 앞의 단들을 통째로 되풀이하는 줄. 소스에서 파생된다 */
+  repeat?: RoundRepeat;
   /** 계산된 단 번호 (1-based). 접은 줄이면 시작 번호. 파생값이라 저장하지 않는다 */
   number?: number;
   parsed?: ParsedRound;
@@ -120,18 +124,20 @@ function makeTabId(): string {
 function reparse(craftId: CraftId, idx: number, source: string, direction?: RoundDirection) {
   const craft = getCraft(craftId);
   // `11~25단:` 같은 접두어는 코 문법이 아니다 — 자리를 지킨 채 공백으로 덮어 넘긴다
-  const { spec, masked } = readRoundSpec(source);
+  const repeat = readRoundRepeat(source);
+  // `1~2단 반복*3` 은 코가 아니라 지시문이다 — 파서에는 빈 줄로 넘긴다
+  const { spec, masked } = repeat ? { spec: undefined, masked: '' } : readRoundSpec(source);
   const parsed = craft.parseRound(idx, masked);
   const tree = parsed.body ?? parsed.lastValid;
   const expanded = tree ? craft.expand(tree, idx) : undefined;
   if (expanded) expanded.direction = direction ?? 'forward';
-  return { parsed, expanded, spec };
+  return { parsed, expanded, spec, repeat };
 }
 
 function reparseAll(rounds: PatternRoundState[], craftId: CraftId): PatternRoundState[] {
   return resolveRounds(rounds.map((r, i) => {
-    const { parsed, expanded, spec } = reparse(craftId, i + 1, r.source, r.direction);
-    return { ...r, parsed, expanded, ...(spec ? { spec } : {}) };
+    const { parsed, expanded, spec, repeat } = reparse(craftId, i + 1, r.source, r.direction);
+    return { ...r, parsed, expanded, ...(spec ? { spec } : {}), ...(repeat ? { repeat } : {}) };
   }), craftId);
 }
 
@@ -147,16 +153,12 @@ function resolveRounds(rounds: PatternRoundState[], craftId: CraftId): PatternRo
   const resolved = craft.resolveRounds
     ? craft.resolveRounds(rounds.map((r) => r.expanded))
     : rounds.map((r) => r.expanded);
-  const numbers = roundNumbers(rounds.map((r) => ({
-    continued: r.continued,
-    span: spanOf(r.spec),
-  })));
-  return rounds.map((r, i) => {
-    const number = numbers[i]!.number;
-    const expanded = resolved[i];
-    if (!expanded) return { ...r, expanded, number };
-    const label = formatRoundNumber(numbers[i]!);
-    return { ...r, number, expanded: { ...expanded, label } };
+  const withResolved = rounds.map((r, i) => ({ ...r, expanded: resolved[i] }));
+  const plan = planRounds(withResolved);
+  return withResolved.map((r, i) => {
+    const { number, label } = plan.lines[i]!;
+    if (!r.expanded) return { ...r, number };
+    return { ...r, number, expanded: { ...r.expanded, label } };
   });
 }
 
@@ -502,9 +504,9 @@ export function updateRoundSource(id: string, source: string): void {
     const idx = t.rounds.findIndex((r) => r.id === id);
     if (idx < 0) return t;
     const current = t.rounds[idx]!;
-    const { parsed, expanded, spec } = reparse(t.craft, idx + 1, source, current.direction);
+    const { parsed, expanded, spec, repeat } = reparse(t.craft, idx + 1, source, current.direction);
     const newRounds = [...t.rounds];
-    newRounds[idx] = { ...current, source, parsed, expanded, spec };
+    newRounds[idx] = { ...current, source, parsed, expanded, spec, repeat };
     // 이 단의 코 수가 바뀌면 뒤 단의 미작업 코 계산도 달라진다
     return { ...t, rounds: resolveRounds(newRounds, t.craft) };
   });

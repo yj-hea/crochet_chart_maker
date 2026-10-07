@@ -20,6 +20,7 @@ import type { ExpandedRound } from '$lib/expand/op';
 import type { LayoutResult } from '$lib/layout/types';
 import { getCraft, type CraftId } from '$lib/crafts';
 import { applyAdjustments } from '$lib/layout/adjust';
+import { planRounds } from '$lib/model/round-plan';
 
 export interface RenderedChart {
   svg: string;
@@ -42,12 +43,11 @@ export const chartLayout = derived(
   [pattern, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, knitStartSide],
   ([$pattern, $flatFlipVertical, $flatAlign, $flatCascade, $flatCompact,
     $flatVAlign, $knitStartSide]): ChartLayout | null => {
+    // 줄 → 도안 행 계획 (접어 적은 줄은 한 행, 되풀이 줄은 여러 행)
     const validRounds: ExpandedRound[] = [];
-    for (const r of $pattern.rounds) {
-      if (!r.expanded) break;
-      // 빈 단(코가 하나도 없는 단)은 그리지 않는다 — 도안 전체가 비면 안내 문구를 띄운다
-      if (r.expanded.ops.length === 0) continue;
-      validRounds.push(r.expanded);
+    for (const row of planRounds($pattern.rounds).chart) {
+      if (row.expanded.ops.length === 0) continue;
+      validRounds.push(row.expanded);
     }
     if (validRounds.length === 0) return null;
     const craft = getCraft($pattern.craft);
