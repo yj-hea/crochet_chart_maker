@@ -39,6 +39,44 @@ export interface ChartLayout {
   totalRounds: number;
 }
 
+/**
+ * 도안 행 — 읽기 모드가 걷는 단위.
+ *
+ * 편집기 줄과 1:1 이 아니다: 접어 적은 줄(`11~25단:`)은 한 행, 되풀이 줄
+ * (`1~2단 반복*3`)은 여러 행이 된다. 서술 도안과 단 메모는 **그 행을 만든 줄**에서
+ * 가져오는데, 되풀이로 복사된 행은 원본 줄을 가리킨다.
+ */
+export interface ChartRow {
+  /** 1-based 도안 행 번호 (SVG 의 data-round 와 같다) */
+  index: number;
+  /** 단 번호 라벨 (`12`, `11~25`) */
+  label: string;
+  /** 이 행을 만든 편집기 줄 id */
+  lineId: string;
+  /** 글과 메모를 가져올 줄 id — 되풀이 행은 원본 줄 */
+  sourceLineId: string;
+  /** 이 행의 코 수 (코 단위 이동용) */
+  stitchCount: number;
+}
+
+export const chartRows = derived(pattern, ($pattern): ChartRow[] => {
+  const rows: ChartRow[] = [];
+  for (const row of planRounds($pattern.rounds).chart) {
+    if (row.expanded.ops.length === 0) continue;
+    const line = $pattern.rounds[row.lineIndex];
+    const source = $pattern.rounds[row.copyOf ?? row.lineIndex];
+    if (!line) continue;
+    rows.push({
+      index: rows.length + 1,
+      label: row.expanded.label ?? String(row.number),
+      lineId: line.id,
+      sourceLineId: (source ?? line).id,
+      stitchCount: row.expanded.ops.length,
+    });
+  }
+  return rows;
+});
+
 export const chartLayout = derived(
   [pattern, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, knitStartSide],
   ([$pattern, $flatFlipVertical, $flatAlign, $flatCascade, $flatCompact,

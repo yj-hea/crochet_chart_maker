@@ -14,6 +14,7 @@ import { applyAdjustments } from '../src/lib/layout/adjust';
 import {
   workspace, createTab, updateRoundSource, addRoundAtEnd,
 } from '../src/stores/tabs';
+import { chartRows } from '../src/stores/rendered';
 
 function activeTab() {
   const ws = get(workspace);
@@ -207,5 +208,33 @@ describe('앞 단 되풀이 (1~2단 반복*3)', () => {
     updateRoundSource(addRoundAtEnd(), '2~11단: k12');
     updateRoundSource(addRoundAtEnd(), '1단 반복*2');
     expect(activeTab().rounds.map((r) => r.expanded?.label)).toEqual(['1', '2~11', '12~13']);
+  });
+});
+
+describe('읽기 모드 — 도안 행 단위', () => {
+  it('되풀이로 펼쳐진 행까지 걷고, 글은 원본 줄에서 가져온다', () => {
+    createTab('knit');
+    updateRoundSource(activeTab().rounds[0]!.id, 'co12');
+    const rib1 = addRoundAtEnd();
+    updateRoundSource(rib1, 'k2, (p2, k2)*2, p2');
+    const rib2 = addRoundAtEnd();
+    updateRoundSource(rib2, 'p2, (k2, p2)*2, k2');
+    updateRoundSource(addRoundAtEnd(), '2~3단 반복*3');
+
+    const rows = get(chartRows);
+    expect(rows).toHaveLength(9);
+    expect(rows.map((r) => r.label)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
+    // 4번째 행은 2단의 복사본 — 글과 메모는 원본 줄에서
+    expect(rows[3]!.sourceLineId).toBe(rib1);
+    expect(rows[4]!.sourceLineId).toBe(rib2);
+    expect(rows.every((r) => r.stitchCount === 12)).toBe(true);
+  });
+
+  it('접어 적은 줄은 한 행으로 센다', () => {
+    createTab('knit');
+    updateRoundSource(activeTab().rounds[0]!.id, 'co12');
+    updateRoundSource(addRoundAtEnd(), '2~16단: k12');
+    const rows = get(chartRows);
+    expect(rows.map((r) => r.label)).toEqual(['1', '2~16']);
   });
 });

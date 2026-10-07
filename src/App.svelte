@@ -18,7 +18,7 @@
   } from './stores/dropboxWorkspace';
   import { mode, currentRound, currentStitch } from './stores/mode';
   import { setTabProgress } from './stores/tabs';
-  import { renderedChart } from './stores/rendered';
+  import { renderedChart, chartRows } from './stores/rendered';
   import { placeDropdown } from './lib/dropdown-place';
   import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
   import { workspace } from './stores/tabs';
@@ -318,7 +318,8 @@
       resetPattern();
   }
 
-  const validRoundCount = $derived($pattern.rounds.filter((r) => r.expanded).length);
+  // 읽기 모드가 걷는 단위는 도안 행 — 되풀이로 펼쳐진 행까지 센다
+  const validRoundCount = $derived($chartRows.length);
 
   // Read 모드 서술 도안 — 활성 탭의 코멘트 조회
   const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
