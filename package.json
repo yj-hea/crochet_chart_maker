@@ -1,6 +1,6 @@
 {
   "name": "crochet-chart",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "코바늘 서술형 도안을 SVG 그림 도안으로 변환하는 웹 앱",
   "type": "module",
   "scripts": {
