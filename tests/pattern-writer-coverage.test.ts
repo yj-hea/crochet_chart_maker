@@ -12,6 +12,7 @@ import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand as expandOps } from '../src/lib/expand/expander';
 import { validateRound } from '../src/lib/validate';
 import { readRoundSpec, readRoundRepeat } from '../src/lib/model/round-spec';
+import { uncountClosingSlip } from '../src/lib/crafts/crochet/count';
 import type { ExpandedRound } from '../src/lib/expand/op';
 
 /** 한 단을 적어 보고 (소비, 생성) 을 돌려준다. 오류가 있으면 실패 */
@@ -19,7 +20,8 @@ function round(index: number, src: string): ExpandedRound {
   const { masked } = readRoundSpec(src);
   const parsed = parseRound(index, masked);
   expect(parsed.errors.map((e) => e.message), src).toEqual([]);
-  return expandOps(parsed.body!, index);
+  // 코 세는 보정(단 닫는 빼뜨기)까지 거친 실제 결과
+  return uncountClosingSlip(expandOps(parsed.body!, index));
 }
 
 /** 이어지는 단들을 적어 보고 코 수 검증까지 통과하는지 */
@@ -44,10 +46,30 @@ describe('패턴라이터 예제 — 쓸 수 있는 것', () => {
     expect(r.map((x) => x.totalProduce)).toEqual([6, 12, 18]);
   });
 
-  it('2장: 한 단에 여러 가지 + 기둥코', () => {
-    // 기둥코 1, 짧은뜨기 5, 짧은뜨기 2코 늘려뜨기, 짧은뜨기 5
-    const r = pattern('@, 12X', 'tc(O), 5X, V, 5X');
-    expect(r[1]!.totalProduce).toBe(13);
+  it('2장: 한 단에 여러 가지 + 기둥코 1 (코로 세지 않는다)', () => {
+    // 기둥코 1, 짧은뜨기 5, 짧은뜨기 2코 늘려뜨기, 짧은뜨기 6
+    const r = pattern('@, 12X', 'tc(O), 5X, V, 6X');
+    expect([r[1]!.totalConsume, r[1]!.totalProduce]).toEqual([12, 13]);
+  });
+
+  it('2장: 기둥코 코 수 규칙 (설명서 2장·11-2)', () => {
+    const base = round(1, '16O');
+    // 기둥코 1 — 코로 세지 않는다
+    expect(validateRound(round(2, 'tc(O), 16X'), base)).toEqual([]);
+    // 기둥코 2~5 — 아래 코 하나를 차지하고 1코로 센다
+    expect(validateRound(round(2, 'tc(3O), 15F'), base)).toEqual([]);
+    // 추가 기둥코 — 아래 코를 차지하지 않고 1코로 센다 (16코 → 17코)
+    const added = round(2, 'tc+(3O), 16F');
+    expect([added.totalConsume, added.totalProduce]).toEqual([16, 17]);
+    expect(validateRound(added, base)).toEqual([]);
+  });
+
+  it('2장: 단을 닫는 빼뜨기는 코 수에서 뺀다 (중간 빼뜨기는 센다)', () => {
+    expect(round(1, '10O, sl').totalProduce).toBe(10);
+    const r = pattern('10O, sl', 'tc(O), 10X, sl');
+    expect(r[1]!.totalProduce).toBe(10);
+    // 단 중간의 빼뜨기는 그대로 1코
+    expect(round(2, 'sl, 5X').totalProduce).toBe(6);
   });
 
   it('2장: 묶음 반복 (짧은뜨기 4, 짧은뜨기 2코 모아뜨기) * 2', () => {
@@ -86,6 +108,22 @@ describe('패턴라이터 예제 — 쓸 수 있는 것', () => {
 
 
 
+  it('4장: 사이사슬 — 코 수에 들어가지 않는 아치', () => {
+    // 짧은뜨기, 사이사슬코 2, 1코 스킵 … (그물뜨기)
+    const r = pattern('12O', '(1X, 2cs, skip(1))*6');
+    expect([r[1]!.totalConsume, r[1]!.totalProduce]).toEqual([12, 6]);
+  });
+
+  it('4장: 연결사슬 — 코 수에 들어가고 아래 코를 건너뛴다', () => {
+    const r = pattern('12O', '(2F, 2lc)*3');
+    expect([r[1]!.totalConsume, r[1]!.totalProduce]).toEqual([12, 12]);
+  });
+
+  it('4장: 사이사슬 아치 (설명서 4-1 모양)', () => {
+    const r = pattern('12O', 'tc(O), 3X, 2cs, skip(2), 3X, 2cs, skip(2), 2X');
+    expect(r[1]!.totalConsume).toBe(12);
+  });
+
   it('4장: 걸어뜨기 — 골지무늬', () => {
     const r = pattern('@, 12X', '12F', '(fpF, bpF)*6');
     expect(r[2]!.ops.map((o) => o.modifier)).toEqual(
@@ -109,28 +147,14 @@ describe('패턴라이터 예제 — 쓸 수 있는 것', () => {
   });
 });
 
-describe('패턴라이터와 셈법이 다른 것 (지금 동작을 고정해 둔다)', () => {
-  it('단 닫는 빼뜨기를 코로 센다 — 설명서는 코 수에서 뺀다', () => {
-    // 빼뜨기는 `sl` (단일 대문자 `S` 는 `sc` 와 혼동을 피해 일부러 뺐다)
-    const ring = round(1, '10O, sl');
-    expect(ring.totalProduce).toBe(11); // 설명서 기준이라면 10
-  });
-
-  it('사슬 뒤의 스킵은 **방금 만든 사슬**을 건너뛴 것으로 본다', () => {
-    // 설명서의 `사이사슬코 2, 2코 스킵` 은 아래 단 코를 건너뛰는 뜻이다.
-    // 우리는 단 안에서 만든 사슬을 부모로 쓸 수 있게 두어(그물뜨기), 스킵이 그 사슬을 먼저 먹는다.
+describe('아직 셈법이 다른 것 (지금 동작을 고정해 둔다)', () => {
+  it('보통 사슬(`O`) 뒤의 스킵은 그 사슬을 건너뛴다 — 옛 표기 그대로', () => {
+    // 같은 단에서 만든 사슬을 부모로 쓸 수 있게 둔 설계(그물뜨기)라 스킵이 그 사슬을 먼저 먹는다.
+    // 설명서의 `사이사슬코 2, 2코 스킵` 은 이제 `2cs, skip(2)` 로 정확히 적을 수 있다.
     const base = round(1, '12O');
     const arch = round(2, 'tc(O), 3X, 2O, skip(2), 3X, 2O, skip(2), X');
-    expect(arch.totalConsume).toBe(12);
+    expect(arch.totalConsume).toBe(11);
     expect(validateRound(arch, base).map((e) => e.kind)).toEqual(['under_consumed']);
-  });
-
-  it('기둥코 1도 한 코로 센다 — 설명서는 기둥코 1만 코 수에서 뺀다', () => {
-    const base = round(1, '16O');
-    // 기둥코 1 + 짧은뜨기 16 = 17코를 쓰게 되어 초과로 잡힌다
-    expect(validateRound(round(2, 'tc(O), 16X'), base).map((e) => e.kind)).toEqual(['over_consumed']);
-    // 기둥코 2~5 는 설명서와 같다 — 한 코로 센다
-    expect(validateRound(round(2, 'tc(3O), 15F'), base)).toEqual([]);
   });
 
   it('같은코 안의 사슬은 코 수에 들어가지 않는다 — 설명서와 같은 셈법', () => {
@@ -142,12 +166,6 @@ describe('패턴라이터 예제 — 아직 못 쓰는 것 (지원하면 이 테
   it('4장: 코 아래에 뜨기 (아래 사슬을 통째로 감싸기)', () => {
     expect(fails('under 3F')).toBe(true);
     expect(fails('3F 코아래')).toBe(true);
-  });
-
-  it('4장: 사이사슬코 / 연결사슬코 구분 — 지금은 둘 다 사슬(O)', () => {
-    // 코 수에서 빠지는 사이사슬과 들어가는 연결사슬을 가릴 표기가 없다
-    expect(round(2, '2O').totalProduce).toBe(2);
-    expect(fails('2chsp')).toBe(true);
   });
 
   it('4장: 피코 · 코너 · 돌기 · 시작코', () => {

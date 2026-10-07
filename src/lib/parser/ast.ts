@@ -25,6 +25,12 @@ export interface StitchNode {
   expansion?: number;
   /** 선행 수식자 (blo 등) */
   modifier?: ModifierKind;
+  /**
+   * 사슬의 역할 — 설명서의 사이사슬/연결사슬 구분.
+   *  - `space` 사이사슬 (`cs2`) : 코와 코 사이 아치. **코 수에 들어가지 않는다**
+   *  - `link`  연결사슬 (`lc2`) : 아래 코를 그만큼 건너뛰며 잇는 사슬. 코 수에 들어간다
+   */
+  chainRole?: 'space' | 'link';
   /** V/A 의 base stitch (T=HDC, F=DC, E=TR). 미지정 시 기본 SC. */
   baseKind?: StitchKind;
   /** `tr(N)` / `vtr(N)` 의 N — TR/DTR 계열에서 4 이상일 때 동적 렌더 */
@@ -87,6 +93,11 @@ export interface SkipNode {
 export interface TcNode {
   type: 'tc';
   body: SequenceNode;
+  /**
+   * 추가 기둥코(`tc+(3O)`) — 아래 코를 차지하지 않고 따로 선다.
+   * 설명서의 `기둥코 3(추가)`.
+   */
+  extra?: boolean;
   range: SourceRange;
 }
 

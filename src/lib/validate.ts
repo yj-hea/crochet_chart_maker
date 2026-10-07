@@ -22,7 +22,7 @@ function inRoundChainConsumed(ops: ReadonlyArray<Op>): { consumed: number; hidde
   let consumed = 0;
   for (const op of ops) {
     if (op.sameHoleContinuation) continue;
-    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && op.produce > 0) {
+    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && !op.chainRole && op.produce > 0) {
       queue += op.produce;
       continue;
     }
@@ -95,7 +95,7 @@ function findOverflowRange(
   let cumulative = 0;
   let queue = 0;
   for (const op of round.ops) {
-    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && !op.sameHoleContinuation && op.produce > 0) {
+    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && !op.sameHoleContinuation && !op.chainRole && op.produce > 0) {
       queue += op.produce;
       continue;
     }

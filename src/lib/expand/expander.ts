@@ -60,22 +60,29 @@ function expandSkip(node: SkipNode, out: Op[]): void {
 
 /**
  * `tc(...)` 기둥코: 내부 시퀀스를 평탄화한 뒤 그룹 전체를 링 슬롯 1개로 축약.
- * 첫 op: consume=1, produce=1, turningChain=true.
- * 나머지: consume=0, produce=0, turningChain=true, sameHoleContinuation=true.
- * 결과로 기둥에 속한 모든 op 는 turningChain=true 마킹 → 레이아웃에서 세로 스택 처리.
+ * 그룹 전체가 turningChain=true 로 마킹된다 → 레이아웃에서 세로 스택 처리.
+ *
+ * 코 수는 도안 관행을 따른다 (`crafts/crochet/count.ts` 표):
+ *   - 기둥코 **1코** (`tc(O)`)      → 0 → 0  (코로 세지 않는다)
+ *   - 기둥코 **2~5코** (`tc(3O)`)   → 1 → 1  (아래 코 하나를 차지하고 1코로 센다)
+ *   - **추가** 기둥코 (`tc+(3O)`)   → 0 → 1  (아래 코를 차지하지 않고 1코로 센다)
  */
 function expandTc(node: TcNode, out: Op[]): void {
   const bodyOps: Op[] = [];
   expandSequence(node.body, bodyOps);
   if (bodyOps.length === 0) return;
 
+  const single = bodyOps.length === 1 && !node.extra;
+  const consume = single || node.extra ? 0 : 1;
+  const produce = single ? 0 : 1;
+
   for (let i = 0; i < bodyOps.length; i++) {
     const op = bodyOps[i]!;
     if (i === 0) {
       out.push({
         ...op,
-        consume: 1,
-        produce: 1,
+        consume,
+        produce,
         sameHoleContinuation: false,
         turningChain: true,
       });
@@ -92,12 +99,18 @@ function expandTc(node: TcNode, out: Op[]): void {
 }
 
 function expandStitch(node: StitchNode, out: Op[]): void {
-  const { consume, produce } = resolveStitchFootprint(node.kind, node.expansion);
+  let { consume, produce } = resolveStitchFootprint(node.kind, node.expansion);
+  // 사슬의 역할 (설명서 4장)
+  //  - 사이사슬: 코와 코 사이 아치 — 코 수에 들어가지 않는다 (0 → 0)
+  //  - 연결사슬: 아래 코를 하나씩 건너뛰며 잇는다 — 코 수에 들어간다 (1 → 1)
+  if (node.chainRole === 'space') { consume = 0; produce = 0; }
+  else if (node.chainRole === 'link') { consume = 1; produce = 1; }
   const expansion = node.expansion ?? 1;
   for (let i = 0; i < node.count; i++) {
     out.push({
       kind: node.kind,
       modifier: node.modifier,
+      ...(node.chainRole ? { chainRole: node.chainRole } : {}),
       expansion,
       consume,
       produce,

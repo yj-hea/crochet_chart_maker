@@ -259,6 +259,23 @@
       </section>
 
       <section>
+        <h3>코 세는 규칙</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>tc(O)</code></td><td>기둥코 <b>1코</b> — 코 수에 넣지 않는다 (0 → 0)</td></tr>
+            <tr><td><code>tc(3O)</code></td><td>기둥코 <b>2~5코</b> — 아래 코 하나를 차지하고 1코로 센다</td></tr>
+            <tr><td><code>tc+(3O)</code></td><td><b>추가</b> 기둥코 — 아래 코를 차지하지 않고 따로 서서 1코</td></tr>
+            <tr><td>단 끝 <code>sl</code></td><td>단을 닫는 빼뜨기는 코 수에서 뺀다 (중간 빼뜨기는 1코)</td></tr>
+            <tr><td><code>2cs</code></td><td><b>사이사슬</b> — 코와 코 사이 아치. 코 수에 들어가지 않는다<br>
+              예) <code>(1X, 2cs, skip(1))*6</code> 그물뜨기</td></tr>
+            <tr><td><code>2lc</code></td><td><b>연결사슬</b> — 아래 코를 그만큼 건너뛰며 잇는다. 코 수에 들어간다</td></tr>
+            <tr><td><code>2O</code></td><td>보통 사슬 — 코 수에 들어간다. 뒤에 <code>skip</code> 을 쓰면
+              <b>그 사슬</b>을 건너뛴다(같은 단 사슬 위에 뜨는 설계) — 아래 단 코를 건너뛰려면 <code>cs</code> 를 쓴다</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
         <h3>마커 (place marker)</h3>
         <table class="syntax-table">
           <tbody>

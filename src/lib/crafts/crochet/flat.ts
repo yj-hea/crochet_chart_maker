@@ -504,6 +504,7 @@ function placeRow(
       op.kind === 'CHAIN' &&
       !op.inSameHoleGroup &&
       !op.turningChain &&
+      !op.chainRole &&
       op.produce > 0
     ) {
       for (let k = 0; k < op.produce; k++) chainQueue.push(idx);

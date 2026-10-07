@@ -87,6 +87,15 @@ export const ALIAS_MAP: AliasTable = Object.freeze({
   'CH':  'CHAIN',
   'Ch':  'CHAIN',
 
+  // 사이사슬 (코 사이 아치 — 코 수에 안 들어감) / 연결사슬 (아래 코를 건너뛰며 잇는 사슬)
+  // 'cs'·'lc' 는 지금까지 알 수 없는 토큰이었다 → 기존 도안과 충돌하지 않는다
+  'cs':   'CHAIN',
+  'CS':   'CHAIN',
+  'chsp': 'CHAIN',
+  'lc':   'CHAIN',
+  'LC':   'CHAIN',
+  'lch':  'CHAIN',
+
   // SLIP — 단일 대문자 'S' 는 의도적으로 제외 (sc/stitch 와의 혼동 회피)
   'sl':   'SLIP',
   'SL':   'SLIP',
@@ -175,6 +184,10 @@ export const ALIAS_MAP: AliasTable = Object.freeze({
   'tc':   'TC',
   'TC':   'TC',
   'Tc':   'TC',
+  // 추가 기둥코 — 기초코를 차지하지 않고 따로 선다 (설명서의 `기둥코 3(추가)`)
+  'tc+':   'TC',
+  'TC+':   'TC',
+  'tcadd': 'TC',
 
   // BLO modifier
   'blo': 'BLO',

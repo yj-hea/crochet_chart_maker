@@ -34,6 +34,16 @@ export function parseTokens(tokens: Token[]): ParseResult {
   return { body, errors: parser.errors };
 }
 
+/** 사슬 별칭 → 역할. 보통 사슬(`O`/`ch`)은 undefined */
+const CHAIN_SPACE_ALIASES = new Set(['cs', 'CS', 'chsp']);
+const CHAIN_LINK_ALIASES = new Set(['lc', 'LC', 'lch']);
+
+function chainRoleOf(text: string): 'space' | 'link' | undefined {
+  if (CHAIN_SPACE_ALIASES.has(text)) return 'space';
+  if (CHAIN_LINK_ALIASES.has(text)) return 'link';
+  return undefined;
+}
+
 type SeqContext = 'top' | 'paren' | 'bracket';
 
 export function parseRound(index: number, source: string): ParsedRound {
@@ -197,9 +207,12 @@ class Parser {
       return undefined;
     }
 
+    // `tc+` / `tcadd` 로 적으면 추가 기둥코 — 아래 코를 차지하지 않는다
+    const extra = tcTok.text.endsWith('+') || tcTok.text.toLowerCase() === 'tcadd';
     return {
       type: 'tc',
       body,
+      ...(extra ? { extra: true } : {}),
       range: { start: tcTok.range.start, end: rparen.range.end },
     };
   }
@@ -310,6 +323,8 @@ class Parser {
       return undefined;
     }
     let kind = stitchTok.value as StitchKind;
+    // 사슬은 적은 이름으로 역할이 갈린다 — `cs`(사이사슬) / `lc`(연결사슬) / `O`(보통 사슬)
+    const chainRole = kind === 'CHAIN' ? chainRoleOf(stitchTok.text) : undefined;
     this.advance();
 
     // V/A 뒤에 선택적 base stitch (T/F/E/X/DTR): VT^2, AF^3, VDTR 등
@@ -459,6 +474,7 @@ class Parser {
       count,
       expansion,
       modifier,
+      ...(chainRole ? { chainRole } : {}),
       baseKind,
       yarnOverCount,
       comment,

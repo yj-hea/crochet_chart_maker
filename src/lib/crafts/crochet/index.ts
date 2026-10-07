@@ -10,6 +10,7 @@ import type { ExpandedRound } from '$lib/expand/op';
 import type { LayoutResult } from '$lib/layout/types';
 import type { StitchKind } from '$lib/model/stitch-kind';
 import { parseRound } from './parser';
+import { applyCrochetCounting } from './count';
 import { expand } from '$lib/expand/expander';
 import { layoutCircular } from './circular';
 import { layoutFlat } from './flat';
@@ -28,6 +29,8 @@ export const crochet: CraftDefinition = {
   countPosition: 'prefix',
 
   parseRound,
+  // 단을 닫는 빼뜨기는 코 수에 넣지 않는다 (그 단 전체를 봐야 알 수 있다)
+  resolveRounds: applyCrochetCounting,
   expand,
 
   layout(rounds: ExpandedRound[], opts: CraftLayoutOptions): LayoutResult {

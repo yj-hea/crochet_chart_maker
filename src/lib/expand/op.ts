@@ -27,6 +27,11 @@ export interface Op {
   inSameHoleGroup?: boolean;
   /** `[^...]` 기둥코 그룹에 속한 op. true 면 그룹 전체가 슬롯 1개로 축약되고 세로 스택 렌더 */
   turningChain?: boolean;
+  /**
+   * 단을 닫는 마지막 빼뜨기 — 코 수에 넣지 않는다 (0 → 0).
+   * 기호는 그대로 그리되 다음 단의 부모가 되지 않는다. `crafts/crochet/count.ts`
+   */
+  closingSlip?: boolean;
   /** V/A의 base stitch — 렌더 시 심볼 선택용 */
   baseKind?: StitchKind;
   /**
@@ -41,6 +46,8 @@ export interface Op {
    * 바늘 상태로부터 계산한 값이라, 다시 계산할 때는 먼저 걷어내고 새로 채운다.
    */
   autoFilled?: boolean;
+  /** 사슬의 역할 (사이사슬 `space` / 연결사슬 `link`). `parser/ast` 참조 */
+  chainRole?: 'space' | 'link';
   /** 인라인 코멘트 — 각 코별 주의사항 */
   comment?: string;
   /** 인라인 색상 — 배색 도안용 (기호 색상) */
