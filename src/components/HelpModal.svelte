@@ -48,6 +48,7 @@
     { id: 'knit-NO_STITCH', aliases: 'ns',           korean: '코 없음',       english: 'no stitch' },
     { id: 'knit-CAST_ON',   aliases: 'co, ewrap',    korean: '코잡기 / 감아코', english: 'cast on' },
     { id: 'knit-UNWORKED',  aliases: 'unw',          korean: '미작업 코',     english: 'unworked' },
+    { id: 'knit-HOLD',      aliases: 'hold, holder', korean: '쉼코',          english: 'on holder' },
     { id: 'knit-WRAP_TURN', aliases: 'wt, w&t',      korean: '되돌아뜨기',    english: 'wrap & turn' },
     { id: 'knit-DOUBLE_ST', aliases: 'ds',           korean: '독일식 되돌아뜨기', english: 'double stitch' },
     { id: 'knit-BIND_OFF',  aliases: 'bo',           korean: '코막음',        english: 'bind off' },
@@ -201,6 +202,23 @@
             <tr><td>자동 계산</td><td>에디터 아래 <b>되돌아뜨기</b> 버튼 — 전체 코수·한 번에 남길 코·횟수만 넣으면
               <code>unw</code> 위치와 마무리 단까지 계산해 여러 단으로 한 번에 넣는다 (한 단으로 묶어서).<br>
               어깨 경사는 <b>한쪽만</b>, 뒷목·힐·요크는 <b>양쪽 번갈아</b>.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>쉼코 · 감아코</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>hold</code></td><td><b>쉼코</b> — 코막음하지 않고 홀더·여분실에 쉬게 두는 코.
+              코를 없애지 않으므로(1 → 1) 코 수 경고가 뜨지 않고, 살아 있는 코라 빈칸이 아니라
+              받침 기호로 그려진다 (되돌아뜨기의 <code>unw</code> 회색 칸과 구분)<br>
+              예) <code>hold10, k20, hold10</code> — 양옆 10코씩 쉬게 두고 가운데만 뜬다<br>
+              단마다 다시 적는다. 쉬어 둔 코를 되살리는 흐름(파트·나누기)은 아직 없다</td></tr>
+            <tr><td><code>co</code> (단 중간)</td><td><b>감아코</b> — 단 중간에 쓰면 그 자리에 코를 보탠다(0 → N).
+              진동 밑·단춧구멍처럼 코를 더하는 자리.<br>
+              예) <code>k10, co8, k10</code> (20코 → 28코). 아래에 부모가 없어 격자에는 빈칸이 생긴다<br>
+              별칭 <code>ewrap</code>, <code>blco</code></td></tr>
           </tbody>
         </table>
       </section>
@@ -360,6 +378,8 @@ k12, wt                     → 되돌아뜨기 (가는 단 — unw 는 자동)
 p12, wt                     → 되돌아뜨기 (오는 단)
 k2:navy, (k2:cream, k2:navy)*9    → 배색
 k8, bo10, k8                → 진동 파기 (중간 코막음)
+k10, co8, k10               → 감아코로 코 보태기 (진동 밑)
+hold10, k20, hold10         → 양옆 10코 쉼코
 bo36                        → 코막음</code></pre>
         {:else}
         <pre><code>mr, 6x

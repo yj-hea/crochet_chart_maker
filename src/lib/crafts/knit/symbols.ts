@@ -41,6 +41,11 @@ export const KNIT_SYMBOL_DEFS = `
 <g id="knit-UNWORKED">
   <!-- 미작업 코 — 회색 칸으로 채워지고 기호는 그리지 않는다 (렌더러가 배경 처리) -->
 </g>
+<g id="knit-HOLD">
+  <!-- 쉼코 — 홀더에 얹혀 쉬는 코. 양 끝이 올라간 얕은 받침 모양 -->
+  <path d="M -6,-3 Q -6,3 -2,3 L 2,3 Q 6,3 6,-3" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+  <line x1="0" y1="-5" x2="0" y2="-1" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
+</g>
 <g id="knit-WRAP_TURN">
   <line x1="0" y1="-5" x2="0" y2="3" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>
   <path d="M -4,4 Q 0,7 4,4" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linecap="round"/>

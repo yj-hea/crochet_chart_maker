@@ -28,7 +28,7 @@ const WS_TO_RS: Partial<Record<StitchKind, StitchKind>> = {
   M1R: 'M1L',
   LLI: 'RLI',
   RLI: 'LLI',
-  // YO, SLIP_ST, NO_STITCH, KFB, M1P, CDD 는 불변
+  // YO, SLIP_ST, NO_STITCH, KFB, M1P, CDD, UNWORKED, HOLD 는 불변
 };
 
 /** 이 단이 겉면(RS)인지 판정. 원통뜨기는 모든 단이 겉면. */
