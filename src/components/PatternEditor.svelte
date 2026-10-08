@@ -8,7 +8,7 @@
   } from '$stores/pattern';
   import {
     setRoundDirection, toggleRoundContinued, addComment, workspace, insertRoundsAfter,
-    usedColors, orphanComments, activeStart,
+    usedColors, orphanComments, activeStart, activeSplit,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import {
@@ -256,6 +256,19 @@
         조각 잇기
       {/if}
     </button>
+    {#if $activeSplit}
+      <span
+        class="split-chip"
+        class:warn={$activeSplit.overlaps.length > 0 || $activeSplit.overflow.length > 0}
+        title="이 도안을 이어받는 파트들 — 남는 코는 쉼코입니다"
+      >
+        <i class="fa-solid fa-code-branch"></i>
+        {$activeSplit.children.map((c) => `${c.name} ${c.count}코`).join(' · ')}
+        {#if $activeSplit.leftover > 0}· 쉼코 {$activeSplit.leftover}코{/if}
+        {#if $activeSplit.overlaps.length > 0}· 겹침!{/if}
+        {#if $activeSplit.overflow.length > 0}· 범위 벗어남!{/if}
+      </span>
+    {/if}
     <div class="header-spacer"></div>
     {#if $orphanComments.length > 0}
       <button
@@ -383,6 +396,23 @@
     border-bottom: 1px solid var(--border, #e2e2e2);
     background: var(--bg, #f5f5f5);
   }
+  /* 나눠 주는 쪽 — 누가 몇 코를 가져가는지 */
+  .split-chip {
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 4px 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .split-chip.warn { color: var(--danger, #e53935); border-color: currentColor; }
+
   /* 조각 시작 방식 — 설정돼 있으면 또렷하게 */
   .start-btn {
     border: 1px solid var(--border-light);

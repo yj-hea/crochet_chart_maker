@@ -18,6 +18,11 @@ export interface PieceLayout {
   /** 조각 이름 — 도안에 라벨로 적는다 */
   name: string;
   layout: LayoutResult;
+  /**
+   * 이 조각에서 **어느 코를 가져왔는지** (이어받기).
+   * 주면 그 구간의 코에서 선을 긋고 몇 코인지 적는다. 없으면 조각 전체에서 긋는다.
+   */
+  range?: { at: number; count: number };
 }
 
 /** 몸통과 조각 사이, 조각끼리의 간격 */
@@ -52,7 +57,7 @@ export function composeWithPieces(
   let maxY = body.bounds.maxY;
 
   let cursor = bodyCenterX - totalWidth / 2;
-  const tops: Array<{ x: number; y: number }> = [];
+  const tops: Array<{ x: number; y: number; marks?: Point[] }> = [];
 
   pieces.forEach((piece, i) => {
     const b = piece.layout.bounds;
@@ -76,7 +81,17 @@ export function composeWithPieces(
       align: 'middle',
     });
 
-    tops.push({ x: cursor + b.width / 2, y: top });
+    // 이어받은 구간이 있으면 그 코들에서 선을 긋는다 (어디서 갈라졌는지 보이게)
+    const taken = piece.range
+      ? takenPositions(piece.layout, piece.range).map((p) => move(p, dx, dy))
+      : [];
+    if (taken.length > 0) {
+      const mid = taken.reduce((a, p) => a + p.x, 0) / taken.length;
+      const topY = Math.min(...taken.map((p) => p.y));
+      tops.push({ x: mid, y: topY, marks: taken });
+    } else {
+      tops.push({ x: cursor + b.width / 2, y: top });
+    }
     minX = Math.min(minX, cursor);
     maxX = Math.max(maxX, cursor + b.width);
     maxY = Math.max(maxY, top + b.height);
@@ -88,6 +103,10 @@ export function composeWithPieces(
   const bodyBottom = body.bounds.maxY;
   for (const t of tops) {
     decorations.push({ kind: 'line', from: { x: t.x, y: t.y }, to: { x: t.x, y: bodyBottom }, dashed: true });
+    // 가져온 코마다 짧은 선을 그어 그 구간이 갈라진 자리임을 보인다
+    for (const m of t.marks ?? []) {
+      decorations.push({ kind: 'line', from: m, to: { x: t.x, y: t.y }, dashed: true });
+    }
   }
   // 조각 사이에 넣는 사슬 — 몇 코인지 적어 둔다
   if (opts.chain && opts.chain > 0 && tops.length > 0) {
@@ -147,4 +166,15 @@ function moveDecoration(d: Decoration, dx: number, dy: number): Decoration {
   return d.kind === 'line'
     ? { ...d, from: move(d.from, dx, dy), to: move(d.to, dx, dy) }
     : { ...d, at: move(d.at, dx, dy) };
+}
+
+/**
+ * 조각의 **마지막 단**에서 [at, at+count-1] 구간의 코 자리.
+ * 코를 만들지 않는 동작(스킵 등)은 세지 않는다 — "몇 번째 코" 의 기준과 같다.
+ */
+function takenPositions(layout: LayoutResult, range: { at: number; count: number }): Point[] {
+  const lastRound = layout.stitches.reduce((max, s) => Math.max(max, s.roundIndex), 0);
+  const row = layout.stitches.filter((s) => s.roundIndex === lastRound && s.op.produce > 0);
+  const from = Math.max(0, range.at - 1);
+  return row.slice(from, from + Math.max(1, range.count)).map((s) => s.position);
 }

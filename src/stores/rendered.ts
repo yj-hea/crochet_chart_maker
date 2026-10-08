@@ -10,14 +10,15 @@
  */
 
 import { derived } from 'svelte/store';
-import { pattern, workspace } from './tabs';
+import { pattern, workspace, activeSplit } from './tabs';
 import {
   showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign,
   knitStartSide, showNotes,
   colorMode, emptyColor, mainColor, symbolColor,
 } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
-import type { LayoutResult } from '$lib/layout/types';
+import type { LayoutResult, Decoration } from '$lib/layout/types';
+import type { SplitInfo } from '$lib/model/pieces';
 import { getCraft, type CraftId } from '$lib/crafts';
 import { applyAdjustments, adjustTransform, type Adjustments } from '$lib/layout/adjust';
 import { adjustments } from './tabs';
@@ -137,6 +138,9 @@ export const composedLayout = derived(
       const craft = getCraft(piece.craft);
       pieces.push({
         name: piece.name,
+        ...(start.kind === 'from'
+          ? { range: { at: start.at ?? 1, count: start.stitches ?? Number.MAX_SAFE_INTEGER } }
+          : {}),
         layout: craft.layout(rounds, {
           shape: piece.shape,
           gauge: piece.gauge,
@@ -154,6 +158,85 @@ export const composedLayout = derived(
       pieces,
       { chain: start.kind === 'join' ? start.chain : 0 },
     );
+  },
+);
+
+/**
+ * 나눠 주는 쪽 표시 — 이 도안을 이어받는 파트가 있으면 **마지막 단**에 누가 어디를
+ * 가져가는지 적고, 남는 코는 쉼코로 표시한다.
+ */
+function splitDecorations(layout: LayoutResult, split: SplitInfo): Decoration[] {
+  const lastRound = layout.stitches.reduce((max, s) => Math.max(max, s.roundIndex), 0);
+  const row = layout.stitches.filter((s) => s.roundIndex === lastRound && s.op.produce > 0);
+  if (row.length === 0) return [];
+  const out: Decoration[] = [];
+  const takenIdx = new Set<number>();
+  // 단의 한가운데 — 여기서 **바깥쪽**이 어디인지 가린다 (원형은 반지름 방향, 평면은 좌우)
+  const center = {
+    x: row.reduce((a, s) => a + s.position.x, 0) / row.length,
+    y: row.reduce((a, s) => a + s.position.y, 0) / row.length,
+  };
+
+  for (const child of split.children) {
+    const from = Math.max(0, child.at - 1);
+    const slice = row.slice(from, from + child.count);
+    if (slice.length === 0) continue;
+    slice.forEach((_, i) => takenIdx.add(from + i));
+    const mid = slice[Math.floor(slice.length / 2)]!;
+    const away = outward(mid.position, center);
+    out.push({
+      kind: 'label',
+      at: { x: mid.position.x + away.x * 24, y: mid.position.y + away.y * 24 },
+      text: `→ ${child.name} ${child.count}코`,
+      align: 'middle',
+    });
+    // 구간의 **양 끝**에만 눈금을 긋는다. 첫 코와 끝 코를 바로 이으면 원형에서
+    // 도안 한가운데를 가로지르는 선이 된다.
+    for (const end of [slice[0]!, slice[slice.length - 1]!]) {
+      const dir = outward(end.position, center);
+      out.push({
+        kind: 'line',
+        from: { x: end.position.x + dir.x * 8, y: end.position.y + dir.y * 8 },
+        to: { x: end.position.x + dir.x * 17, y: end.position.y + dir.y * 17 },
+      });
+    }
+  }
+
+  if (split.leftover > 0) {
+    const rest = row.find((_, i) => !takenIdx.has(i));
+    if (rest) {
+      const dir = outward(rest.position, center);
+      out.push({
+        kind: 'label',
+        at: { x: rest.position.x + dir.x * 24, y: rest.position.y + dir.y * 24 },
+        text: `쉼코 ${split.leftover}코`,
+        align: 'middle',
+        muted: true,
+      });
+    }
+  }
+  return out;
+}
+
+/** 단의 한가운데에서 그 코로 향하는 **바깥 방향** (길이 1) */
+function outward(p: { x: number; y: number }, center: { x: number; y: number }): { x: number; y: number } {
+  const dx = p.x - center.x;
+  const dy = p.y - center.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.001) return { x: 0, y: -1 };
+  return { x: dx / len, y: dy / len };
+}
+
+/** 나눠 주는 표시까지 얹은 최종 레이아웃 */
+export const chartForRender = derived(
+  [composedLayout, activeSplit],
+  ([$layout, $split]): LayoutResult | null => {
+    if (!$layout) return null;
+    if (!$split || $split.children.length === 0) return $layout;
+    return {
+      ...$layout,
+      decorations: [...($layout.decorations ?? []), ...splitDecorations($layout, $split)],
+    };
   },
 );
 
@@ -197,7 +280,7 @@ function withAdjust(note: ChartNote, adjust: Adjustments): ChartNote {
 }
 
 export const renderedChart = derived(
-  [chartLayout, composedLayout, showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor, chartNotes],
+  [chartLayout, chartForRender, showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor, chartNotes],
   ([$chartLayout, $composed, $showGrid, $showConnections,
     $colorMode, $emptyColor, $mainColor, $symbolColor, $notes]): RenderedChart | null => {
     if (!$chartLayout) return null;

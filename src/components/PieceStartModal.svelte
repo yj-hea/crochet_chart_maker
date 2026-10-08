@@ -22,6 +22,7 @@
   let chain = $state(0);
   let fromId = $state('');
   let stitches = $state<number | ''>('');
+  let at = $state<number | ''>('');
   let ready = $state(false);
 
   // 지금 설정으로 창을 채운다 (한 번만)
@@ -31,14 +32,19 @@
     const c = current;
     if (!c) { kind = 'new'; return; }
     if (c.kind === 'join') { kind = 'join'; picked = [...c.pieces]; chain = c.chain; }
-    else { kind = 'from'; fromId = c.piece; stitches = c.stitches ?? ''; }
+    else { kind = 'from'; fromId = c.piece; stitches = c.stitches ?? ''; at = c.at ?? ''; }
   });
 
   const draft = $derived<PieceStart | undefined>(
     kind === 'join' && picked.length > 0
       ? { kind: 'join', pieces: picked, chain }
       : kind === 'from' && fromId
-        ? { kind: 'from', piece: fromId, ...(typeof stitches === 'number' && stitches > 0 ? { stitches } : {}) }
+        ? {
+            kind: 'from',
+            piece: fromId,
+            ...(typeof stitches === 'number' && stitches > 0 ? { stitches } : {}),
+            ...(typeof at === 'number' && at > 1 ? { at } : {}),
+          }
         : undefined,
   );
   const preview = $derived(resolveStart(draft, others));
@@ -111,7 +117,13 @@
           <label class="chain">
             가져오는 코 수
             <input type="number" min="1" placeholder="전부" bind:value={stitches} />
-            <span class="note">비우면 마지막 단 전부를 가져옵니다 (나머지는 쉼코)</span>
+          </label>
+          <label class="chain">
+            몇 번째 코부터
+            <input type="number" min="1" placeholder="1" bind:value={at} />
+            <span class="note">
+              비우면 1번째부터·전부를 가져옵니다. 남는 코는 그 도안에 <b>쉼코</b>로 표시됩니다.
+            </span>
           </label>
         </fieldset>
       {/if}

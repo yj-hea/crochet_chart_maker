@@ -155,7 +155,13 @@ function normalizeStart(raw: unknown): PieceStart | undefined {
   }
   if (v.kind === 'from' && typeof v.piece === 'string') {
     const stitches = typeof v.stitches === 'number' && v.stitches > 0 ? v.stitches : undefined;
-    return { kind: 'from', piece: v.piece, ...(stitches ? { stitches } : {}) };
+    const at = typeof v.at === 'number' && v.at > 1 ? Math.floor(v.at) : undefined;
+    return {
+      kind: 'from',
+      piece: v.piece,
+      ...(stitches ? { stitches } : {}),
+      ...(at ? { at } : {}),
+    };
   }
   return undefined;
 }

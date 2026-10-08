@@ -24,7 +24,9 @@ import {
   readRoundSpec, readRoundRepeat, type RoundSpec, type RoundRepeat,
 } from '$lib/model/round-spec';
 import { planRounds } from '$lib/model/round-plan';
-import { resolveStart, type PieceStart, type PieceInfo } from '$lib/model/pieces';
+import {
+  resolveStart, splitOf, type PieceStart, type PieceInfo, type SplitInfo,
+} from '$lib/model/pieces';
 import { isEmptyAdjust, mergeAdjust, type Adjust, type Adjustments } from '$lib/layout/adjust';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
@@ -830,6 +832,25 @@ export const activeStart = derived(workspace, ($ws) => {
     });
   const resolved = resolveStart(active.startsFrom, pieces);
   return resolved ? { start: active.startsFrom, ...resolved } : undefined;
+});
+
+/**
+ * 활성 도안을 **이어받는 파트들** — 나누기의 반대쪽.
+ * 누가 몇 코를 어디서부터 가져가는지, 남는 코(쉼코)는 몇 코인지 센다.
+ */
+export const activeSplit = derived(workspace, ($ws): SplitInfo | undefined => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  if (!active) return undefined;
+  const last = [...active.rounds].reverse().find((r) => (r.expanded?.ops.length ?? 0) > 0);
+  const total = last?.expanded?.totalProduce ?? 0;
+  const children = $ws.tabs
+    .filter((t) => t.startsFrom?.kind === 'from' && t.startsFrom.piece === active.id)
+    .map((t) => {
+      const from = t.startsFrom as Extract<PieceStart, { kind: 'from' }>;
+      return { id: t.id, name: t.name, at: from.at ?? 1, count: from.stitches ?? total };
+    });
+  if (children.length === 0) return undefined;
+  return splitOf(total, children);
 });
 
 /** 이 도안이 어떻게 시작하는지 정한다 (undefined = 혼자 시작) */

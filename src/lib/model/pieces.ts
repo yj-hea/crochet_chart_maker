@@ -32,6 +32,11 @@ export interface FromStart {
   piece: string;
   /** 가져오는 코 수. 없으면 그 도안의 마지막 단 전부 */
   stitches?: number;
+  /**
+   * **몇 번째 코부터** 가져오는지 (1-based, 그 도안의 마지막 단 기준). 없으면 1.
+   * 설명서의 `오른쪽 목 (8코부터)` 에 해당한다.
+   */
+  at?: number;
 }
 
 export type PieceStart = JoinStart | FromStart;
@@ -68,8 +73,11 @@ export function resolveStart(
     const piece = byId.get(start.piece);
     if (!piece) return { count: 0, label: '이어받을 도안을 찾지 못했습니다', missing: [start.piece] };
     const count = start.stitches ?? piece.lastCount;
-    const of = start.stitches !== undefined ? ` (${piece.lastCount}코 중)` : '';
-    return { count, label: `${piece.name} 에서 이어받음 — ${count}코${of}`, missing: [] };
+    const at = start.at ?? 1;
+    const where = start.stitches !== undefined
+      ? ` (${piece.lastCount}코 중 ${at}번째부터)`
+      : '';
+    return { count, label: `${piece.name} 에서 이어받음 — ${count}코${where}`, missing: [] };
   }
 
   const missing: string[] = [];
@@ -104,4 +112,58 @@ export function hasCycle(
   if (!start) return false;
   const next = start.kind === 'join' ? start.pieces : [start.piece];
   return next.some((id) => hasCycle(id, startOf, new Set(seen)));
+}
+
+// ── 나누기 — 한 도안을 여러 파트가 나눠 가질 때 ─────────────
+
+/** 이 도안을 이어받는 파트 하나 */
+export interface SplitChild {
+  id: string;
+  name: string;
+  /** 시작 코 (1-based) */
+  at: number;
+  /** 가져가는 코 수 */
+  count: number;
+}
+
+export interface SplitInfo {
+  /** 나눠 줄 코 수 (이 도안의 마지막 단) */
+  total: number;
+  /** 자리 순으로 정렬된 파트들 */
+  children: SplitChild[];
+  /** 아무도 가져가지 않은 코 수 — 쉼코로 남는다 */
+  leftover: number;
+  /** 서로 겹치는 파트 이름 쌍 */
+  overlaps: Array<[string, string]>;
+  /** 마지막 단을 벗어나는 파트 이름들 */
+  overflow: string[];
+}
+
+/**
+ * 파트들이 어떻게 나눠 가지는지 센다.
+ *
+ * 설명서 6장의 "나누기 직전 단의 코를 모두 세고, 각 파트가 가져가는 코를 뺀 나머지를
+ * 겨드랑이에 배분한다" 와 같은 셈이다. 여기서는 남는 코를 **쉼코**로 본다.
+ */
+export function splitOf(total: number, children: ReadonlyArray<SplitChild>): SplitInfo {
+  const sorted = [...children].sort((a, b) => a.at - b.at);
+  const overlaps: Array<[string, string]> = [];
+  const overflow: string[] = [];
+  let taken = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const c = sorted[i]!;
+    taken += c.count;
+    if (c.at < 1 || c.at + c.count - 1 > total) overflow.push(c.name);
+    const next = sorted[i + 1];
+    if (next && c.at + c.count - 1 >= next.at) overlaps.push([c.name, next.name]);
+  }
+
+  return {
+    total,
+    children: sorted,
+    leftover: Math.max(0, total - taken),
+    overlaps,
+    overflow,
+  };
 }
