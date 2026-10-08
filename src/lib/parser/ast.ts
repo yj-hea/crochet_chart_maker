@@ -12,6 +12,7 @@
  */
 
 import type { StitchKind, ModifierKind } from '$lib/model/stitch-kind';
+import type { LinkTarget } from './tokenizer';
 import type { ParseError, SourceRange } from '$lib/model/errors';
 
 export type AstNode = StitchNode | RepeatNode | SameHoleGroupNode | SkipNode | TcNode | SequenceNode;
@@ -31,6 +32,11 @@ export interface StitchNode {
    *  - `link`  연결사슬 (`lc2`) : 아래 코를 그만큼 건너뛰며 잇는 사슬. 코 수에 들어간다
    */
   chainRole?: 'space' | 'link';
+  /**
+   * 걸어뜨기를 **어느 코에 걸지** (`fpF@1-2` / `fpF@^`).
+   * 없으면 바로 아래 코의 기둥에 건 것으로 그린다.
+   */
+  target?: LinkTarget;
   /** V/A 의 base stitch (T=HDC, F=DC, E=TR). 미지정 시 기본 SC. */
   baseKind?: StitchKind;
   /** `tr(N)` / `vtr(N)` 의 N — TR/DTR 계열에서 4 이상일 때 동적 렌더 */

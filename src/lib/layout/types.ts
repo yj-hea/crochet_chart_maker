@@ -128,6 +128,11 @@ export interface PositionedMarker {
 
 export interface LayoutResult {
   stitches: PositionedStitch[];
+  /**
+   * 걸어뜨기를 **어느 코에 걸었는지** 잇는 선 (`layout/post-links.ts`).
+   * 바로 아래 코에 건 보통 걸어뜨기는 선을 긋지 않는다.
+   */
+  postLinks?: Array<{ from: Point; to: Point }>;
   /** 범례를 손으로 옮겼을 때의 transform */
   legendTransform?: string;
   bounds: LayoutBounds;

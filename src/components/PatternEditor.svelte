@@ -11,7 +11,9 @@
     usedColors, orphanComments,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
-  import { validateRound, validateRoundSpec, validateRoundRepeat } from '$lib/validate';
+  import {
+    validateRound, validateRoundSpec, validateRoundRepeat, validateLinkTargets,
+  } from '$lib/validate';
   import { planRounds } from '$lib/model/round-plan';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
@@ -57,9 +59,11 @@
     rounds.forEach((r, i) => {
       const number = r.number ?? i + 1;
       const copies = plan.chart.filter((row) => row.lineIndex === i).length;
+      const earlier = plan.chart.filter((row) => row.lineIndex < i).map((row) => row.expanded);
       map.get(r.id)!.push(
         ...validateRoundSpec(r.expanded, r.spec, number),
         ...validateRoundRepeat(r.repeat, copies, number),
+        ...(r.expanded ? validateLinkTargets(r.expanded, earlier) : []),
       );
     });
     return map;

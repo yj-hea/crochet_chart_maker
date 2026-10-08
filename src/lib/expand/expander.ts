@@ -111,6 +111,7 @@ function expandStitch(node: StitchNode, out: Op[]): void {
       kind: node.kind,
       modifier: node.modifier,
       ...(node.chainRole ? { chainRole: node.chainRole } : {}),
+      ...(node.target ? { target: node.target } : {}),
       expansion,
       consume,
       produce,

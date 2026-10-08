@@ -579,7 +579,7 @@
         {#each validationErrors as ve (ve.kind)}
           <li class={ve.kind === 'over_consumed' || ve.kind === 'folded_changed'
             ? 'over'
-            : ve.kind === 'number_mismatch' ? 'note' : 'under'}>{ve.message}</li>
+            : ve.kind === 'number_mismatch' || ve.kind === 'target_missing' ? 'note' : 'under'}>{ve.message}</li>
         {/each}
       </ul>
     {/if}

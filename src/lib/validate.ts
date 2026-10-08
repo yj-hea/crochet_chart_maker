@@ -184,3 +184,55 @@ export function validateRoundRepeat(
     actual: 0,
   }];
 }
+
+/**
+ * 걸어뜨기가 가리킨 코가 실제로 있는지 (`fpF@1-2` / `fpF@^`).
+ *
+ * 없더라도 도안은 **보통 걸어뜨기로** 그려진다(설명서와 같은 태도). 선이 안 이어지는
+ * 이유를 알 수 있도록 경고만 띄운다.
+ */
+export function validateLinkTargets(
+  current: ExpandedRound,
+  earlier: ReadonlyArray<ExpandedRound>,
+): ValidationError[] {
+  const out: ValidationError[] = [];
+  const seen = new Set<string>();
+  for (const op of current.ops) {
+    const target = op.target;
+    if (!target) continue;
+    const key = target === 'nearest' ? '^' : `${target.round}-${target.stitch}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    if (target === 'nearest') {
+      const hasPost = earlier.some((r) => r.ops.some((o) => o.modifier === 'FP' || o.modifier === 'BP'));
+      if (!hasPost) {
+        out.push({
+          kind: 'target_missing',
+          roundIndex: current.index,
+          message: '이어 걸 걸어뜨기가 아래에 없습니다 — 보통 걸어뜨기로 그립니다',
+          warning: true,
+          expected: 1,
+          actual: 0,
+        });
+      }
+      continue;
+    }
+
+    const round = earlier.find((r) => r.index === target.round);
+    const stitches = round ? round.ops.filter((o) => o.produce > 0).length : 0;
+    if (!round || target.stitch < 1 || target.stitch > stitches) {
+      out.push({
+        kind: 'target_missing',
+        roundIndex: current.index,
+        message: round
+          ? `${target.round}단에는 ${target.stitch}번째 코가 없습니다 (${stitches}코) — 보통 걸어뜨기로 그립니다`
+          : `${target.round}단을 찾지 못했습니다 — 보통 걸어뜨기로 그립니다`,
+        warning: true,
+        expected: stitches,
+        actual: target.stitch,
+      });
+    }
+  }
+  return out;
+}

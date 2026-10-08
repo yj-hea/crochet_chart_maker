@@ -9,6 +9,7 @@
 
 import type { StitchKind, ModifierKind } from '$lib/model/stitch-kind';
 import type { SourceRange } from '$lib/model/errors';
+import type { LinkTarget } from '$lib/parser/tokenizer';
 
 export interface Op {
   kind: StitchKind;
@@ -48,6 +49,8 @@ export interface Op {
   autoFilled?: boolean;
   /** 사슬의 역할 (사이사슬 `space` / 연결사슬 `link`). `parser/ast` 참조 */
   chainRole?: 'space' | 'link';
+  /** 걸어뜨기를 걸 코 (`@1-2` / `@^`). 레이아웃이 그 코까지 선을 잇는다 */
+  target?: LinkTarget;
   /** 인라인 코멘트 — 각 코별 주의사항 */
   comment?: string;
   /** 인라인 색상 — 배색 도안용 (기호 색상) */

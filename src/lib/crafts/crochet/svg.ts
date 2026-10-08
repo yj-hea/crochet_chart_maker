@@ -26,6 +26,7 @@ import type {
   LayoutBounds,
   GridGuide,
   PositionedMarker,
+  Point,
 } from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
 import type { StitchKind } from '$lib/model/stitch-kind';
@@ -92,6 +93,7 @@ export function renderSvg(opts: RenderOptions): string {
     renderStitchBackdrops(stitches, layout.gridGuide, fillMode, mainColor),
     grid,
     connections,
+    renderPostLinks(layout.postLinks ?? []),
     roundGroups,
     markers,
     renderStitchMarkers(layout.stitchMarkers ?? [], layout.gridGuide),
@@ -257,6 +259,19 @@ function alignToOffset(value: number, step: number, offset: number, floor: boole
     ? Math.floor((value - offset) / step)
     : Math.ceil((value - offset) / step);
   return offset + k * step;
+}
+
+/**
+ * 걸어뜨기 연결선 — 어느 코에 걸었는지 잇는 점선.
+ * 기호보다 **뒤에** 그려 기호를 가리지 않는다.
+ */
+function renderPostLinks(links: ReadonlyArray<{ from: Point; to: Point }>): string {
+  if (links.length === 0) return '';
+  const parts = links.map((l) =>
+    `<line x1="${fmt(l.from.x)}" y1="${fmt(l.from.y)}" x2="${fmt(l.to.x)}" y2="${fmt(l.to.y)}" ` +
+    `stroke="${STITCH_COLOR}" stroke-width="1" stroke-dasharray="3 2" opacity="0.65" ` +
+    `vector-effect="non-scaling-stroke"/>`);
+  return `<g class="post-links">${parts.join('')}</g>`;
 }
 
 function renderConnections(stitches: PositionedStitch[]): string {

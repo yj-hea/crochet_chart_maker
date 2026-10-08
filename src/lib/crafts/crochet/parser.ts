@@ -15,7 +15,7 @@
  *   (점진적 파싱에서 "그 뒤에 작성된 내용은 미리보기에 반영하지 않음" 동작과 일치)
  */
 
-import { tokenize, type Token } from '$lib/parser/tokenizer';
+import { tokenize, type Token, type LinkTarget } from '$lib/parser/tokenizer';
 import type { ParseError, ParseErrorKind, SourceRange } from '$lib/model/errors';
 import type { SequenceNode, StitchNode, RepeatNode, SameHoleGroupNode, SkipNode, TcNode, ElementNode, ParsedRound } from '$lib/parser/ast';
 import type { StitchKind, ModifierKind } from '$lib/crafts/crochet/stitch';
@@ -327,6 +327,12 @@ class Parser {
     const chainRole = kind === 'CHAIN' ? chainRoleOf(stitchTok.text) : undefined;
     this.advance();
 
+    // 걸어뜨기를 걸 코 지정 — `fpF@1-2`(1단 2번째 코) / `fpF@^`(이어서)
+    let target: LinkTarget | undefined;
+    if (this.peek()?.type === 'AT_TARGET') {
+      target = this.advance()!.target;
+    }
+
     // V/A 뒤에 선택적 base stitch (T/F/E/X/DTR): VT^2, AF^3, VDTR 등
     let baseKind: StitchKind | undefined;
     if (kind === 'INC' || kind === 'DEC') {
@@ -468,6 +474,11 @@ class Parser {
       break;
     }
 
+    // 색·주석 뒤에 적어도 받아 준다 (`fpF:navy@1-2`)
+    if (!target && this.peek()?.type === 'AT_TARGET') {
+      target = this.advance()!.target;
+    }
+
     return {
       type: 'stitch',
       kind,
@@ -475,6 +486,7 @@ class Parser {
       expansion,
       modifier,
       ...(chainRole ? { chainRole } : {}),
+      ...(target ? { target } : {}),
       baseKind,
       yarnOverCount,
       comment,

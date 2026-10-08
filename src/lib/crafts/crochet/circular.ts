@@ -10,6 +10,7 @@
  */
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
+import { resolvePostLinks } from '$lib/layout/post-links';
 import type { StitchKind } from '$lib/model/stitch-kind';
 import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/layout/types';
 import { FIRST_RING_RADIUS } from '$lib/layout/constants';
@@ -192,6 +193,7 @@ export function layoutCircular(
     gridGuide: { type: 'concentric', ringRadii, sectorCount },
     roundMarkers,
     stitchMarkers: placeCircularMarkers(markerSlots, stitches),
+    postLinks: resolvePostLinks(stitches),
   };
 }
 

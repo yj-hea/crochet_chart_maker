@@ -27,12 +27,18 @@ export type TokenType =
   | 'STRING'    // "..." (코 코멘트)
   | 'HEX_COLOR' // #rgb | #rrggbb
   | 'COLOR_VALUE' // : 바로 뒤의 키워드/헥스값 (#없음)
+  | 'AT_TARGET' // @1-2 / @^ — 걸어뜨기를 걸 코 지정 (아래 단·코 번호 / 이어서)
   | 'UNKNOWN';  // 별칭에 없는 문자
+
+/** `@1-2` 는 1단 2번째 코, `@^` 는 "가장 가까운 아래 걸어뜨기에 이어서" */
+export type LinkTarget = { round: number; stitch: number } | 'nearest';
 
 export interface Token {
   type: TokenType;
   range: SourceRange;
   text: string;
+  /** AT_TARGET 전용 — 걸 코 */
+  target?: LinkTarget;
   /** NUMBER: 숫자값. STITCH/MODIFIER: 정규화된 kind. STRING: 내부 텍스트. 그 외: undefined */
   value?: number | StitchKind | ModifierKind | string;
 }
@@ -94,6 +100,26 @@ export function tokenize(input: string, config: TokenizerConfig = CROCHET_CONFIG
         continue;
       }
       // 알파숫자/# 가 아니면 에러 토큰, 그 후 normal mode 로
+    }
+
+    // 1.5) 걸 코 지정 — `@1-2` / `@^`
+    //      매직링 별칭 `@` 는 홀로 쓰이므로(`@, 6X`) 숫자·`^` 가 뒤따를 때만 이쪽으로 읽는다.
+    //      (예전에는 `@1` 이 매직링 + 숫자라 문법 오류였다 → 기존 도안과 겹치지 않는다)
+    if (ch === '@') {
+      const m = /^@(?:(\d+)\s*-\s*(\d+)|\^)/.exec(input.slice(i));
+      if (m) {
+        const target: LinkTarget = m[1] !== undefined
+          ? { round: Number(m[1]), stitch: Number(m[2]) }
+          : 'nearest';
+        tokens.push({
+          type: 'AT_TARGET',
+          range: { start: i, end: i + m[0].length },
+          text: m[0],
+          target,
+        });
+        i += m[0].length;
+        continue;
+      }
     }
 
     // 2) 구조 문자
