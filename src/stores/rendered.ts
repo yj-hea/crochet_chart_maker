@@ -10,16 +10,18 @@
  */
 
 import { derived } from 'svelte/store';
-import { pattern } from './tabs';
+import { pattern, workspace } from './tabs';
 import {
   showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign,
-  knitStartSide,
+  knitStartSide, showNotes,
   colorMode, emptyColor, mainColor, symbolColor,
 } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
 import type { LayoutResult } from '$lib/layout/types';
 import { getCraft, type CraftId } from '$lib/crafts';
-import { applyAdjustments } from '$lib/layout/adjust';
+import { applyAdjustments, adjustTransform, type Adjustments } from '$lib/layout/adjust';
+import { adjustments } from './tabs';
+import type { ChartNote } from '$lib/render/notes';
 import { planRounds } from '$lib/model/round-plan';
 
 export interface RenderedChart {
@@ -107,10 +109,49 @@ export const chartLayout = derived(
   },
 );
 
+/**
+ * 도안에 함께 그릴 메모.
+ *
+ * 편집기의 메모를 **도안 행**에 맞춰 옮긴다 — 접어 적은 줄은 한 행, 되풀이 줄은
+ * 여러 행이라 줄 id 로는 자리를 찾을 수 없다. 손으로 옮긴 배치도 여기서 입힌다.
+ */
+export const chartNotes = derived(
+  [workspace, chartRows, showNotes, adjustments],
+  ([$ws, $rows, $showNotes, $adjust]): ChartNote[] => {
+    if (!$showNotes) return [];
+    const tab = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+    if (!tab) return [];
+    const out: ChartNote[] = [];
+    for (const c of tab.comments) {
+      if (!c.text.trim()) continue;
+      if (c.target.kind === 'pattern') {
+        out.push(withAdjust({ key: 'note:pattern', text: c.text, color: c.color }, $adjust));
+        continue;
+      }
+      const roundId = c.target.roundId;
+      const row = $rows.find((r) => r.sourceLineId === roundId || r.lineId === roundId);
+      if (!row) continue;   // 단을 잃은 메모 — 편집기에서 다시 붙인다
+      out.push(withAdjust({
+        key: `note:${row.index}`,
+        text: c.text,
+        color: c.color,
+        roundIndex: row.index,
+      }, $adjust));
+    }
+    return out;
+  },
+);
+
+function withAdjust(note: ChartNote, adjust: Adjustments): ChartNote {
+  const a = adjust[note.key];
+  const t = adjustTransform(a, 0, 0);
+  return t ? { ...note, transform: t } : note;
+}
+
 export const renderedChart = derived(
-  [chartLayout, showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor],
+  [chartLayout, showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor, chartNotes],
   ([$chartLayout, $showGrid, $showConnections,
-    $colorMode, $emptyColor, $mainColor, $symbolColor]): RenderedChart | null => {
+    $colorMode, $emptyColor, $mainColor, $symbolColor, $notes]): RenderedChart | null => {
     if (!$chartLayout) return null;
     const { layout, totalRounds } = $chartLayout;
     const craft = getCraft($chartLayout.craft);
@@ -122,6 +163,7 @@ export const renderedChart = derived(
         emptyColor: $emptyColor,
         mainColor: $mainColor,
         symbolColor: $symbolColor,
+        notes: $notes,
       }),
       width: layout.bounds.width,
       height: layout.bounds.height,

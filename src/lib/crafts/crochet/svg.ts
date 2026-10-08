@@ -19,6 +19,7 @@
  */
 
 import { contrastInk } from '$lib/render/contrast';
+import { renderNotes, type ChartNote } from '$lib/render/notes';
 import { DEFAULT_MAIN_COLOR, DEFAULT_SYMBOL_COLOR, type ColorMode } from '$lib/model/view-options';
 import type {
   LayoutResult,
@@ -43,6 +44,8 @@ import {
 
 export interface RenderOptions {
   layout: LayoutResult;
+  /** 도안에 함께 그릴 메모 */
+  notes?: ReadonlyArray<ChartNote>;
   /**
    * 실 색을 어디에 칠할지. 코바늘 기본은 기호 선 색.
    * 'fill' 이면 기호 뒤에 색 원반을 깔고 기호를 명도 대비로 반전한다 —
@@ -70,7 +73,14 @@ export function renderSvg(opts: RenderOptions): string {
   const mainColor = opts.mainColor ?? DEFAULT_MAIN_COLOR;
   const symbolColor = opts.symbolColor ?? DEFAULT_SYMBOL_COLOR;
   const { bounds, stitches } = layout;
-  const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
+  // 메모는 도안 밖에 놓이므로 먼저 그려 경계를 넓힌다
+  const notes = renderNotes(opts.notes ?? [], layout);
+  const nb = notes.box;
+  const vMinX = Math.min(bounds.minX, nb?.minX ?? bounds.minX);
+  const vMinY = Math.min(bounds.minY, nb?.minY ?? bounds.minY);
+  const vMaxX = Math.max(bounds.maxX, nb?.maxX ?? bounds.maxX);
+  const vMaxY = Math.max(bounds.maxY, nb?.maxY ?? bounds.maxY);
+  const viewBox = `${vMinX} ${vMinY} ${vMaxX - vMinX} ${vMaxY - vMinY}`;
 
   const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
   const connections = showConnections ? renderConnections(stitches) : '';
@@ -97,6 +107,7 @@ export function renderSvg(opts: RenderOptions): string {
     roundGroups,
     markers,
     renderStitchMarkers(layout.stitchMarkers ?? [], layout.gridGuide),
+    notes.svg,
     `</svg>`,
   ].join('');
 }

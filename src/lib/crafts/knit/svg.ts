@@ -15,6 +15,7 @@ import type {
   PositionedMarker,
 } from '$lib/layout/types';
 import { LEGEND_KEY } from '$lib/layout/adjust';
+import { renderNotes, type ChartNote } from '$lib/render/notes';
 import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
@@ -27,6 +28,8 @@ const MARKER_STROKE = 1.6;
 
 export interface KnitRenderOptions {
   layout: LayoutResult;
+  /** 도안에 함께 그릴 메모 */
+  notes?: ReadonlyArray<ChartNote>;
   /** 대바늘은 격자가 도안의 일부라 기본 true. false 면 테두리를 숨긴다. */
   showGrid?: boolean;
   /** 배색 범례 표시 (기본 true — 색이 쓰인 경우에만 그려짐) */
@@ -62,8 +65,15 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   const legendHeight = legend.length > 0
     ? LEGEND_GAP + legend.length * LEGEND_ROW_HEIGHT
     : 0;
-  const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ` +
-    `${bounds.width + pad * 2} ${bounds.height + legendHeight + pad * 2}`;
+  // 메모는 도안 밖에 놓이므로 먼저 그려 경계를 넓힌다
+  const notes = renderNotes(opts.notes ?? [], layout);
+  const nb = notes.box;
+  const viewMinX = Math.min(bounds.minX, nb?.minX ?? bounds.minX) - pad;
+  const viewMinY = Math.min(bounds.minY, nb?.minY ?? bounds.minY) - pad;
+  const viewMaxX = Math.max(bounds.maxX, nb?.maxX ?? bounds.maxX) + pad;
+  const viewMaxY = Math.max(bounds.maxY, nb?.maxY ?? bounds.maxY) + pad;
+  const viewBox = `${viewMinX} ${viewMinY} ` +
+    `${viewMaxX - viewMinX} ${viewMaxY - viewMinY + legendHeight}`;
 
   // 코가 없는 칸은 모두 같은 회색으로 채운다 —
   // 구멍(코막음·열 맞춤), 정렬용 여백, 그리고 되돌아뜨기의 미작업 코(unw).
@@ -88,6 +98,7 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     renderFoldMarks(layout.roundMarkers, cell, bounds),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP, layout.legendTransform),
+    notes.svg,
     `</svg>`,
   ].join('');
 }

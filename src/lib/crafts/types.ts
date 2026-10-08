@@ -12,6 +12,7 @@ import type { ParsedRound, SequenceNode } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
 import type { ColorMode } from '$lib/model/view-options';
 import type { LayoutResult } from '$lib/layout/types';
+import type { ChartNote } from '$lib/render/notes';
 import type { StitchKind, StitchMeta } from '$lib/model/stitch-kind';
 import type { Gauge } from '$lib/model/gauge';
 
@@ -54,6 +55,8 @@ export interface CraftRenderOptions {
   mainColor?: string;
   /** 실 색을 지정하지 않은 코의 기호 선 색 */
   symbolColor?: string;
+  /** 도안에 함께 그릴 메모 (`lib/render/notes.ts`) */
+  notes?: ReadonlyArray<ChartNote>;
 }
 
 export interface CraftDefinition {

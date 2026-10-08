@@ -278,6 +278,19 @@
       </section>
 
       <section>
+        <h3>메모를 도안에 함께</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td>도안 메모</td><td>도안 <b>위쪽</b>에 한 덩이로 그려진다 (실·바늘·게이지 같은 안내)</td></tr>
+            <tr><td>단 메모</td><td>그 단 <b>옆</b>에, 칸에서 점선을 끌어 붙는다</td></tr>
+            <tr><td>켜고 끄기</td><td>도안 위 <b>메모 On/Off</b> — 켜 두면 <b>내보내기(SVG·PNG)에도 그대로</b> 실려
+              기호와 설명이 한 장이 된다</td></tr>
+            <tr><td>자리 옮기기</td><td>캔버스에서 메모를 끌어 옮길 수 있다 (배치 초기화로 되돌림)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
         <h3>마커 (place marker)</h3>
         <table class="syntax-table">
           <tbody>

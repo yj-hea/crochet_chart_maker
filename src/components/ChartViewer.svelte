@@ -3,7 +3,7 @@
   import {
     mode, currentRound, currentStitch, showGrid, showConnections,
     flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, knitStartSide,
-    fillMode, toggleColorMode,
+    fillMode, toggleColorMode, showNotes,
   } from '$stores/mode';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
@@ -251,6 +251,18 @@
       {/if}
     </div>
     <div class="btn-group">
+      <button
+        type="button"
+        class="tool-btn toggle-btn"
+        class:active={$showNotes}
+        onclick={() => showNotes.update((v) => !v)}
+        aria-pressed={$showNotes}
+        title={$showNotes
+          ? '메모를 도안에 함께 그리는 중 — 내보내기에도 실립니다. 클릭: 숨기기'
+          : '메모 숨김 — 도안만 그립니다. 클릭: 함께 그리기'}
+      >
+        <span class="grid-dot" class:on={$showNotes}></span> 메모 {$showNotes ? 'On' : 'Off'}
+      </button>
       <button
         type="button"
         class="tool-btn toggle-btn"
