@@ -23,6 +23,7 @@ import { applyAdjustments, adjustTransform, type Adjustments } from '$lib/layout
 import { adjustments } from './tabs';
 import type { ChartNote } from '$lib/render/notes';
 import { planRounds } from '$lib/model/round-plan';
+import { composeWithPieces, type PieceLayout } from '$lib/layout/compose';
 
 export interface RenderedChart {
   svg: string;
@@ -110,6 +111,53 @@ export const chartLayout = derived(
 );
 
 /**
+ * 조각을 합쳐 그린 레이아웃.
+ *
+ * 몸통이 조각을 이어 시작하면(`Tab.startsFrom`) 그 조각들을 **아래에 나란히** 붙여
+ * 한 장으로 만든다. 합친 결과는 **보여 주기 전용**이라 3D·게이지·캔버스 선택은
+ * `chartLayout`(몸통 자신의 레이아웃)을 그대로 쓴다.
+ */
+export const composedLayout = derived(
+  [chartLayout, workspace, flatAlign, flatCascade, flatCompact, flatVAlign, flatFlipVertical, knitStartSide],
+  ([$chartLayout, $ws, $align, $cascade, $compact, $vAlign, $flip, $startSide]): LayoutResult | null => {
+    if (!$chartLayout) return null;
+    const tab = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+    const start = tab?.startsFrom;
+    if (!start) return $chartLayout.layout;
+
+    const ids = start.kind === 'join' ? start.pieces : [start.piece];
+    const pieces: PieceLayout[] = [];
+    for (const id of ids) {
+      const piece = $ws.tabs.find((t) => t.id === id);
+      if (!piece) continue;
+      const rounds = planRounds(piece.rounds).chart
+        .map((r) => r.expanded)
+        .filter((e) => e.ops.length > 0);
+      if (rounds.length === 0) continue;
+      const craft = getCraft(piece.craft);
+      pieces.push({
+        name: piece.name,
+        layout: craft.layout(rounds, {
+          shape: piece.shape,
+          gauge: piece.gauge,
+          flipVertical: $flip,
+          align: $align,
+          cascade: $cascade,
+          compact: $compact,
+          startLeft: $startSide === 'L',
+          vAlign: $vAlign,
+        }),
+      });
+    }
+    return composeWithPieces(
+      $chartLayout.layout,
+      pieces,
+      { chain: start.kind === 'join' ? start.chain : 0 },
+    );
+  },
+);
+
+/**
  * 도안에 함께 그릴 메모.
  *
  * 편집기의 메모를 **도안 행**에 맞춰 옮긴다 — 접어 적은 줄은 한 행, 되풀이 줄은
@@ -149,11 +197,12 @@ function withAdjust(note: ChartNote, adjust: Adjustments): ChartNote {
 }
 
 export const renderedChart = derived(
-  [chartLayout, showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor, chartNotes],
-  ([$chartLayout, $showGrid, $showConnections,
+  [chartLayout, composedLayout, showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor, chartNotes],
+  ([$chartLayout, $composed, $showGrid, $showConnections,
     $colorMode, $emptyColor, $mainColor, $symbolColor, $notes]): RenderedChart | null => {
     if (!$chartLayout) return null;
-    const { layout, totalRounds } = $chartLayout;
+    const { totalRounds } = $chartLayout;
+    const layout = $composed ?? $chartLayout.layout;
     const craft = getCraft($chartLayout.craft);
     return {
       svg: craft.render(layout, {

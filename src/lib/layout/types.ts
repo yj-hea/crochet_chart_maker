@@ -126,8 +126,23 @@ export interface PositionedMarker {
   label?: string;
 }
 
+/**
+ * 도안 위에 얹는 덧그림 — 조각을 합쳐 그릴 때의 연결선·이름표처럼
+ * 코가 아닌 것들. 두 크래프트 렌더러가 똑같이 그린다.
+ */
+export type Decoration =
+  | { kind: 'line'; from: Point; to: Point; dashed?: boolean }
+  | { kind: 'label'; at: Point; text: string; align?: 'start' | 'middle' | 'end'; muted?: boolean };
+
 export interface LayoutResult {
   stitches: PositionedStitch[];
+  /** 코가 아닌 덧그림 (연결선·이름표) */
+  decorations?: Decoration[];
+  /**
+   * 격자 안내선을 그리지 않는다 — 조각을 합쳐 그릴 때처럼 기준이 여럿이면
+   * 격자가 어느 조각에도 맞지 않는다.
+   */
+  noGrid?: boolean;
   /**
    * 걸어뜨기를 **어느 코에 걸었는지** 잇는 선 (`layout/post-links.ts`).
    * 바로 아래 코에 건 보통 걸어뜨기는 선을 긋지 않는다.

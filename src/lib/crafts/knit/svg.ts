@@ -16,6 +16,7 @@ import type {
 } from '$lib/layout/types';
 import { LEGEND_KEY } from '$lib/layout/adjust';
 import { renderNotes, type ChartNote } from '$lib/render/notes';
+import { renderDecorations } from '$lib/render/decorations';
 import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
@@ -92,12 +93,13 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
     renderFillers(greyCells, cell, emptyColor),
     renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
-    showGrid ? renderCellBorders(layout, cell) : '',
+    showGrid && !layout.noGrid ? renderCellBorders(layout, cell) : '',
     renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
     renderFoldMarks(layout.roundMarkers, cell, bounds),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP, layout.legendTransform),
+    renderDecorations(layout.decorations),
     notes.svg,
     `</svg>`,
   ].join('');

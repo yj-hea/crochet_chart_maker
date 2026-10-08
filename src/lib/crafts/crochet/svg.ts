@@ -20,6 +20,7 @@
 
 import { contrastInk } from '$lib/render/contrast';
 import { renderNotes, type ChartNote } from '$lib/render/notes';
+import { renderDecorations } from '$lib/render/decorations';
 import { DEFAULT_MAIN_COLOR, DEFAULT_SYMBOL_COLOR, type ColorMode } from '$lib/model/view-options';
 import type {
   LayoutResult,
@@ -82,7 +83,7 @@ export function renderSvg(opts: RenderOptions): string {
   const vMaxY = Math.max(bounds.maxY, nb?.maxY ?? bounds.maxY);
   const viewBox = `${vMinX} ${vMinY} ${vMaxX - vMinX} ${vMaxY - vMinY}`;
 
-  const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
+  const grid = showGrid && !layout.noGrid ? renderGrid(layout.gridGuide, bounds) : '';
   const connections = showConnections ? renderConnections(stitches) : '';
   const roundGroups = renderRoundGroups(stitches, fillMode);
   const markers = renderRoundMarkers(layout.roundMarkers);
@@ -107,6 +108,7 @@ export function renderSvg(opts: RenderOptions): string {
     roundGroups,
     markers,
     renderStitchMarkers(layout.stitchMarkers ?? [], layout.gridGuide),
+    renderDecorations(layout.decorations),
     notes.svg,
     `</svg>`,
   ].join('');
