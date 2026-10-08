@@ -24,6 +24,7 @@ import {
   readRoundSpec, readRoundRepeat, type RoundSpec, type RoundRepeat,
 } from '$lib/model/round-spec';
 import { planRounds } from '$lib/model/round-plan';
+import { resolveStart, type PieceStart, type PieceInfo } from '$lib/model/pieces';
 import { isEmptyAdjust, mergeAdjust, type Adjust, type Adjustments } from '$lib/layout/adjust';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
@@ -99,6 +100,11 @@ export interface Tab {
   rounds: PatternRoundState[];
   /** 캔버스에서 손으로 다듬은 배치 (키 → 보정값). 자동 배치 위에 덧입혀진다 */
   adjust?: Adjustments;
+  /**
+   * 이 도안(조각)이 **어떻게 시작하는지** — 혼자(없음) / 조각 잇기 / 이어받기.
+   * 같은 작품 안의 다른 도안을 탭 id 로 가리킨다 (`lib/model/pieces.ts`).
+   */
+  startsFrom?: PieceStart;
   comments: Comment[];
   /** Read 모드 진행 상태 — 파일에 포함해 다른 기기에서 이어보기 가능 */
   progress?: SavedProgress;
@@ -199,6 +205,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     shape: saved.shape,
     rounds: reparseAll(rounds, craft),
     ...(saved.adjust ? { adjust: saved.adjust } : {}),
+    ...(saved.startsFrom ? { startsFrom: saved.startsFrom } : {}),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
     ...(saved.progress ? { progress: saved.progress } : {}),
   };
@@ -317,6 +324,7 @@ export function toSavedTab(t: Tab): SavedWorkspaceTab {
       return out;
     }),
     ...(t.adjust && Object.keys(t.adjust).length > 0 ? { adjust: t.adjust } : {}),
+    ...(t.startsFrom ? { startsFrom: t.startsFrom } : {}),
     ...(t.comments.length > 0 ? { comments: t.comments.map((c) => toSavedComment(c, t.rounds)) } : {}),
     ...(t.progress ? { progress: t.progress } : {}),
   };
@@ -483,6 +491,7 @@ export function duplicateTab(id: string): string {
       ...(src.gauge ? { gauge: { ...src.gauge } } : {}),
       ...(src.progress ? { progress: { ...src.progress } } : {}),
       ...(src.adjust ? { adjust: { ...src.adjust } } : {}),
+      ...(src.startsFrom ? { startsFrom: { ...src.startsFrom } } : {}),
     };
     newId = tab.id;
 
@@ -795,6 +804,46 @@ export function reattachComment(commentId: string, roundId: string): 'attached' 
     };
   });
   return result;
+}
+
+// ============================================================
+// 조각 — 잇기 · 이어받기
+// ============================================================
+
+/** 같은 작품 안의 다른 도안들 (조각 고르기·코 수 계산용) */
+export const siblingPieces = derived(workspace, ($ws): PieceInfo[] => {
+  return $ws.tabs.map((t) => {
+    const last = [...t.rounds].reverse().find((r) => (r.expanded?.ops.length ?? 0) > 0);
+    return { id: t.id, name: t.name, lastCount: last?.expanded?.totalProduce ?? 0 };
+  });
+});
+
+/** 활성 도안의 시작 방식과, 그것이 물려주는 코 수 */
+export const activeStart = derived(workspace, ($ws) => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  if (!active?.startsFrom) return undefined;
+  const pieces: PieceInfo[] = $ws.tabs
+    .filter((t) => t.id !== active.id)
+    .map((t) => {
+      const last = [...t.rounds].reverse().find((r) => (r.expanded?.ops.length ?? 0) > 0);
+      return { id: t.id, name: t.name, lastCount: last?.expanded?.totalProduce ?? 0 };
+    });
+  const resolved = resolveStart(active.startsFrom, pieces);
+  return resolved ? { start: active.startsFrom, ...resolved } : undefined;
+});
+
+/** 이 도안이 어떻게 시작하는지 정한다 (undefined = 혼자 시작) */
+export function setTabStart(id: string, start: PieceStart | undefined): void {
+  workspace.update((ws) => ({
+    ...ws,
+    tabs: ws.tabs.map((t) => {
+      if (t.id !== id) return t;
+      const next = { ...t };
+      if (start) next.startsFrom = start;
+      else delete next.startsFrom;
+      return next;
+    }),
+  }));
 }
 
 // ============================================================

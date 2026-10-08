@@ -8,7 +8,7 @@
   } from '$stores/pattern';
   import {
     setRoundDirection, toggleRoundContinued, addComment, workspace, insertRoundsAfter,
-    usedColors, orphanComments,
+    usedColors, orphanComments, activeStart,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
   import {
@@ -21,6 +21,7 @@
   import EvenIncModal from './EvenIncModal.svelte';
   import GaugeInput from './GaugeInput.svelte';
   import ShortRowModal from './ShortRowModal.svelte';
+  import PieceStartModal from './PieceStartModal.svelte';
   import PatternColors from './PatternColors.svelte';
   import OrphanCommentsModal from './OrphanCommentsModal.svelte';
 
@@ -32,6 +33,7 @@
   let colorsOpen = $state(false);
   let shortRowOpen = $state(false);
   let orphanOpen = $state(false);
+  let startOpen = $state(false);
 
   /**
    * 의미 오류 계산.
@@ -46,6 +48,16 @@
     for (const r of rounds) map.set(r.id, []);
 
     const plan = planRounds(rounds);
+    // 조각을 이어 시작하는 도안이면 첫 단도 물려받은 코 수와 맞춰 본다
+    const start = $activeStart;
+    const first = plan.chart[0];
+    if (start && first && start.missing.length === 0) {
+      const inherited = {
+        index: 0, label: '이어받은 조각', ops: [], totalConsume: 0, totalProduce: start.count,
+      };
+      const line = rounds[first.lineIndex];
+      if (line) map.get(line.id)!.push(...validateRound(first.expanded, inherited));
+    }
     for (let i = 1; i < plan.chart.length; i++) {
       const cur = plan.chart[i]!;
       const line = rounds[cur.lineIndex];
@@ -230,6 +242,20 @@
       <i class="fa-solid fa-palette"></i> 배색
       {#if $usedColors.length > 0}<span class="badge">{$usedColors.length}</span>{/if}
     </button>
+    <button
+      type="button"
+      class="start-btn"
+      class:set={!!$activeStart}
+      onclick={() => (startOpen = true)}
+      title="이 도안이 어떻게 시작하는지 — 조각 잇기 · 이어받기"
+    >
+      <i class="fa-solid fa-code-merge"></i>
+      {#if $activeStart}
+        {$activeStart.label}
+      {:else}
+        조각 잇기
+      {/if}
+    </button>
     <div class="header-spacer"></div>
     {#if $orphanComments.length > 0}
       <button
@@ -321,6 +347,10 @@
   />
 {/if}
 
+{#if startOpen}
+  <PieceStartModal onClose={() => (startOpen = false)} />
+{/if}
+
 {#if shortRowOpen}
   <ShortRowModal
     defaultTotal={defaultFromCount}
@@ -353,6 +383,25 @@
     border-bottom: 1px solid var(--border, #e2e2e2);
     background: var(--bg, #f5f5f5);
   }
+  /* 조각 시작 방식 — 설정돼 있으면 또렷하게 */
+  .start-btn {
+    border: 1px solid var(--border-light);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 4px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 260px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .start-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .start-btn.set { color: var(--text); border-color: var(--accent, #4d86ff); }
   .header-spacer { flex: 1; }
   /* 접었다 펴는 헤더 버튼 — 게이지·배색 */
   .disclosure {

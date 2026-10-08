@@ -12,6 +12,7 @@ import type { CraftId } from '$lib/crafts';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import { normalizeViewOptions, type ViewOptions } from '$lib/model/view-options';
 import { isEmptyAdjust, type Adjustments } from '$lib/layout/adjust';
+import type { PieceStart } from '$lib/model/pieces';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
 /** v2: `craft` 필드 추가 (코바늘/대바늘). v1 파일은 코바늘로 마이그레이션. */
@@ -140,6 +141,23 @@ function normalizeAdjust(raw: unknown): Adjustments | undefined {
     if (!isEmptyAdjust(a)) out[key] = a;
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** 조각 시작 방식 검증 — 모르는 모양이면 버린다 (도안 자체는 지킨다) */
+function normalizeStart(raw: unknown): PieceStart | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const v = raw as Record<string, unknown>;
+  if (v.kind === 'join') {
+    const pieces = Array.isArray(v.pieces) ? v.pieces.filter((p): p is string => typeof p === 'string') : [];
+    if (pieces.length === 0) return undefined;
+    const chain = typeof v.chain === 'number' && Number.isFinite(v.chain) && v.chain >= 0 ? v.chain : 0;
+    return { kind: 'join', pieces, chain };
+  }
+  if (v.kind === 'from' && typeof v.piece === 'string') {
+    const stitches = typeof v.stitches === 'number' && v.stitches > 0 ? v.stitches : undefined;
+    return { kind: 'from', piece: v.piece, ...(stitches ? { stitches } : {}) };
+  }
+  return undefined;
 }
 
 /** 파일·localStorage 에서 읽은 값에 대한 progress 검증. 유효하지 않으면 undefined. */
@@ -290,6 +308,8 @@ export interface SavedWorkspaceTab {
   rounds: SavedRound[];
   /** 캔버스에서 손으로 다듬은 배치 (키 → 보정값, `layout/adjust`) */
   adjust?: Adjustments;
+  /** 이 조각이 어떻게 시작하는지 (`lib/model/pieces`) */
+  startsFrom?: PieceStart;
   comments?: SavedComment[];
   progress?: SavedProgress;
 }
@@ -323,6 +343,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
         return out;
       }),
       ...(hasAdjust(t.adjust) ? { adjust: t.adjust } : {}),
+      ...(t.startsFrom ? { startsFrom: t.startsFrom } : {}),
       ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
       ...(t.progress ? { progress: t.progress } : {}),
     })),
@@ -370,6 +391,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
       shape: isKnownShape(tt.shape) ? tt.shape : defaultShapeFor(craft),
       rounds: rounds.length > 0 ? rounds : [{ source: '' }],
       ...(normalizeAdjust(tt.adjust) ? { adjust: normalizeAdjust(tt.adjust) } : {}),
+      ...(normalizeStart(tt.startsFrom) ? { startsFrom: normalizeStart(tt.startsFrom)! } : {}),
       ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
       ...(validateProgress(tt.progress) ? { progress: validateProgress(tt.progress) as SavedProgress } : {}),
     });

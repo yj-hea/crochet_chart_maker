@@ -61,11 +61,16 @@ export function validateRound(
 
   if (actual === expected) return [];
 
+  // 조각을 이어 시작하는 도안의 가상 부모(index 0)는 "N단" 이 아니다
+  const from = previous.index === 0
+    ? (previous.label ?? '앞')
+    : `${roundName(previous)}단`;
+
   if (actual > expected) {
     return [{
       kind: 'over_consumed',
       roundIndex: current.index,
-      message: `${roundName(previous)}단의 코 수(${expected}코)를 초과하여 소비합니다 `
+      message: `${from}의 코 수(${expected}코)를 초과하여 소비합니다 `
         + `(${actual}코 소비, ${actual - expected}코 초과)`,
       offendingRange: findOverflowRange(current, expected),
       expected,
@@ -77,8 +82,7 @@ export function validateRound(
   return [{
     kind: 'under_consumed',
     roundIndex: current.index,
-    message: `${roundName(previous)}단의 ${expected}코 중 ${actual}코만 소비합니다 `
-      + `(${expected - actual}코 부족)`,
+    message: `${from}의 ${expected}코 중 ${actual}코만 소비합니다 (${expected - actual}코 부족)`,
     expected,
     actual,
   }];
