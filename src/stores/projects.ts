@@ -32,6 +32,9 @@ function refresh(): void {
   projects.set(sortProjects(loadProjectIndex().projects));
 }
 
+/** 목록을 다시 읽는다 (동기화가 메타를 고친 뒤 부른다) */
+export const refreshProjects = refresh;
+
 /** 지금 열려 있는 내용을 그 프로젝트에 저장한다 (자동 저장이 부른다) */
 export function persistOpenProject(): void {
   const id = get(openProjectId);
@@ -50,7 +53,9 @@ export function persistOpenProject(): void {
 export function openProject(id: string): boolean {
   const saved = loadProject(id);
   if (!saved) return false;
-  persistOpenProject();
+  // 같은 작품을 다시 여는 경우(동기화로 내용을 새로 받은 뒤)에는 저장하지 않는다 —
+  // 메모리에 남은 낡은 내용이 방금 받은 것을 덮어쓴다.
+  if (get(openProjectId) !== id) persistOpenProject();
   withoutPersist(() => {
     applyWorkspace(saved);
     openProjectId.set(id);

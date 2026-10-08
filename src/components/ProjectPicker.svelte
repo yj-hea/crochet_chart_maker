@@ -8,6 +8,11 @@
    */
   import { onMount } from 'svelte';
   import { projects, openProject, createProject, removeProject, renameProject } from '$stores/projects';
+  import {
+    remoteProjects, refreshRemote, openProjectSynced, resolveAndOpen, pendingConflict,
+    deleteRemote,
+  } from '$stores/projectSync';
+  import { dropboxConnected } from '$stores/dropbox';
 
   let newName = $state('');
   let creating = $state(false);
@@ -16,10 +21,66 @@
   let nameInput: HTMLInputElement | undefined = $state();
 
   const hasProjects = $derived($projects.length > 0);
+  let busy = $state<string | null>(null);
+
+  /** 이 기기에 없고 Dropbox 에만 있는 작품 */
+  const remoteOnly = $derived(
+    $remoteProjects.filter((r) => !$projects.some((p) => p.id === r.id)),
+  );
+
+  /** 작품마다의 동기화 상태 한 줄 */
+  function syncLabel(id: string): string {
+    if (!$dropboxConnected) return '';
+    const meta = $projects.find((p) => p.id === id);
+    const remote = $remoteProjects.find((r) => r.id === id);
+    if (!remote) return '이 기기에만';
+    if (meta?.rev === remote.rev) return '동기화됨';
+    return '원격에 새 내용';
+  }
+
+  async function open(id: string) {
+    busy = id;
+    try {
+      if ($dropboxConnected) await openProjectSynced(id);
+      else openProject(id);
+    } finally {
+      busy = null;
+    }
+  }
+
+  async function pullRemote(id: string, name: string) {
+    busy = id;
+    try {
+      await openProjectSynced(id);
+    } finally {
+      busy = null;
+    }
+    void name;
+  }
+
+  async function removeRemote(id: string, name: string) {
+    if (!window.confirm(`Dropbox 에서 '${name}' 을 지울까요?`)) return;
+    await deleteRemote(id);
+    await refreshRemote();
+  }
+
+  async function resolve(choice: 'remote' | 'local' | 'both') {
+    const c = $pendingConflict;
+    if (!c) return;
+    let copyName: string | undefined;
+    if (choice === 'both') {
+      const suggested = `${$projects.find((p) => p.id === c.id)?.name ?? '작품'} (이 기기)`;
+      const answer = window.prompt('이 기기 내용을 새 작품으로 둡니다. 이름을 정해 주세요.', suggested);
+      if (answer === null) return;
+      copyName = answer;
+    }
+    busy = c.id;
+    try { await resolveAndOpen(c.id, choice, copyName); } finally { busy = null; }
+  }
 
   function openFirst() {
     const first = $projects[0];
-    if (first) openProject(first.id);
+    if (first) void open(first.id);
   }
 
   function startCreate() {
@@ -62,6 +123,7 @@
   }
   onMount(() => {
     window.addEventListener('keydown', onKey);
+    void refreshRemote();
     return () => window.removeEventListener('keydown', onKey);
   });
 </script>
@@ -86,10 +148,17 @@
                 aria-label="작품 이름"
               />
             {:else}
-              <button type="button" class="open" onclick={() => openProject(p.id)}>
+              <button type="button" class="open" disabled={busy !== null} onclick={() => open(p.id)}>
                 <span class="name">{p.name}</span>
-                <span class="meta">도안 {p.tabCount}개 · {when(p.openedAt ?? p.updatedAt)}</span>
-                {#if i === 0}<span class="badge">마지막 작업 · Enter</span>{/if}
+                <span class="meta">
+                  도안 {p.tabCount}개 · {when(p.openedAt ?? p.updatedAt)}
+                  {#if syncLabel(p.id)}<span class="sync">· {syncLabel(p.id)}</span>{/if}
+                </span>
+                {#if busy === p.id}
+                  <span class="badge">맞추는 중…</span>
+                {:else if i === 0}
+                  <span class="badge">마지막 작업 · Enter</span>
+                {/if}
               </button>
               <button
                 type="button" class="icon" title="이름 바꾸기" aria-label="이름 바꾸기"
@@ -105,6 +174,49 @@
       </ul>
     {:else}
       <p class="empty">아직 만든 작품이 없습니다. 새 작품으로 시작하세요.</p>
+    {/if}
+
+    {#if remoteOnly.length > 0}
+      <section class="remote">
+        <h2>Dropbox 에만 있는 작품</h2>
+        <ul class="list">
+          {#each remoteOnly as r (r.id)}
+            <li class="row">
+              <button type="button" class="open" disabled={busy !== null} onclick={() => pullRemote(r.id, r.name)}>
+                <span class="name">{r.name}</span>
+                <span class="meta">받아서 열기</span>
+              </button>
+              <button
+                type="button" class="icon danger" title="Dropbox 에서 삭제" aria-label="Dropbox 에서 삭제"
+                onclick={() => removeRemote(r.id, r.name)}
+              ><i class="fa-regular fa-trash-can"></i></button>
+            </li>
+          {/each}
+        </ul>
+        <p class="hint">쓰지 않는 임시 작품은 여기서 정리할 수 있습니다.</p>
+      </section>
+    {/if}
+
+    {#if $pendingConflict}
+      <section class="conflict">
+        <h2><i class="fa-solid fa-code-branch"></i> 양쪽이 모두 바뀌었습니다</h2>
+        <div class="sides">
+          <div>
+            <b>이 기기</b>
+            <span>{when($pendingConflict.local.savedAt)} · {$pendingConflict.local.tabNames.length}개 도안</span>
+          </div>
+          <div>
+            <b>Dropbox</b>
+            <span>{when($pendingConflict.remote.savedAt)} · {$pendingConflict.remote.tabNames.length}개 도안</span>
+          </div>
+        </div>
+        <div class="choices">
+          <button type="button" class="primary" onclick={() => resolve('remote')}>Dropbox 것으로 열기</button>
+          <button type="button" class="ghost" onclick={() => resolve('local')}>이 기기 것으로 열기</button>
+          <button type="button" class="ghost" onclick={() => resolve('both')}>둘 다 두기</button>
+        </div>
+        <p class="hint">"둘 다 두기" 는 이 기기 내용을 <b>이름을 받아</b> 새 작품으로 떼어 둡니다.</p>
+      </section>
     {/if}
 
     <footer>
@@ -212,6 +324,45 @@
   }
   .icon:hover { background: var(--bg-hover); color: var(--text); }
   .icon.danger:hover { color: var(--danger, #e53935); }
+  .sync { color: var(--text-muted); }
+  .remote h2,
+  .conflict h2 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .remote,
+  .conflict {
+    border-top: 1px solid var(--border-light);
+    padding-top: 12px;
+  }
+  .conflict .sides {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .conflict .sides > div {
+    flex: 1;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .conflict .sides span { color: var(--text-secondary); font-size: 11px; }
+  .choices {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
   .empty {
     margin: 0;
     padding: 18px 0;

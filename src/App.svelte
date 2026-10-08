@@ -8,16 +8,13 @@
   import ProjectBar from './components/ProjectBar.svelte';
   import ProjectPicker from './components/ProjectPicker.svelte';
   import HelpModal from './components/HelpModal.svelte';
-  import ConflictModal from './components/ConflictModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
-  import WorkspaceMenu from './components/WorkspaceMenu.svelte';
   import { initializeDropbox, lastDropboxAction, dropboxConnected } from './stores/dropbox';
   import {
-    initializeWorkspaceSync,
-    disposeWorkspaceSync,
-    createWorkspace,
-    workspaceList,
-  } from './stores/dropboxWorkspace';
+    refreshRemote,
+    startAutoPush,
+    stopAutoPush,
+  } from './stores/projectSync';
   import { mode, currentRound, currentStitch } from './stores/mode';
   import { setTabProgress } from './stores/tabs';
   import { renderedChart, chartRows } from './stores/rendered';
@@ -47,22 +44,16 @@
   let exportMenuTrigger: HTMLButtonElement | undefined = $state();
   let exportMenuEl: HTMLDivElement | undefined = $state();
 
+  /**
+   * Dropbox 가 붙으면 원격 목록을 받고 자동 올리기를 켠다.
+   *
+   * 예전에는 부팅하자마자 "워크스페이스를 만들까요?" 를 confirm 으로 물어 임시
+   * 워크스페이스가 생기곤 했다. 이제 맞추는 일은 **작품을 열 때 한 번만** 한다
+   * (`stores/projectSync.ts`).
+   */
   async function startWorkspaceSync(): Promise<void> {
-    const result = await initializeWorkspaceSync();
-    if (result.status === 'no-active') {
-      // 활성 워크스페이스 없음 — 처음 연결이거나 활성 ID 가 사라진 경우.
-      const wsCount = $workspaceList.length;
-      const msg = wsCount === 0
-        ? 'Dropbox 에 워크스페이스가 없습니다. 현재 작업을 첫 워크스페이스로 저장할까요?'
-        : 'Dropbox 에 저장된 워크스페이스 중 하나를 선택해서 시작하거나, 현재 작업을 새 워크스페이스로 저장할 수 있습니다.\n\n현재 작업을 새 워크스페이스로 저장할까요?';
-      if (confirm(msg)) {
-        const name = prompt('워크스페이스 이름:', 'default');
-        if (name) {
-          try { await createWorkspace({ name, source: 'current' }); }
-          catch (err) { alert(`생성 실패: ${err instanceof Error ? err.message : err}`); }
-        }
-      }
-    }
+    await refreshRemote();
+    startAutoPush();
   }
 
   // 프로젝트 — 자동 저장을 "열어 둔 작품" 으로 돌리고 목록을 채운다.
@@ -86,7 +77,7 @@
     if ($dropboxConnected && !lastConnected) {
       void startWorkspaceSync();
     } else if (!$dropboxConnected && lastConnected) {
-      disposeWorkspaceSync();
+      stopAutoPush();
     }
     lastConnected = $dropboxConnected;
   });
@@ -363,7 +354,6 @@
 
   <div class="header-actions">
     <div class="btn-group">
-      <WorkspaceMenu />
       <DropboxMenu />
       <button type="button" class="icon-btn" onclick={handleReset} title="도안 비우기"><i class="fa-solid fa-eraser"></i></button>
       <button type="button" class="icon-btn" onclick={() => fileInput.click()} title="파일에서 불러오기 (.crochet.json / .txt)"><i class="fa-solid fa-folder-open"></i></button>
@@ -416,9 +406,6 @@
 {:else}
   <ProjectPicker />
 {/if}
-
-<!-- Dropbox 동기화 충돌 — 어느 버전을 남길지 사용자가 결정 -->
-<ConflictModal />
 
 {#if helpOpen}
   <HelpModal onClose={() => (helpOpen = false)} />

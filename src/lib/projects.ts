@@ -43,6 +43,8 @@ export interface ProjectMeta {
   openedAt?: string;
   /** 마지막으로 주고받은 Dropbox rev — 열 때 어느 쪽이 새것인지 가린다 */
   rev?: string;
+  /** 그 rev 와 같은 내용의 `savedAt` — 이 뒤에 고쳤으면 로컬이 새것이다 */
+  syncedAt?: string;
 }
 
 export interface ProjectIndex {
@@ -126,6 +128,7 @@ function normalizeMeta(m: ProjectMeta): ProjectMeta {
     updatedAt: typeof m.updatedAt === 'string' ? m.updatedAt : '',
     ...(typeof m.openedAt === 'string' ? { openedAt: m.openedAt } : {}),
     ...(typeof m.rev === 'string' ? { rev: m.rev } : {}),
+    ...(typeof m.syncedAt === 'string' ? { syncedAt: m.syncedAt } : {}),
   };
 }
 
@@ -182,14 +185,23 @@ export function saveProject(
   id: string,
   ws: { tabs: SavedWorkspaceTab[]; activeTabId: string },
 ): string {
-  const serialized = serializeWorkspace(ws);
-  write(projectKey(id), JSON.stringify(serialized));
   const index = loadProjectIndex();
-  const next = index.projects.map((p) => (p.id === id
-    ? { ...p, tabCount: ws.tabs.length, updatedAt: serialized.savedAt }
-    : p));
-  saveProjectIndex({ ...index, projects: next });
-  return serialized.savedAt;
+  const prev = index.projects.find((p) => p.id === id);
+  const base = serializeWorkspace(ws);
+  // 저장 시각은 **반드시 커진다** — 같은 밀리초에 두 번 저장해도 "고쳤다" 를 놓치지 않는다
+  // (동기화가 로컬이 새것인지 이 값으로 가린다)
+  const savedAt = prev?.updatedAt && base.savedAt <= prev.updatedAt
+    ? new Date(Date.parse(prev.updatedAt) + 1).toISOString()
+    : base.savedAt;
+  const serialized = { ...base, savedAt };
+  write(projectKey(id), JSON.stringify(serialized));
+  saveProjectIndex({
+    ...index,
+    projects: index.projects.map((p) => (p.id === id
+      ? { ...p, tabCount: ws.tabs.length, updatedAt: savedAt }
+      : p)),
+  });
+  return savedAt;
 }
 
 export function deleteProject(id: string): void {

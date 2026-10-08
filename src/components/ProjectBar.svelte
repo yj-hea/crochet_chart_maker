@@ -9,12 +9,44 @@
     projects, openProjectId, openProject, createProject, renameProject,
     duplicateProject, removeProject, closeProject,
   } from '$stores/projects';
+  import { openProjectSynced, pushOpen, syncStatus } from '$stores/projectSync';
+  import { dropboxConnected } from '$stores/dropbox';
 
   let renamingId = $state<string | null>(null);
   let renameValue = $state('');
   let menuFor = $state<string | null>(null);
 
   const current = $derived($projects.find((p) => p.id === $openProjectId));
+  let busy = $state(false);
+
+  /**
+   * 다른 작품으로 건너가기 — 열기 전에 원격과 한 번 맞춘다.
+   * 양쪽이 다 바뀌었으면 열지 않고 작품 목록(시작 화면)에서 고르게 한다.
+   */
+  async function switchTo(id: string) {
+    if (id === $openProjectId || busy) return;
+    busy = true;
+    try {
+      if ($dropboxConnected) {
+        const opened = await openProjectSynced(id);
+        if (!opened) closeProject();   // 충돌 — 시작 화면에서 묻는다
+      } else {
+        openProject(id);
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function backToList() {
+    busy = true;
+    try {
+      if ($dropboxConnected) await pushOpen();
+      closeProject();
+    } finally {
+      busy = false;
+    }
+  }
 
   function startRename(id: string, name: string) {
     renamingId = id;
@@ -53,7 +85,7 @@
           <button
             type="button"
             class="label"
-            onclick={() => openProject(p.id)}
+            onclick={() => switchTo(p.id)}
             ondblclick={() => startRename(p.id, p.name)}
             title={`${p.name} · 도안 ${p.tabCount}개`}
           >
@@ -71,7 +103,12 @@
     <button type="button" class="add" onclick={addProject} title="새 작품" aria-label="새 작품">+</button>
   </div>
 
-  <button type="button" class="close" onclick={closeProject} title="작품 목록으로">
+  {#if $dropboxConnected && $syncStatus === 'conflict'}
+    <span class="conflict-badge" title="다른 기기에서 바뀌었습니다 — 작품 목록에서 맞춥니다">
+      <i class="fa-solid fa-code-branch"></i> 동기화 충돌
+    </span>
+  {/if}
+  <button type="button" class="close" onclick={backToList} disabled={busy} title="작품 목록으로">
     <i class="fa-solid fa-folder-open"></i> 작품 목록
   </button>
 </div>
@@ -162,6 +199,11 @@
     white-space: nowrap;
   }
   .close:hover { background: var(--bg-hover); color: var(--text); }
+  .conflict-badge {
+    font-size: 11px;
+    color: var(--warning, #b26a00);
+    white-space: nowrap;
+  }
   .rename {
     padding: 5px 8px;
     border: 1px solid var(--border);
