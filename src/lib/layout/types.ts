@@ -131,7 +131,7 @@ export interface PositionedMarker {
  * 코가 아닌 것들. 두 크래프트 렌더러가 똑같이 그린다.
  */
 export type Decoration =
-  | { kind: 'line'; from: Point; to: Point; dashed?: boolean }
+  | { kind: 'line'; from: Point; to: Point; dashed?: boolean; faint?: boolean }
   | { kind: 'label'; at: Point; text: string; align?: 'start' | 'middle' | 'end'; muted?: boolean };
 
 export interface LayoutResult {

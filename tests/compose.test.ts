@@ -32,7 +32,7 @@ describe('조각 합쳐 그리기', () => {
     expect(Math.min(...pieceStitches.map((s) => s.position.y))).toBeGreaterThan(body.bounds.maxY);
   });
 
-  it('조각 이름과 사슬 수를 적고, 몸통까지 선을 긋는다', () => {
+  it('조각 이름과 사슬 수를 적는다', () => {
     const out = composeWithPieces(body, [
       { name: '다리 A', layout: leg },
       { name: '다리 B', layout: leg },
@@ -41,7 +41,39 @@ describe('조각 합쳐 그리기', () => {
     expect(labels).toContain('다리 A');
     expect(labels).toContain('다리 B');
     expect(labels).toContain('사슬 4');
-    expect((out.decorations ?? []).filter((d) => d.kind === 'line')).toHaveLength(2);
+  });
+
+  it('조각의 코와 몸통의 코를 **하나씩 짝지어** 잇는다', () => {
+    // 다리 마지막 단 12코 × 2 + 사슬 4 × 2 = 32 → 몸통 32코와 자리가 맞는다
+    const out = composeWithPieces(body, [
+      { name: '다리 A', layout: leg },
+      { name: '다리 B', layout: leg },
+    ], { chain: 4 });
+    const lines = (out.decorations ?? []).filter((d) => d.kind === 'line');
+    expect(lines).toHaveLength(24);                 // 12 + 12, 사슬 자리는 건너뛴다
+
+    const bodyFirst = body.stitches.filter((s) => s.roundIndex === 1 && s.op.consume > 0);
+    const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      Math.hypot(a.x - b.x, a.y - b.y) < 0.001;
+    // 첫 짝: 다리 A 의 첫 코 → 몸통의 첫 코
+    const first = lines[0] as { to: { x: number; y: number } };
+    expect(near(first.to, bodyFirst[0]!.position)).toBe(true);
+    // 두 번째 조각은 **사슬 4코를 건너뛴** 자리에서 시작한다 (12 + 4 = 17번째 코)
+    const secondPiece = lines[12] as { to: { x: number; y: number } };
+    expect(near(secondPiece.to, bodyFirst[16]!.position)).toBe(true);
+  });
+
+  it('이어받기는 가져온 구간만 잇는다', () => {
+    const out = composeWithPieces(body, [
+      { name: '몸통', layout: leg, range: { at: 3, count: 4 } },
+    ]);
+    expect((out.decorations ?? []).filter((d) => d.kind === 'line')).toHaveLength(4);
+  });
+
+  it('몸통 코가 모자라면 있는 데까지만 잇는다', () => {
+    const small = layout('4X');
+    const out = composeWithPieces(small, [{ name: '다리', layout: leg }]);
+    expect((out.decorations ?? []).filter((d) => d.kind === 'line')).toHaveLength(4);
   });
 
   it('조각의 부모 인덱스를 합친 배열 기준으로 옮긴다', () => {

@@ -57,7 +57,8 @@ export function composeWithPieces(
   let maxY = body.bounds.maxY;
 
   let cursor = bodyCenterX - totalWidth / 2;
-  const tops: Array<{ x: number; y: number; marks?: Point[] }> = [];
+  /** 조각마다 몸통과 이어지는 코의 자리 (뜨는 순서) */
+  const linked: Point[][] = [];
 
   pieces.forEach((piece, i) => {
     const b = piece.layout.bounds;
@@ -81,17 +82,13 @@ export function composeWithPieces(
       align: 'middle',
     });
 
-    // 이어받은 구간이 있으면 그 코들에서 선을 긋는다 (어디서 갈라졌는지 보이게)
-    const taken = piece.range
-      ? takenPositions(piece.layout, piece.range).map((p) => move(p, dx, dy))
-      : [];
-    if (taken.length > 0) {
-      const mid = taken.reduce((a, p) => a + p.x, 0) / taken.length;
-      const topY = Math.min(...taken.map((p) => p.y));
-      tops.push({ x: mid, y: topY, marks: taken });
-    } else {
-      tops.push({ x: cursor + b.width / 2, y: top });
-    }
+    // 몸통과 이어지는 코들 — 이어받기면 가져온 구간만, 잇기면 마지막 단 전부
+    const taken = (piece.range
+      ? takenPositions(piece.layout, piece.range)
+      : lastRowPositions(piece.layout)
+    ).map((p) => move(p, dx, dy));
+    linked.push(taken);
+
     minX = Math.min(minX, cursor);
     maxX = Math.max(maxX, cursor + b.width);
     maxY = Math.max(maxY, top + b.height);
@@ -99,29 +96,33 @@ export function composeWithPieces(
     void i;
   });
 
-  // 조각 → 몸통 연결선
-  const bodyBottom = body.bounds.maxY;
-  for (const t of tops) {
-    decorations.push({ kind: 'line', from: { x: t.x, y: t.y }, to: { x: t.x, y: bodyBottom }, dashed: true });
-    // 가져온 코마다 짧은 선을 그어 그 구간이 갈라진 자리임을 보인다
-    for (const m of t.marks ?? []) {
-      decorations.push({ kind: 'line', from: m, to: { x: t.x, y: t.y }, dashed: true });
+  // 조각 → 몸통: **코 하나하나를 짝지어** 점선으로 잇는다.
+  // 조각의 어느 코가 몸통의 어느 코로 이어지는지가 도안에서 읽혀야 한다.
+  const bodyRow = firstRowPositions(body);
+  const chain = opts.chain ?? 0;
+  let cursorIdx = 0;
+  for (const taken of linked) {
+    for (const from of taken) {
+      const to = bodyRow[cursorIdx];
+      cursorIdx++;
+      if (!to) break;                 // 몸통 코가 모자라면 (코 수가 안 맞는 도안) 거기까지만
+      decorations.push({ kind: 'line', from, to, dashed: true, faint: true });
     }
+    // 조각 사이를 잇는 사슬은 조각에서 올라온 코가 아니다 — 그만큼 건너뛴다
+    cursorIdx += chain;
   }
-  // 조각 사이에 넣는 사슬 — 몇 코인지 적어 둔다
-  if (opts.chain && opts.chain > 0 && tops.length > 0) {
-    for (let i = 0; i < tops.length; i++) {
-      const a = tops[i]!;
-      const b = tops[(i + 1) % tops.length]!;
-      const x = tops.length === 1 ? a.x : (a.x + b.x) / 2;
-      decorations.push({
-        kind: 'label',
-        at: { x, y: (a.y + bodyBottom) / 2 },
-        text: `사슬 ${opts.chain}`,
-        align: 'middle',
-        muted: true,
-      });
-      if (tops.length <= 2) break;   // 두 조각이면 가운데 한 번이면 족하다
+  // 조각 사이에 넣는 사슬 — 조각과 조각 사이에 몇 코인지 적는다
+  if (chain > 0 && linked.length > 0) {
+    const mids = linked.map((pts) => (pts.length > 0
+      ? pts.reduce((a, p) => a + p.x, 0) / pts.length
+      : bodyCenterX));
+    const topY = Math.min(...linked.flat().map((p) => p.y), top);
+    const y = (topY + body.bounds.maxY) / 2;
+    const gaps = linked.length === 1
+      ? [bodyCenterX]
+      : mids.slice(0, -1).map((x, i) => (x + mids[i + 1]!) / 2);
+    for (const x of gaps) {
+      decorations.push({ kind: 'label', at: { x, y }, text: `사슬 ${chain}`, align: 'middle', muted: true });
     }
   }
 
@@ -169,12 +170,46 @@ function moveDecoration(d: Decoration, dx: number, dy: number): Decoration {
 }
 
 /**
+ * 단을 **코(슬롯) 단위**로 펼친 자리 목록.
+ *
+ * 기호 하나가 코 하나인 것은 아니다 — 늘림(`V`)은 한 기호가 코 둘을 만들고,
+ * 줄임(`A`)은 아래 코 둘을 쓴다. 잇는 선은 **코**를 따라가야 하므로
+ * 그 수만큼 같은 자리를 되풀이해 펼친다.
+ *
+ *  - `produce` : 이 단이 **위로 내보내는** 코 (조각 쪽)
+ *  - `consume` : 이 단이 **아래에서 받는** 코 (몸통 쪽). 사슬처럼 받지 않는 코는 빠진다
+ */
+function slotsOf(layout: LayoutResult, roundIndex: number, by: 'produce' | 'consume'): Point[] {
+  const out: Point[] = [];
+  for (const s of layout.stitches) {
+    if (s.roundIndex !== roundIndex) continue;
+    const n = by === 'produce' ? s.op.produce : s.op.consume;
+    for (let i = 0; i < n; i++) out.push(s.position);
+  }
+  return out;
+}
+
+/** 조각의 마지막 단 — 여기서 몸통으로 이어진다 */
+function lastRowPositions(layout: LayoutResult): Point[] {
+  const last = layout.stitches.reduce((max, s) => Math.max(max, s.roundIndex), 0);
+  return slotsOf(layout, last, 'produce');
+}
+
+/** 몸통의 첫 단 — 조각에서 올라온 코를 받는 자리 */
+function firstRowPositions(layout: LayoutResult): Point[] {
+  const first = layout.stitches.reduce(
+    (min, s) => Math.min(min, s.roundIndex),
+    Number.POSITIVE_INFINITY,
+  );
+  return Number.isFinite(first) ? slotsOf(layout, first, 'consume') : [];
+}
+
+/**
  * 조각의 **마지막 단**에서 [at, at+count-1] 구간의 코 자리.
  * 코를 만들지 않는 동작(스킵 등)은 세지 않는다 — "몇 번째 코" 의 기준과 같다.
  */
 function takenPositions(layout: LayoutResult, range: { at: number; count: number }): Point[] {
-  const lastRound = layout.stitches.reduce((max, s) => Math.max(max, s.roundIndex), 0);
-  const row = layout.stitches.filter((s) => s.roundIndex === lastRound && s.op.produce > 0);
+  const row = lastRowPositions(layout);
   const from = Math.max(0, range.at - 1);
-  return row.slice(from, from + Math.max(1, range.count)).map((s) => s.position);
+  return row.slice(from, from + Math.max(1, range.count));
 }

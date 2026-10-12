@@ -94,12 +94,12 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     renderFillers(greyCells, cell, emptyColor),
     renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
     showGrid && !layout.noGrid ? renderCellBorders(layout, cell) : '',
+    renderDecorations(layout.decorations),
     renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
     renderFoldMarks(layout.roundMarkers, cell, bounds),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP, layout.legendTransform),
-    renderDecorations(layout.decorations),
     notes.svg,
     `</svg>`,
   ].join('');

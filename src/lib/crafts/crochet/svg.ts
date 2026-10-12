@@ -105,10 +105,10 @@ export function renderSvg(opts: RenderOptions): string {
     grid,
     connections,
     renderPostLinks(layout.postLinks ?? []),
+    renderDecorations(layout.decorations),
     roundGroups,
     markers,
     renderStitchMarkers(layout.stitchMarkers ?? [], layout.gridGuide),
-    renderDecorations(layout.decorations),
     notes.svg,
     `</svg>`,
   ].join('');

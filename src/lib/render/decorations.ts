@@ -12,7 +12,7 @@ export function renderDecorations(decorations: ReadonlyArray<Decoration> | undef
   const parts = decorations.map((d) => {
     if (d.kind === 'line') {
       return `<line x1="${fmt(d.from.x)}" y1="${fmt(d.from.y)}" x2="${fmt(d.to.x)}" y2="${fmt(d.to.y)}" ` +
-        `stroke="${INK}" stroke-width="1" opacity="0.5"` +
+        `stroke="${INK}" stroke-width="${d.faint ? 0.7 : 1}" opacity="${d.faint ? 0.3 : 0.5}"` +
         (d.dashed ? ' stroke-dasharray="4 3"' : '') +
         ` vector-effect="non-scaling-stroke"/>`;
     }
