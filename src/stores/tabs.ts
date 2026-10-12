@@ -835,6 +835,18 @@ export const activeStart = derived(workspace, ($ws) => {
 });
 
 /**
+ * 활성 도안이 이어받은 조각이 **또 자기 조각을 가지는지** (배 ← 몸통 ← 다리).
+ * 그럴 때만 "조각 전부 / 바로 아래만" 선택이 뜻을 가진다.
+ */
+export const activeHasNestedPieces = derived(workspace, ($ws): boolean => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  const start = active?.startsFrom;
+  if (!start) return false;
+  const ids = start.kind === 'join' ? start.pieces : [start.piece];
+  return ids.some((id) => $ws.tabs.find((t) => t.id === id)?.startsFrom !== undefined);
+});
+
+/**
  * 활성 도안을 **이어받는 파트들** — 나누기의 반대쪽.
  * 누가 몇 코를 어디서부터 가져가는지, 남는 코(쉼코)는 몇 코인지 센다.
  */

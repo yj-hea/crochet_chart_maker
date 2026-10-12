@@ -146,6 +146,7 @@ function translate(s: PositionedStitch, dx: number, dy: number, offset: number):
   const { key: _key, transform: _t, ...rest } = s;
   return {
     ...rest,
+    foreign: true,
     parentIndices: s.parentIndices.map((i) => i + offset),
     position: { x: s.position.x + dx, y: s.position.y + dy },
     ...(s.chainArcBounds
@@ -178,10 +179,13 @@ function moveDecoration(d: Decoration, dx: number, dy: number): Decoration {
  *
  *  - `produce` : 이 단이 **위로 내보내는** 코 (조각 쪽)
  *  - `consume` : 이 단이 **아래에서 받는** 코 (몸통 쪽). 사슬처럼 받지 않는 코는 빠진다
+ *
+ * 이미 합쳐 그린 레이아웃을 다시 조각으로 쓸 수 있으므로(배 ← 몸통 ← 다리),
+ * 끌어온 코(`foreign`)는 세지 않는다 — 이 레이아웃 **자신의** 단만 본다.
  */
 function slotsOf(layout: LayoutResult, roundIndex: number, by: 'produce' | 'consume'): Point[] {
   const out: Point[] = [];
-  for (const s of layout.stitches) {
+  for (const s of own(layout)) {
     if (s.roundIndex !== roundIndex) continue;
     const n = by === 'produce' ? s.op.produce : s.op.consume;
     for (let i = 0; i < n; i++) out.push(s.position);
@@ -189,15 +193,20 @@ function slotsOf(layout: LayoutResult, roundIndex: number, by: 'produce' | 'cons
   return out;
 }
 
+/** 이 레이아웃이 자기 도안으로 뜬 코 — 합쳐 그릴 때 끌어온 코는 뺀다 */
+function own(layout: LayoutResult): PositionedStitch[] {
+  return layout.stitches.filter((s) => !s.foreign);
+}
+
 /** 조각의 마지막 단 — 여기서 몸통으로 이어진다 */
 function lastRowPositions(layout: LayoutResult): Point[] {
-  const last = layout.stitches.reduce((max, s) => Math.max(max, s.roundIndex), 0);
+  const last = own(layout).reduce((max, s) => Math.max(max, s.roundIndex), 0);
   return slotsOf(layout, last, 'produce');
 }
 
 /** 몸통의 첫 단 — 조각에서 올라온 코를 받는 자리 */
 function firstRowPositions(layout: LayoutResult): Point[] {
-  const first = layout.stitches.reduce(
+  const first = own(layout).reduce(
     (min, s) => Math.min(min, s.roundIndex),
     Number.POSITIVE_INFINITY,
   );

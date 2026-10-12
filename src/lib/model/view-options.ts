@@ -33,6 +33,15 @@ export type FlatVAlign = 'same' | 'even';
  */
 export type ColorMode = 'auto' | 'symbol' | 'fill';
 
+/**
+ * 이어받은 조각을 **어디까지** 함께 그릴지 (`layout/assemble`).
+ *  - 'direct' : 바로 이어 붙인 조각까지만
+ *  - 'all'    : 조각의 조각까지 전부 (배 ← 몸통 ← 다리)
+ *
+ * 깊이 달린 작품은 'all' 이면 한 장이 꽤 커진다. 그래서 끌 수 있게 둔다.
+ */
+export type ComposeDepth = 'direct' | 'all';
+
 export interface ViewOptions {
   /** 배경 그리드 표시 */
   showGrid: boolean;
@@ -51,6 +60,8 @@ export interface ViewOptions {
   flatCompact: boolean;
   /** 메모를 도안에 함께 그릴지 — 내보낸 도안 한 장에 설명이 같이 실린다 */
   showNotes: boolean;
+  /** 이어받은 조각을 어디까지 함께 그릴지 */
+  composeDepth: ComposeDepth;
   flatVAlign: FlatVAlign;
   /**
    * 대바늘 차트를 어느 쪽부터 읽을지.
@@ -86,6 +97,7 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   flatCascade: true,
   flatCompact: false,
   showNotes: true,
+  composeDepth: 'all',
   flatVAlign: 'same',
   knitStartSide: 'R',
   colorMode: 'auto',
@@ -99,6 +111,7 @@ export type ViewOptionKey = keyof ViewOptions;
 const ALIGNS: readonly string[] = ['L', 'R', 'C'];
 const VALIGNS: readonly string[] = ['same', 'even'];
 const COLOR_MODES: readonly string[] = ['auto', 'symbol', 'fill'];
+const COMPOSE_DEPTHS: readonly string[] = ['direct', 'all'];
 const START_SIDES: readonly string[] = ['R', 'L'];
 
 /**
@@ -119,6 +132,9 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
     flatCascade: bool(v.flatCascade, DEFAULT_VIEW_OPTIONS.flatCascade),
     flatCompact: bool(v.flatCompact, DEFAULT_VIEW_OPTIONS.flatCompact),
     showNotes: bool(v.showNotes, DEFAULT_VIEW_OPTIONS.showNotes),
+    composeDepth: COMPOSE_DEPTHS.includes(v.composeDepth as string)
+      ? (v.composeDepth as ComposeDepth)
+      : DEFAULT_VIEW_OPTIONS.composeDepth,
     flatVAlign: VALIGNS.includes(v.flatVAlign as string)
       ? (v.flatVAlign as FlatVAlign)
       : DEFAULT_VIEW_OPTIONS.flatVAlign,

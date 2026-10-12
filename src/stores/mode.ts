@@ -63,6 +63,9 @@ export const flatCascade = tabViewOption('flatCascade');
 export const flatCompact = tabViewOption('flatCompact');
 export const showNotes = tabViewOption('showNotes');
 
+/** 이어받은 조각을 바로 아래 한 겹만(`direct`) 그릴지, 끝까지(`all`) 그릴지. */
+export const composeDepth = tabViewOption('composeDepth');
+
 /** 세로 정렬 모드 (same/even). */
 export const flatVAlign = tabViewOption('flatVAlign');
 

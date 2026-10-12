@@ -3,8 +3,9 @@
   import {
     mode, currentRound, currentStitch, showGrid, showConnections,
     flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign, knitStartSide,
-    fillMode, toggleColorMode, showNotes,
+    fillMode, toggleColorMode, showNotes, composeDepth,
   } from '$stores/mode';
+  import { activeHasNestedPieces } from '$stores/tabs';
   import { renderedChart } from '$stores/rendered';
   import ZoomModal from './ZoomModal.svelte';
   import ChartCanvas from './ChartCanvas.svelte';
@@ -263,6 +264,21 @@
       >
         <span class="grid-dot" class:on={$showNotes}></span> 메모 {$showNotes ? 'On' : 'Off'}
       </button>
+      {#if $activeHasNestedPieces}
+        <button
+          type="button"
+          class="tool-btn toggle-btn"
+          class:active={$composeDepth === 'all'}
+          onclick={() => composeDepth.set($composeDepth === 'all' ? 'direct' : 'all')}
+          aria-pressed={$composeDepth === 'all'}
+          title={$composeDepth === 'all'
+            ? '이어받은 조각을 끝까지 함께 그리는 중 (조각의 조각까지). 클릭: 바로 아래 한 겹만'
+            : '바로 이어 붙인 조각까지만 그리는 중. 클릭: 끝까지 함께 그리기'}
+        >
+          <span class="grid-dot" class:on={$composeDepth === 'all'}></span>
+          조각 {$composeDepth === 'all' ? '전부' : '한 겹'}
+        </button>
+      {/if}
       <button
         type="button"
         class="tool-btn toggle-btn"

@@ -18,6 +18,12 @@ export interface PositionedStitch {
   key?: string;
   /** 손으로 다듬은 배치의 transform. 없으면 자동 배치 그대로 */
   transform?: string;
+  /**
+   * 합쳐 그릴 때 **끌어온 다른 조각의 코** (`layout/compose`).
+   * 그림에만 쓰는 코라서, 이 레이아웃의 "첫 단·마지막 단" 을 찾을 때 세지 않는다 —
+   * 안 그러면 조각의 단 번호가 몸통의 것과 섞여 잇는 자리가 엉킨다.
+   */
+  foreign?: true;
   /** 1-based 단 번호 */
   roundIndex: number;
   position: Point;
