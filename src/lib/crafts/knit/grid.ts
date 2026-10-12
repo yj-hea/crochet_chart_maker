@@ -32,8 +32,20 @@ export const KNIT_CELL_WIDTH = 20;
 /** 게이지 미입력 시 세로 (가로:세로 = 1:0.7) */
 export const KNIT_CELL_HEIGHT = 14;
 
-/** 단 번호를 적을 좌우 여백 */
+/** 단 번호를 적을 좌우 여백 (번호 두 글자 기준) */
 const NUMBER_GUTTER = 18;
+/** 번호 글자 하나가 차지하는 폭 (font-size 7 기준) */
+const NUMBER_CHAR_WIDTH = 4.4;
+
+/** 가장 긴 단 번호가 들어갈 만큼 여백을 넓힌다 — `3~17`, `12-2` 같은 번호가 잘리지 않도록 */
+function numberGutter(rounds: ReadonlyArray<ExpandedRound>): number {
+  let longest = 2;
+  for (const r of rounds) {
+    const len = (r.label ?? String(r.index)).length;
+    if (len > longest) longest = len;
+  }
+  return Math.max(NUMBER_GUTTER, longest * NUMBER_CHAR_WIDTH + 6);
+}
 
 /** 폭 전파 반복 상한 — 보통 2~3 회면 수렴한다 */
 const WIDTH_PASSES = 8;
@@ -290,6 +302,7 @@ export function layoutKnitGrid(
   const compact = opts.compact ?? false;
   const startLeft = opts.startLeft ?? false;
   const cellHeight = KNIT_CELL_WIDTH * cellRatio(opts.gauge);
+  const gutter = numberGutter(rounds);
 
   // 1) 단별 표시 ops (좌→우)
   //    마커는 표시 순서로 뒤집은 **뒤에** 분리한다 — 겉면 단은 순서가 반전되므로
@@ -377,16 +390,16 @@ export function layoutKnitGrid(
       roundIndex: meta[r]!.round.index,
       ...(meta[r]!.round.label ? { label: meta[r]!.round.label } : {}),
       position: numberRight
-        ? { x: chartSpan * KNIT_CELL_WIDTH + NUMBER_GUTTER / 2, y: yCenter }
-        : { x: -NUMBER_GUTTER / 2, y: yCenter },
+        ? { x: chartSpan * KNIT_CELL_WIDTH + 3, y: yCenter }
+        : { x: -3, y: yCenter },
       direction: numberRight ? 'right' : 'left',
     });
   }
 
   const width = chartSpan * KNIT_CELL_WIDTH;
   const height = rowCount * cellHeight;
-  const minX = -NUMBER_GUTTER;
-  const maxX = width + NUMBER_GUTTER;
+  const minX = -gutter;
+  const maxX = width + gutter;
 
   return {
     stitches,

@@ -61,6 +61,7 @@ export const flatCascade = tabViewOption('flatCascade');
 
 /** 늘림·줄임이 만드는 빈칸 없이 기호를 촘촘히 배치 (평면 코바늘). */
 export const flatCompact = tabViewOption('flatCompact');
+export const showNotes = tabViewOption('showNotes');
 
 /** 세로 정렬 모드 (same/even). */
 export const flatVAlign = tabViewOption('flatVAlign');

@@ -53,6 +53,7 @@ export const knit: CraftDefinition = {
       emptyColor: opts.emptyColor,
       mainColor: opts.mainColor,
       symbolColor: opts.symbolColor,
+      notes: opts.notes,
     });
   },
 

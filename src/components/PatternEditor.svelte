@@ -8,16 +8,20 @@
   } from '$stores/pattern';
   import {
     setRoundDirection, toggleRoundContinued, addComment, workspace, insertRoundsAfter,
-    usedColors, orphanComments,
+    usedColors, orphanComments, activeStart, activeSplit,
   } from '$stores/tabs';
   import CommentPin from './CommentPin.svelte';
-  import { validateRound } from '$lib/validate';
+  import {
+    validateRound, validateRoundSpec, validateRoundRepeat, validateLinkTargets,
+  } from '$lib/validate';
+  import { planRounds } from '$lib/model/round-plan';
   import type { ValidationError } from '$lib/model/errors';
   import RoundLine, { type FocusRequest } from './RoundLine.svelte';
   import ShapeSelector from './ShapeSelector.svelte';
   import EvenIncModal from './EvenIncModal.svelte';
   import GaugeInput from './GaugeInput.svelte';
   import ShortRowModal from './ShortRowModal.svelte';
+  import PieceStartModal from './PieceStartModal.svelte';
   import PatternColors from './PatternColors.svelte';
   import OrphanCommentsModal from './OrphanCommentsModal.svelte';
 
@@ -29,18 +33,51 @@
   let colorsOpen = $state(false);
   let shortRowOpen = $state(false);
   let orphanOpen = $state(false);
+  let startOpen = $state(false);
 
-  // 인접 단 간 의미 오류 계산 (부모 produce vs 현재 consume)
+  /**
+   * 의미 오류 계산.
+   *
+   * 줄과 도안 행이 1:1 이 아니다 — 되풀이 줄(`1~2단 반복*3`)은 여러 행으로 펼쳐지고
+   * 접은 줄(`11~25단:`)은 한 행이다. 그래서 **도안 행 순서**로 코 수를 맞춰 보고,
+   * 그 행을 만든 줄에 오류를 붙인다.
+   */
   const validationByRound = $derived.by(() => {
     const rounds = $pattern.rounds;
     const map = new Map<string, ValidationError[]>();
-    for (let i = 0; i < rounds.length; i++) {
-      const r = rounds[i]!;
-      if (i === 0 || !r.expanded) { map.set(r.id, []); continue; }
-      const prev = rounds[i - 1];
-      if (!prev?.expanded) { map.set(r.id, []); continue; }
-      map.set(r.id, validateRound(r.expanded, prev.expanded));
+    for (const r of rounds) map.set(r.id, []);
+
+    const plan = planRounds(rounds);
+    // 조각을 이어 시작하는 도안이면 첫 단도 물려받은 코 수와 맞춰 본다
+    const start = $activeStart;
+    const first = plan.chart[0];
+    if (start && first && start.missing.length === 0) {
+      const inherited = {
+        index: 0, label: '이어받은 조각', ops: [], totalConsume: 0, totalProduce: start.count,
+      };
+      const line = rounds[first.lineIndex];
+      if (line) map.get(line.id)!.push(...validateRound(first.expanded, inherited));
     }
+    for (let i = 1; i < plan.chart.length; i++) {
+      const cur = plan.chart[i]!;
+      const line = rounds[cur.lineIndex];
+      if (!line) continue;
+      const errors = validateRound(cur.expanded, plan.chart[i - 1]!.expanded);
+      const list = map.get(line.id)!;
+      // 되풀이로 같은 오류가 여러 행에서 나와도 한 번만 보여 준다
+      for (const e of errors) if (!list.some((x) => x.kind === e.kind)) list.push(e);
+    }
+
+    rounds.forEach((r, i) => {
+      const number = r.number ?? i + 1;
+      const copies = plan.chart.filter((row) => row.lineIndex === i).length;
+      const earlier = plan.chart.filter((row) => row.lineIndex < i).map((row) => row.expanded);
+      map.get(r.id)!.push(
+        ...validateRoundSpec(r.expanded, r.spec, number),
+        ...validateRoundRepeat(r.repeat, copies, number),
+        ...(r.expanded ? validateLinkTargets(r.expanded, earlier) : []),
+      );
+    });
     return map;
   });
 
@@ -205,6 +242,33 @@
       <i class="fa-solid fa-palette"></i> 배색
       {#if $usedColors.length > 0}<span class="badge">{$usedColors.length}</span>{/if}
     </button>
+    <button
+      type="button"
+      class="start-btn"
+      class:set={!!$activeStart}
+      onclick={() => (startOpen = true)}
+      title="이 도안이 어떻게 시작하는지 — 조각 잇기 · 이어받기"
+    >
+      <i class="fa-solid fa-code-merge"></i>
+      {#if $activeStart}
+        {$activeStart.label}
+      {:else}
+        조각 잇기
+      {/if}
+    </button>
+    {#if $activeSplit}
+      <span
+        class="split-chip"
+        class:warn={$activeSplit.overlaps.length > 0 || $activeSplit.overflow.length > 0}
+        title="이 도안을 이어받는 파트들 — 남는 코는 쉼코입니다"
+      >
+        <i class="fa-solid fa-code-branch"></i>
+        {$activeSplit.children.map((c) => `${c.name} ${c.count}코`).join(' · ')}
+        {#if $activeSplit.leftover > 0}· 쉼코 {$activeSplit.leftover}코{/if}
+        {#if $activeSplit.overlaps.length > 0}· 겹침!{/if}
+        {#if $activeSplit.overflow.length > 0}· 범위 벗어남!{/if}
+      </span>
+    {/if}
     <div class="header-spacer"></div>
     {#if $orphanComments.length > 0}
       <button
@@ -241,7 +305,7 @@
       parsed={round.parsed}
       usedColors={usedColorList}
       validationErrors={validationByRound.get(round.id) ?? []}
-      stitchCount={round.expanded?.totalProduce}
+      stitchCount={round.repeat ? undefined : round.expanded?.totalProduce}
       canDelete={$pattern.rounds.length > 1}
       roundComment={roundCommentByRound.get(round.id)}
       direction={round.direction ?? 'forward'}
@@ -296,6 +360,10 @@
   />
 {/if}
 
+{#if startOpen}
+  <PieceStartModal onClose={() => (startOpen = false)} />
+{/if}
+
 {#if shortRowOpen}
   <ShortRowModal
     defaultTotal={defaultFromCount}
@@ -328,6 +396,42 @@
     border-bottom: 1px solid var(--border, #e2e2e2);
     background: var(--bg, #f5f5f5);
   }
+  /* 나눠 주는 쪽 — 누가 몇 코를 가져가는지 */
+  .split-chip {
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 4px 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .split-chip.warn { color: var(--danger, #e53935); border-color: currentColor; }
+
+  /* 조각 시작 방식 — 설정돼 있으면 또렷하게 */
+  .start-btn {
+    border: 1px solid var(--border-light);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 4px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 260px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .start-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .start-btn.set { color: var(--text); border-color: var(--accent, #4d86ff); }
   .header-spacer { flex: 1; }
   /* 접었다 펴는 헤더 버튼 — 게이지·배색 */
   .disclosure {

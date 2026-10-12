@@ -14,6 +14,9 @@ import type {
   RoundMarker,
   PositionedMarker,
 } from '$lib/layout/types';
+import { LEGEND_KEY } from '$lib/layout/adjust';
+import { renderNotes, type ChartNote } from '$lib/render/notes';
+import { renderDecorations } from '$lib/render/decorations';
 import { KNIT_SYMBOL_DEFS, knitSymbolId } from './symbols';
 import { STITCH_COLOR, GRID_COLOR } from '$lib/render/palette';
 import { contrastInk } from '$lib/render/contrast';
@@ -26,6 +29,8 @@ const MARKER_STROKE = 1.6;
 
 export interface KnitRenderOptions {
   layout: LayoutResult;
+  /** 도안에 함께 그릴 메모 */
+  notes?: ReadonlyArray<ChartNote>;
   /** 대바늘은 격자가 도안의 일부라 기본 true. false 면 테두리를 숨긴다. */
   showGrid?: boolean;
   /** 배색 범례 표시 (기본 true — 색이 쓰인 경우에만 그려짐) */
@@ -61,8 +66,15 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
   const legendHeight = legend.length > 0
     ? LEGEND_GAP + legend.length * LEGEND_ROW_HEIGHT
     : 0;
-  const viewBox = `${bounds.minX - pad} ${bounds.minY - pad} ` +
-    `${bounds.width + pad * 2} ${bounds.height + legendHeight + pad * 2}`;
+  // 메모는 도안 밖에 놓이므로 먼저 그려 경계를 넓힌다
+  const notes = renderNotes(opts.notes ?? [], layout);
+  const nb = notes.box;
+  const viewMinX = Math.min(bounds.minX, nb?.minX ?? bounds.minX) - pad;
+  const viewMinY = Math.min(bounds.minY, nb?.minY ?? bounds.minY) - pad;
+  const viewMaxX = Math.max(bounds.maxX, nb?.maxX ?? bounds.maxX) + pad;
+  const viewMaxY = Math.max(bounds.maxY, nb?.maxY ?? bounds.maxY) + pad;
+  const viewBox = `${viewMinX} ${viewMinY} ` +
+    `${viewMaxX - viewMinX} ${viewMaxY - viewMinY + legendHeight}`;
 
   // 코가 없는 칸은 모두 같은 회색으로 채운다 —
   // 구멍(코막음·열 맞춤), 정렬용 여백, 그리고 되돌아뜨기의 미작업 코(unw).
@@ -81,11 +93,14 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
     renderFillers(greyCells, cell, emptyColor),
     renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
-    showGrid ? renderCellBorders(layout, cell) : '',
+    showGrid && !layout.noGrid ? renderCellBorders(layout, cell) : '',
+    renderDecorations(layout.decorations),
     renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
+    renderFoldMarks(layout.roundMarkers, cell, bounds),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
-    renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP),
+    renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP, layout.legendTransform),
+    notes.svg,
     `</svg>`,
   ].join('');
 }
@@ -143,13 +158,32 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   return groups.join('');
 }
 
+/**
+ * 캔버스에서 고를 수 있도록 키를 붙인다.
+ *
+ * `data-cx`/`data-cy` 는 이 요소의 **중심**(도안 좌표) — 캔버스가 크기·회전의 기준점으로
+ * 쓴다. 기호의 잉크 경계로 중심을 짐작하면 빈 기호(미작업 코)나 한쪽으로 치우친 기호에서
+ * 기준이 어긋난다.
+ */
+function selectable(
+  key: string | undefined,
+  transform: string | undefined,
+  center: { x: number; y: number },
+  body: string,
+): string {
+  if (!key) return body;
+  const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
+  return `<g data-el="${escapeAttr(key)}" data-cx="${fmt(center.x)}" data-cy="${fmt(center.y)}"${t}>${body}</g>`;
+}
+
 function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
   // 실 색을 지정한 코만 색을 덮어쓴다 (지정 없으면 그룹의 기본 기호색을 물려받는다).
   // 칸 채우기 모드에서는 그 칸 배경 위에서 읽히도록 대비색으로 그린다.
   const ink = s.op.color ? (fillMode ? contrastInk(s.op.color) : s.op.color) : undefined;
   const colorStyle = ink ? ` style="color: ${escapeAttr(ink)}"` : '';
   // position 은 이미 칸(여러 칸일 수 있음) 의 중심이다
-  return `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
+  const use = `<use href="#${knitSymbolId(s.op.kind)}" x="${fmt(s.position.x)}" y="${fmt(s.position.y)}"${colorStyle}/>`;
+  return selectable(s.key, s.transform, s.position, use);
 }
 
 /**
@@ -197,6 +231,7 @@ function renderLegend(
   entries: Array<{ color: string; count: number }>,
   x: number,
   y: number,
+  transform?: string,
 ): string {
   if (entries.length === 0) return '';
   const rows = entries.map((e, i) => {
@@ -209,7 +244,33 @@ function renderLegend(
       `${escapeAttr(e.color)} — ${e.count}코</text>`
     );
   });
-  return `<g class="legend">${rows.join('')}</g>`;
+  const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
+  const cy = y + (rows.length * LEGEND_ROW_HEIGHT) / 2;
+  return `<g class="legend" data-el="${LEGEND_KEY}" data-cx="${fmt(x)}" data-cy="${fmt(cy)}"${t}>${rows.join('')}</g>`;
+}
+
+/**
+ * 접은 단 표시 — `11~25단:` 처럼 여러 단을 한 줄로 적으면 그 줄 위에 물결선을 긋는다.
+ * "여기에 같은 단이 더 있다"는 뜻이라, 번호(`11~25`)와 함께 읽힌다.
+ */
+function renderFoldMarks(
+  markers: RoundMarker[],
+  cell: { width: number; height: number },
+  bounds: LayoutResult['bounds'],
+): string {
+  const folded = markers.filter((m) => (m.label ?? '').includes('~'));
+  if (folded.length === 0) return '';
+  const parts = folded.map((m) => {
+    const y = m.position.y - cell.height / 2;
+    const step = 8;
+    const d: string[] = [`M ${fmt(bounds.minX)},${fmt(y)}`];
+    for (let x = bounds.minX; x < bounds.maxX; x += step) {
+      d.push(`q ${fmt(step / 2)},-3 ${fmt(step)},0`);
+    }
+    return `<path d="${d.join(' ')}" fill="none" stroke="${STITCH_COLOR}" stroke-width="0.9" ` +
+      `stroke-linecap="round" opacity="0.5"/>`;
+  });
+  return `<g class="fold-marks">${parts.join('')}</g>`;
 }
 
 /** 단 번호 — 겉면 단은 격자 오른쪽, 안면 단은 왼쪽 */
@@ -217,10 +278,11 @@ function renderRoundNumbers(markers: RoundMarker[]): string {
   if (markers.length === 0) return '';
   const parts = markers.map((m) => {
     const anchor = m.direction === 'right' ? 'start' : 'end';
-    return `<text x="${fmt(m.position.x)}" y="${fmt(m.position.y)}" font-size="7" ` +
+    const text = `<text x="${fmt(m.position.x)}" y="${fmt(m.position.y)}" font-size="7" ` +
       `font-family="system-ui, sans-serif" fill="${STITCH_COLOR}" ` +
       `text-anchor="${anchor}" dominant-baseline="central">` +
       `${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
+    return selectable(m.key, m.transform, m.position, text);
   });
   return `<g class="round-numbers">${parts.join('')}</g>`;
 }
@@ -246,10 +308,10 @@ function renderStitchMarkers(
         `font-family="system-ui, sans-serif" fill="${color}" ` +
         `dominant-baseline="ideographic">${escapeAttr(m.label)}</text>`
       : '';
-    return (
+    return selectable(m.key, m.transform, m.position,
       `<line x1="${fmt(x)}" y1="${fmt(y - h)}" x2="${fmt(x)}" y2="${fmt(y + h)}" ` +
       `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
-      `vector-effect="non-scaling-stroke"/>` + label
+      `vector-effect="non-scaling-stroke"/>` + label,
     );
   });
   return `<g class="stitch-markers">${parts.join('')}</g>`;

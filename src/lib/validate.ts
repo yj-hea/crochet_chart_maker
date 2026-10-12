@@ -10,6 +10,7 @@
 
 import type { ExpandedRound, Op } from '$lib/expand/op';
 import type { ValidationError, SourceRange } from '$lib/model/errors';
+import { isFolded, type RoundSpec, type RoundRepeat } from '$lib/model/round-spec';
 
 /**
  * 같은 단 내 standalone chain → 이후 op 가 chain 위에 코를 떠는 (chain-as-parent) 만큼
@@ -21,7 +22,7 @@ function inRoundChainConsumed(ops: ReadonlyArray<Op>): { consumed: number; hidde
   let consumed = 0;
   for (const op of ops) {
     if (op.sameHoleContinuation) continue;
-    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && op.produce > 0) {
+    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && !op.chainRole && op.produce > 0) {
       queue += op.produce;
       continue;
     }
@@ -60,11 +61,16 @@ export function validateRound(
 
   if (actual === expected) return [];
 
+  // 조각을 이어 시작하는 도안의 가상 부모(index 0)는 "N단" 이 아니다
+  const from = previous.index === 0
+    ? (previous.label ?? '앞')
+    : `${roundName(previous)}단`;
+
   if (actual > expected) {
     return [{
       kind: 'over_consumed',
       roundIndex: current.index,
-      message: `${roundName(previous)}단의 코 수(${expected}코)를 초과하여 소비합니다 `
+      message: `${from}의 코 수(${expected}코)를 초과하여 소비합니다 `
         + `(${actual}코 소비, ${actual - expected}코 초과)`,
       offendingRange: findOverflowRange(current, expected),
       expected,
@@ -76,8 +82,7 @@ export function validateRound(
   return [{
     kind: 'under_consumed',
     roundIndex: current.index,
-    message: `${roundName(previous)}단의 ${expected}코 중 ${actual}코만 소비합니다 `
-      + `(${expected - actual}코 부족)`,
+    message: `${from}의 ${expected}코 중 ${actual}코만 소비합니다 (${expected - actual}코 부족)`,
     expected,
     actual,
   }];
@@ -94,7 +99,7 @@ function findOverflowRange(
   let cumulative = 0;
   let queue = 0;
   for (const op of round.ops) {
-    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && !op.sameHoleContinuation && op.produce > 0) {
+    if (op.kind === 'CHAIN' && !op.inSameHoleGroup && !op.turningChain && !op.sameHoleContinuation && !op.chainRole && op.produce > 0) {
       queue += op.produce;
       continue;
     }
@@ -109,4 +114,129 @@ function findOverflowRange(
     }
   }
   return undefined;
+}
+
+/**
+ * 줄 맨 앞의 단 접두어(`11~25단:`)에 대한 검증.
+ *
+ *  - 접은 줄은 **같은 단을 되풀이**하는 것이므로 코 수가 변하면 안 된다.
+ *  - 적어 둔 번호가 실제 번호와 다르면 알려 준다 (위에 단을 끼워 넣으면 밀린다).
+ *    도안은 그대로 그려지므로 경고로만 둔다.
+ */
+export function validateRoundSpec(
+  current: ExpandedRound | undefined,
+  spec: RoundSpec | undefined,
+  actualNumber: number,
+): ValidationError[] {
+  if (!spec) return [];
+  const out: ValidationError[] = [];
+  const roundIndex = current?.index ?? actualNumber;
+
+  if (spec.reversed) {
+    out.push({
+      kind: 'number_mismatch',
+      roundIndex,
+      message: `단 범위가 거꾸로입니다 (${spec.from}~${spec.to}) — 한 단으로 봅니다`,
+      warning: true,
+      expected: spec.from,
+      actual: spec.to,
+    });
+  } else if (spec.from !== actualNumber) {
+    const label = spec.span > 1
+      ? `${actualNumber}~${actualNumber + spec.span - 1}단`
+      : `${actualNumber}단`;
+    out.push({
+      kind: 'number_mismatch',
+      roundIndex,
+      message: `적어 둔 번호(${spec.from}단)와 실제 번호가 다릅니다 — 여기는 ${label}입니다`,
+      warning: true,
+      expected: actualNumber,
+      actual: spec.from,
+    });
+  }
+
+  if (isFolded(spec) && current && current.totalConsume !== current.totalProduce) {
+    out.push({
+      kind: 'folded_changed',
+      roundIndex,
+      message:
+        `접어 적은 단은 같은 단을 되풀이하므로 코 수가 변하면 안 됩니다 ` +
+        `(${current.totalConsume}코 → ${current.totalProduce}코)`,
+      expected: current.totalConsume,
+      actual: current.totalProduce,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * `1~2단 반복*3` 줄 검증 — 가리킨 단을 찾지 못하면 아무것도 그려지지 않으므로 알려 준다.
+ */
+export function validateRoundRepeat(
+  repeat: RoundRepeat | undefined,
+  found: number,
+  roundIndex: number,
+): ValidationError[] {
+  if (!repeat || found > 0) return [];
+  const range = repeat.from === repeat.to ? `${repeat.from}단` : `${repeat.from}~${repeat.to}단`;
+  return [{
+    kind: 'repeat_missing',
+    roundIndex,
+    message: `되풀이할 ${range}을 앞에서 찾지 못했습니다`,
+    expected: repeat.to - repeat.from + 1,
+    actual: 0,
+  }];
+}
+
+/**
+ * 걸어뜨기가 가리킨 코가 실제로 있는지 (`fpF@1-2` / `fpF@^`).
+ *
+ * 없더라도 도안은 **보통 걸어뜨기로** 그려진다(설명서와 같은 태도). 선이 안 이어지는
+ * 이유를 알 수 있도록 경고만 띄운다.
+ */
+export function validateLinkTargets(
+  current: ExpandedRound,
+  earlier: ReadonlyArray<ExpandedRound>,
+): ValidationError[] {
+  const out: ValidationError[] = [];
+  const seen = new Set<string>();
+  for (const op of current.ops) {
+    const target = op.target;
+    if (!target) continue;
+    const key = target === 'nearest' ? '^' : `${target.round}-${target.stitch}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    if (target === 'nearest') {
+      const hasPost = earlier.some((r) => r.ops.some((o) => o.modifier === 'FP' || o.modifier === 'BP'));
+      if (!hasPost) {
+        out.push({
+          kind: 'target_missing',
+          roundIndex: current.index,
+          message: '이어 걸 걸어뜨기가 아래에 없습니다 — 보통 걸어뜨기로 그립니다',
+          warning: true,
+          expected: 1,
+          actual: 0,
+        });
+      }
+      continue;
+    }
+
+    const round = earlier.find((r) => r.index === target.round);
+    const stitches = round ? round.ops.filter((o) => o.produce > 0).length : 0;
+    if (!round || target.stitch < 1 || target.stitch > stitches) {
+      out.push({
+        kind: 'target_missing',
+        roundIndex: current.index,
+        message: round
+          ? `${target.round}단에는 ${target.stitch}번째 코가 없습니다 (${stitches}코) — 보통 걸어뜨기로 그립니다`
+          : `${target.round}단을 찾지 못했습니다 — 보통 걸어뜨기로 그립니다`,
+        warning: true,
+        expected: stitches,
+        actual: target.stitch,
+      });
+    }
+  }
+  return out;
 }

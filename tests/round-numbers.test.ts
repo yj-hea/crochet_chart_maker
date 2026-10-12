@@ -30,7 +30,7 @@ describe('표시용 단 번호', () => {
   });
 
   it('한 줄짜리 단은 번호에 가지를 붙이지 않는다', () => {
-    expect(formatRoundNumber({ number: 7, pass: 1, passes: 1 })).toBe('7');
+    expect(formatRoundNumber({ number: 7, pass: 1, passes: 1, span: 1 })).toBe('7');
   });
 
   it('빈 도안은 0단', () => {

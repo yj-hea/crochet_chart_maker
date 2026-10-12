@@ -14,13 +14,34 @@
     createTab(craft);
   }
 
-  // 복제는 "도안 추가"의 한 갈래 — 활성 도안을 통째로 베껴 그 옆에 새 탭으로 둔다
-  const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
+  /**
+   * 탭마다의 `⋯` 메뉴 — 이름 바꾸기 · 복제 · 닫기.
+   * `+` 는 **새 도안의 기법을 고르는 자리**로만 둔다 (복제는 그 탭에서 고르는 게 자연스럽다).
+   */
+  let menuForId = $state<string | null>(null);
+  let menuBtnEl: HTMLButtonElement | undefined = $state();
+  let tabMenuEl: HTMLDivElement | undefined = $state();
 
-  function duplicateActive() {
-    addMenuOpen = false;
-    if (activeTab) duplicateTab(activeTab.id);
+  function openTabMenu(e: MouseEvent, id: string) {
+    e.stopPropagation();
+    menuForId = menuForId === id ? null : id;
+    menuBtnEl = e.currentTarget as HTMLButtonElement;
   }
+
+  $effect(() => {
+    if (!menuForId) return;
+    queueMicrotask(() => placeDropdown(menuBtnEl, tabMenuEl, 'left'));
+    const reflow = () => placeDropdown(menuBtnEl, tabMenuEl, 'left');
+    const close = () => { menuForId = null; };
+    window.addEventListener('click', close);
+    window.addEventListener('resize', reflow);
+    window.addEventListener('scroll', reflow, true);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('resize', reflow);
+      window.removeEventListener('scroll', reflow, true);
+    };
+  });
 
   // .tab-bar 가 overflow 로 잘라내므로 메뉴는 position:fixed 로 띄우고 뷰포트에 clamp
   $effect(() => {
@@ -75,7 +96,6 @@
 <div class="tab-bar" role="tablist">
   {#each $workspace.tabs as tab (tab.id)}
     {@const isActive = tab.id === $workspace.activeTabId}
-    {@const canClose = $workspace.tabs.length > 1}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       class="tab"
@@ -102,18 +122,58 @@
       {:else}
         <span class="tab-craft" title={getCraft(tab.craft).label}>{getCraft(tab.craft).icon}</span>
         <span class="tab-name" title="더블클릭하여 이름 변경">{tab.name}</span>
-        {#if canClose}
-          <button
-            type="button"
-            class="tab-close"
-            onclick={(e) => handleClose(e, tab.id)}
-            aria-label="탭 닫기"
-            title="탭 닫기"
-          >×</button>
-        {/if}
+        <button
+          type="button"
+          class="tab-more"
+          onclick={(e) => openTabMenu(e, tab.id)}
+          aria-label="도안 메뉴"
+          aria-haspopup="menu"
+          aria-expanded={menuForId === tab.id}
+          title="이름 바꾸기 · 복제 · 닫기"
+        >⋯</button>
       {/if}
     </div>
   {/each}
+  {#if menuForId}
+    {@const target = $workspace.tabs.find((t) => t.id === menuForId)}
+    {#if target}
+      <div
+        class="add-menu"
+        role="menu"
+        tabindex="-1"
+        bind:this={tabMenuEl}
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => { if (e.key === 'Escape') menuForId = null; }}
+      >
+        <button
+          type="button" class="add-menu-item" role="menuitem"
+          onclick={() => { const t = target; menuForId = null; startEdit(t.id, t.name); }}
+        >
+          <span class="add-menu-icon"><i class="fa-solid fa-pen"></i></span>
+          <span>이름 바꾸기</span>
+        </button>
+        <button
+          type="button" class="add-menu-item" role="menuitem"
+          title="단·메모·게이지·표시 설정까지 그대로 복사해 옆에 새 탭으로 만듭니다"
+          onclick={() => { const t = target; menuForId = null; duplicateTab(t.id); }}
+        >
+          <span class="add-menu-icon"><i class="fa-regular fa-copy"></i></span>
+          <span>복제</span>
+        </button>
+        {#if $workspace.tabs.length > 1}
+          <div class="add-menu-divider"></div>
+          <button
+            type="button" class="add-menu-item danger" role="menuitem"
+            onclick={(e) => { const t = target; menuForId = null; handleClose(e, t.id); }}
+          >
+            <span class="add-menu-icon"><i class="fa-regular fa-trash-can"></i></span>
+            <span>닫기 (삭제)</span>
+          </button>
+        {/if}
+      </div>
+    {/if}
+  {/if}
+
   <div class="tab-add-wrap">
     <button
       type="button"
@@ -140,25 +200,24 @@
             <span>{craft.label} 도안</span>
           </button>
         {/each}
-        {#if activeTab}
-          <div class="add-menu-divider"></div>
-          <button
-            type="button"
-            class="add-menu-item"
-            role="menuitem"
-            onclick={duplicateActive}
-            title="단·메모·게이지·표시 설정까지 그대로 복사해 옆에 새 탭으로 만듭니다"
-          >
-            <span class="add-menu-icon"><i class="fa-regular fa-copy"></i></span>
-            <span>'{activeTab.name}' 복제</span>
-          </button>
-        {/if}
       </div>
     {/if}
   </div>
 </div>
 
 <style>
+  .tab-more {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+  }
+  .tab-more:hover { background: var(--bg-hover); color: var(--text); }
+  .add-menu-item.danger { color: var(--danger, #e53935); }
   .tab-craft {
     font-size: 12px;
     line-height: 1;
@@ -250,26 +309,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .tab-close {
-    flex-shrink: 0;
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    border: none;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .tab-close:hover {
-    background: var(--danger-light);
-    color: var(--danger);
   }
   .tab-input {
     width: 100%;

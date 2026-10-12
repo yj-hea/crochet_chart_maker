@@ -1,6 +1,7 @@
 <script lang="ts">
   import { currentRound, currentStitch } from '$stores/mode';
   import { workspace, type Comment } from '$stores/tabs';
+  import { chartRows } from '$stores/rendered';
   import { renderNarrative } from '$lib/narrative';
   import CommentPin from './CommentPin.svelte';
 
@@ -9,19 +10,17 @@
   }
   let { totalRounds }: Props = $props();
 
-  // 활성 탭과 현재 단의 parsed + 코멘트 조회
+  // 읽기 모드는 **도안 행**을 걷는다 — 접어 적은 줄은 한 행, 되풀이 줄은 여러 행이다
   const activeTab = $derived($workspace.tabs.find((t) => t.id === $workspace.activeTabId));
-  const currentRoundData = $derived(activeTab?.rounds[$currentRound - 1]);
-  // 현재 단의 stitch 개수 (op 기준, MAGIC 도 포함) — 코 네비게이션 총수
-  const stitchCountByRound = $derived.by(() => {
-    const counts: number[] = [];
-    if (!activeTab) return counts;
-    for (const r of activeTab.rounds) counts.push(r.expanded?.ops.length ?? 0);
-    return counts;
-  });
+  const currentRow = $derived($chartRows[$currentRound - 1]);
+  /** 이 행의 글·메모를 가진 줄 (되풀이 행은 원본 줄) */
+  const currentRoundData = $derived(
+    currentRow ? activeTab?.rounds.find((r) => r.id === currentRow.sourceLineId) : undefined,
+  );
+  const stitchCountByRound = $derived($chartRows.map((r) => r.stitchCount));
   const currentStitchTotal = $derived(stitchCountByRound[$currentRound - 1] ?? 0);
   // 되돌아뜨기로 번호를 나눠 쓰는 단은 `12-2` — 편집기·도안과 같은 번호를 보여준다
-  const currentRoundLabel = $derived(currentRoundData?.expanded?.label ?? String($currentRound));
+  const currentRoundLabel = $derived(currentRow?.label ?? String($currentRound));
   const narrative = $derived.by(() => {
     if (!currentRoundData) return { html: '', comments: [] as string[] };
     return renderNarrative(currentRoundData.parsed, currentRoundData.source, activeTab?.craft);

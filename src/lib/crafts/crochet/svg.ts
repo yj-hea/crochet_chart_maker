@@ -19,6 +19,8 @@
  */
 
 import { contrastInk } from '$lib/render/contrast';
+import { renderNotes, type ChartNote } from '$lib/render/notes';
+import { renderDecorations } from '$lib/render/decorations';
 import { DEFAULT_MAIN_COLOR, DEFAULT_SYMBOL_COLOR, type ColorMode } from '$lib/model/view-options';
 import type {
   LayoutResult,
@@ -26,6 +28,7 @@ import type {
   LayoutBounds,
   GridGuide,
   PositionedMarker,
+  Point,
 } from '$lib/layout/types';
 import { SYMBOL_DEFS, stitchSymbolId } from './symbols';
 import type { StitchKind } from '$lib/model/stitch-kind';
@@ -42,6 +45,8 @@ import {
 
 export interface RenderOptions {
   layout: LayoutResult;
+  /** 도안에 함께 그릴 메모 */
+  notes?: ReadonlyArray<ChartNote>;
   /**
    * 실 색을 어디에 칠할지. 코바늘 기본은 기호 선 색.
    * 'fill' 이면 기호 뒤에 색 원반을 깔고 기호를 명도 대비로 반전한다 —
@@ -69,9 +74,16 @@ export function renderSvg(opts: RenderOptions): string {
   const mainColor = opts.mainColor ?? DEFAULT_MAIN_COLOR;
   const symbolColor = opts.symbolColor ?? DEFAULT_SYMBOL_COLOR;
   const { bounds, stitches } = layout;
-  const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
+  // 메모는 도안 밖에 놓이므로 먼저 그려 경계를 넓힌다
+  const notes = renderNotes(opts.notes ?? [], layout);
+  const nb = notes.box;
+  const vMinX = Math.min(bounds.minX, nb?.minX ?? bounds.minX);
+  const vMinY = Math.min(bounds.minY, nb?.minY ?? bounds.minY);
+  const vMaxX = Math.max(bounds.maxX, nb?.maxX ?? bounds.maxX);
+  const vMaxY = Math.max(bounds.maxY, nb?.maxY ?? bounds.maxY);
+  const viewBox = `${vMinX} ${vMinY} ${vMaxX - vMinX} ${vMaxY - vMinY}`;
 
-  const grid = showGrid ? renderGrid(layout.gridGuide, bounds) : '';
+  const grid = showGrid && !layout.noGrid ? renderGrid(layout.gridGuide, bounds) : '';
   const connections = showConnections ? renderConnections(stitches) : '';
   const roundGroups = renderRoundGroups(stitches, fillMode);
   const markers = renderRoundMarkers(layout.roundMarkers);
@@ -92,9 +104,12 @@ export function renderSvg(opts: RenderOptions): string {
     renderStitchBackdrops(stitches, layout.gridGuide, fillMode, mainColor),
     grid,
     connections,
+    renderPostLinks(layout.postLinks ?? []),
+    renderDecorations(layout.decorations),
     roundGroups,
     markers,
     renderStitchMarkers(layout.stitchMarkers ?? [], layout.gridGuide),
+    notes.svg,
     `</svg>`,
   ].join('');
 }
@@ -136,10 +151,10 @@ function renderStitchMarkers(
         `font-family="system-ui, sans-serif" fill="${color}" ` +
         `dominant-baseline="central">${escapeAttr(m.label)}</text>`
       : '';
-    return (
+    return selectable(m.key, m.transform, m.position,
       `<line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" ` +
       `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
-      `vector-effect="non-scaling-stroke"/>` + label
+      `vector-effect="non-scaling-stroke"/>` + label,
     );
   });
   return `<g class="stitch-markers">${parts.join('')}</g>`;
@@ -155,13 +170,13 @@ function renderRoundMarkers(markers: import('$lib/layout/types').RoundMarker[]):
     if (m.direction === 'right') {
       // ▶: 꼭짓점이 오른쪽, 시작코를 가리킴. 숫자는 왼쪽에.
       const tri = `<path d="M ${fmt(x - TRI)},${fmt(y - TRI)} L ${fmt(x + TRI)},${fmt(y)} L ${fmt(x - TRI)},${fmt(y + TRI)} Z" fill="${STITCH_COLOR}"/>`;
-      const text = `<text x="${fmt(x - TRI - GAP)}" y="${fmt(y)}" font-size="8" font-family="system-ui, sans-serif" font-weight="600" fill="${STITCH_COLOR}" text-anchor="end" dominant-baseline="central">${m.roundIndex}</text>`;
-      return tri + text;
+      const text = `<text x="${fmt(x - TRI - GAP)}" y="${fmt(y)}" font-size="8" font-family="system-ui, sans-serif" font-weight="600" fill="${STITCH_COLOR}" text-anchor="end" dominant-baseline="central">${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
+      return selectable(m.key, m.transform, m.position, tri + text);
     }
     // ◀: 꼭짓점이 왼쪽. 숫자는 오른쪽에.
     const tri = `<path d="M ${fmt(x + TRI)},${fmt(y - TRI)} L ${fmt(x - TRI)},${fmt(y)} L ${fmt(x + TRI)},${fmt(y + TRI)} Z" fill="${STITCH_COLOR}"/>`;
-    const text = `<text x="${fmt(x + TRI + GAP)}" y="${fmt(y)}" font-size="8" font-family="system-ui, sans-serif" font-weight="600" fill="${STITCH_COLOR}" text-anchor="start" dominant-baseline="central">${m.roundIndex}</text>`;
-    return tri + text;
+    const text = `<text x="${fmt(x + TRI + GAP)}" y="${fmt(y)}" font-size="8" font-family="system-ui, sans-serif" font-weight="600" fill="${STITCH_COLOR}" text-anchor="start" dominant-baseline="central">${escapeAttr(m.label ?? String(m.roundIndex))}</text>`;
+    return selectable(m.key, m.transform, m.position, tri + text);
   });
   return `<g class="round-markers">${parts.join('')}</g>`;
 }
@@ -257,6 +272,19 @@ function alignToOffset(value: number, step: number, offset: number, floor: boole
     ? Math.floor((value - offset) / step)
     : Math.ceil((value - offset) / step);
   return offset + k * step;
+}
+
+/**
+ * 걸어뜨기 연결선 — 어느 코에 걸었는지 잇는 점선.
+ * 기호보다 **뒤에** 그려 기호를 가리지 않는다.
+ */
+function renderPostLinks(links: ReadonlyArray<{ from: Point; to: Point }>): string {
+  if (links.length === 0) return '';
+  const parts = links.map((l) =>
+    `<line x1="${fmt(l.from.x)}" y1="${fmt(l.from.y)}" x2="${fmt(l.to.x)}" y2="${fmt(l.to.y)}" ` +
+    `stroke="${STITCH_COLOR}" stroke-width="1" stroke-dasharray="3 2" opacity="0.65" ` +
+    `vector-effect="non-scaling-stroke"/>`);
+  return `<g class="post-links">${parts.join('')}</g>`;
 }
 
 function renderConnections(stitches: PositionedStitch[]): string {
@@ -385,7 +413,26 @@ function renderRoundGroups(stitches: PositionedStitch[], fillMode: boolean): str
   return groups.join('');
 }
 
+/**
+ * 캔버스에서 고를 수 있도록 키를 붙인다.
+ * `data-cx`/`data-cy` 는 이 요소의 **중심**(도안 좌표) — 캔버스가 크기·회전 기준으로 쓴다.
+ */
+function selectable(
+  key: string | undefined,
+  transform: string | undefined,
+  center: { x: number; y: number },
+  body: string,
+): string {
+  if (!key) return body;
+  const t = transform ? ` transform="${escapeAttr(transform)}"` : '';
+  return `<g data-el="${escapeAttr(key)}" data-cx="${fmt(center.x)}" data-cy="${fmt(center.y)}"${t}>${body}</g>`;
+}
+
 function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
+  return selectable(s.key, s.transform, s.position, renderStitchBody(s, fillMode));
+}
+
+function renderStitchBody(s: PositionedStitch, fillMode: boolean): string {
   const x = fmt(s.position.x);
   const y = fmt(s.position.y);
   const angleDeg = fmt(((s.angle ?? 0) * 180) / Math.PI);
@@ -405,7 +452,28 @@ function renderStitchUse(s: PositionedStitch, fillMode: boolean): string {
   }
 
   const sym = stitchSymbolId(s.op.kind);
+  // 걸어뜨기 — 기둥 아래에 갈고리를 덧그린다. 기호와 같은 기울기로 돌아야 해서
+  // 기호를 제자리(0,0)에 두고 그룹째 옮긴 뒤 돌린다.
+  if (s.op.modifier === 'FP' || s.op.modifier === 'BP') {
+    const hook = postHook(s.op.kind, s.op.modifier, s.op.yarnOverCount);
+    return `<g transform="translate(${x} ${y}) rotate(${angleDeg})"${colorStyle}>` +
+      `<use href="#${sym}"/>${hook}</g>`;
+  }
   return `<use href="#${sym}" x="${x}" y="${y}" transform="rotate(${angleDeg} ${x} ${y})"${colorStyle}/>`;
+}
+
+/**
+ * 걸어뜨기 갈고리.
+ *
+ * 아래 코의 머리가 아니라 **기둥**을 감아 뜨는 코라, 기호 기둥의 아래 끝을 갈고리로
+ * 굽혀 표시한다. 앞걸어는 오른쪽, 뒤걸어는 왼쪽으로 굽힌다 (서로 거울상).
+ */
+function postHook(kind: StitchKind, modifier: 'FP' | 'BP', yarnOverCount?: number): string {
+  const h = legHalfLength(kind, yarnOverCount);
+  const dir = modifier === 'FP' ? 1 : -1;
+  // 기둥 끝에서 살짝 위부터 꺾어 ㄴ 자로 감아 돈다
+  const d = `M 0,${fmt(h - 3.5)} q 0,${fmt(3.5)} ${fmt(dir * 4)},${fmt(3.5)}`;
+  return `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`;
 }
 
 /** N 개 yarn-over 기둥긴뜨기 를 동적으로 렌더 (N≥4). TR(n=2)/DTR(n=3) 와 같은 스타일. */

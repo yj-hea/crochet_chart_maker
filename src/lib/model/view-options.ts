@@ -49,6 +49,8 @@ export interface ViewOptions {
    * (대바늘은 "1코 = 1칸" 대신 "기호 하나 = 한 칸" 이 된다).
    */
   flatCompact: boolean;
+  /** 메모를 도안에 함께 그릴지 — 내보낸 도안 한 장에 설명이 같이 실린다 */
+  showNotes: boolean;
   flatVAlign: FlatVAlign;
   /**
    * 대바늘 차트를 어느 쪽부터 읽을지.
@@ -83,6 +85,7 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<ViewOptions> = Object.freeze({
   flatAlign: 'L',
   flatCascade: true,
   flatCompact: false,
+  showNotes: true,
   flatVAlign: 'same',
   knitStartSide: 'R',
   colorMode: 'auto',
@@ -115,6 +118,7 @@ export function normalizeViewOptions(raw: unknown): ViewOptions | undefined {
       : DEFAULT_VIEW_OPTIONS.flatAlign,
     flatCascade: bool(v.flatCascade, DEFAULT_VIEW_OPTIONS.flatCascade),
     flatCompact: bool(v.flatCompact, DEFAULT_VIEW_OPTIONS.flatCompact),
+    showNotes: bool(v.showNotes, DEFAULT_VIEW_OPTIONS.showNotes),
     flatVAlign: VALIGNS.includes(v.flatVAlign as string)
       ? (v.flatVAlign as FlatVAlign)
       : DEFAULT_VIEW_OPTIONS.flatVAlign,

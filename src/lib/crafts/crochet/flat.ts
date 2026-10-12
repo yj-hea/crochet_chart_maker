@@ -14,6 +14,7 @@ import type { PositionedStitch, Point, LayoutResult, RoundMarker } from '$lib/la
 import { FLAT_CELL_WIDTH } from '$lib/layout/constants';
 import { computeBounds, markerFarPoint } from '$lib/layout/bounds';
 import { extractMarkers, placeLinearMarkers } from '$lib/layout/markers';
+import { resolvePostLinks } from '$lib/layout/post-links';
 import { STITCH_META } from '$lib/crafts/crochet/stitch';
 
 const MARKER_SIDE_OFFSET = 16;
@@ -326,6 +327,7 @@ export function layoutFlat(inputRounds: ExpandedRound[], opts: FlatOptions = {})
     },
     roundMarkers,
     stitchMarkers: placeLinearMarkers(markerSlots, stitches),
+    postLinks: resolvePostLinks(stitches),
   };
 }
 
@@ -504,6 +506,7 @@ function placeRow(
       op.kind === 'CHAIN' &&
       !op.inSameHoleGroup &&
       !op.turningChain &&
+      !op.chainRole &&
       op.produce > 0
     ) {
       for (let k = 0; k < op.produce; k++) chainQueue.push(idx);

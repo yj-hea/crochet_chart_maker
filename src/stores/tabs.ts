@@ -10,8 +10,6 @@ import { writable, derived, get } from 'svelte/store';
 import type { ParsedRound } from '$lib/parser/ast';
 import type { ExpandedRound } from '$lib/expand/op';
 import {
-  saveWorkspace,
-  loadWorkspace,
   clearWorkspace,
   downloadAsFile,
   readFromFile,
@@ -22,7 +20,14 @@ import {
 } from '$lib/persistence';
 import { serializeAsText, parseTextFormat } from '$lib/persistence-text';
 import { getCraft, DEFAULT_CRAFT, type CraftId } from '$lib/crafts';
-import { roundNumbers, formatRoundNumber } from '$lib/model/round-numbers';
+import {
+  readRoundSpec, readRoundRepeat, type RoundSpec, type RoundRepeat,
+} from '$lib/model/round-spec';
+import { planRounds } from '$lib/model/round-plan';
+import {
+  resolveStart, splitOf, type PieceStart, type PieceInfo, type SplitInfo,
+} from '$lib/model/pieces';
+import { isEmptyAdjust, mergeAdjust, type Adjust, type Adjustments } from '$lib/layout/adjust';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
   replaceColorInRound,
@@ -68,6 +73,15 @@ export interface PatternRoundState {
    * 단 번호를 앞 줄과 나눠 쓴다 (`$lib/model/round-numbers`).
    */
   continued?: boolean;
+  /**
+   * 줄 맨 앞의 단 접두어 (`11~25단:`). 소스에서 파생되는 값이라 저장하지 않는다.
+   * `spec.span` 이 2 이상이면 그 줄 하나가 여러 단을 나타낸다 (접은 줄).
+   */
+  spec?: RoundSpec;
+  /** `1~2단 반복*3` — 앞의 단들을 통째로 되풀이하는 줄. 소스에서 파생된다 */
+  repeat?: RoundRepeat;
+  /** 계산된 단 번호 (1-based). 접은 줄이면 시작 번호. 파생값이라 저장하지 않는다 */
+  number?: number;
   parsed?: ParsedRound;
   expanded?: ExpandedRound;
 }
@@ -86,6 +100,13 @@ export interface Tab {
   view?: ViewOptions;
   shape: ShapeKind;
   rounds: PatternRoundState[];
+  /** 캔버스에서 손으로 다듬은 배치 (키 → 보정값). 자동 배치 위에 덧입혀진다 */
+  adjust?: Adjustments;
+  /**
+   * 이 도안(조각)이 **어떻게 시작하는지** — 혼자(없음) / 조각 잇기 / 이어받기.
+   * 같은 작품 안의 다른 도안을 탭 id 로 가리킨다 (`lib/model/pieces.ts`).
+   */
+  startsFrom?: PieceStart;
   comments: Comment[];
   /** Read 모드 진행 상태 — 파일에 포함해 다른 기기에서 이어보기 가능 */
   progress?: SavedProgress;
@@ -108,17 +129,21 @@ function makeTabId(): string {
 
 function reparse(craftId: CraftId, idx: number, source: string, direction?: RoundDirection) {
   const craft = getCraft(craftId);
-  const parsed = craft.parseRound(idx, source);
+  // `11~25단:` 같은 접두어는 코 문법이 아니다 — 자리를 지킨 채 공백으로 덮어 넘긴다
+  const repeat = readRoundRepeat(source);
+  // `1~2단 반복*3` 은 코가 아니라 지시문이다 — 파서에는 빈 줄로 넘긴다
+  const { spec, masked } = repeat ? { spec: undefined, masked: '' } : readRoundSpec(source);
+  const parsed = craft.parseRound(idx, masked);
   const tree = parsed.body ?? parsed.lastValid;
   const expanded = tree ? craft.expand(tree, idx) : undefined;
   if (expanded) expanded.direction = direction ?? 'forward';
-  return { parsed, expanded };
+  return { parsed, expanded, spec, repeat };
 }
 
 function reparseAll(rounds: PatternRoundState[], craftId: CraftId): PatternRoundState[] {
   return resolveRounds(rounds.map((r, i) => {
-    const { parsed, expanded } = reparse(craftId, i + 1, r.source, r.direction);
-    return { ...r, parsed, expanded };
+    const { parsed, expanded, spec, repeat } = reparse(craftId, i + 1, r.source, r.direction);
+    return { ...r, parsed, expanded, ...(spec ? { spec } : {}), ...(repeat ? { repeat } : {}) };
   }), craftId);
 }
 
@@ -134,12 +159,12 @@ function resolveRounds(rounds: PatternRoundState[], craftId: CraftId): PatternRo
   const resolved = craft.resolveRounds
     ? craft.resolveRounds(rounds.map((r) => r.expanded))
     : rounds.map((r) => r.expanded);
-  const numbers = roundNumbers(rounds.map((r) => r.continued));
-  return rounds.map((r, i) => {
-    const expanded = resolved[i];
-    if (!expanded) return r.expanded === expanded ? r : { ...r, expanded };
-    const label = formatRoundNumber(numbers[i]!);
-    return { ...r, expanded: { ...expanded, label } };
+  const withResolved = rounds.map((r, i) => ({ ...r, expanded: resolved[i] }));
+  const plan = planRounds(withResolved);
+  return withResolved.map((r, i) => {
+    const { number, label } = plan.lines[i]!;
+    if (!r.expanded) return { ...r, number };
+    return { ...r, number, expanded: { ...r.expanded, label } };
   });
 }
 
@@ -181,6 +206,8 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     view: normalizeViewOptions(saved.view) ?? readViewSeed(),
     shape: saved.shape,
     rounds: reparseAll(rounds, craft),
+    ...(saved.adjust ? { adjust: saved.adjust } : {}),
+    ...(saved.startsFrom ? { startsFrom: saved.startsFrom } : {}),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
     ...(saved.progress ? { progress: saved.progress } : {}),
   };
@@ -255,17 +282,21 @@ function copyTabName(original: string, existing: Tab[]): string {
   }
 }
 
-function initialState(): WorkspaceState {
-  const saved = loadWorkspace();
-  if (saved && saved.tabs.length > 0) {
-    const tabs = saved.tabs.map(tabFromSaved);
-    const activeTabId = tabs.some((t) => t.id === saved.activeTabId)
-      ? saved.activeTabId
-      : tabs[0]!.id;
-    return { tabs, activeTabId };
-  }
+/**
+ * 도안 하나짜리 빈 작업대.
+ * 프로젝트를 만들거나 아직 아무것도 열지 않았을 때의 상태다.
+ */
+export function emptyWorkspace(): WorkspaceState {
   const t = defaultTab();
   return { tabs: [t], activeTabId: t.id };
+}
+
+/**
+ * 부팅 상태 — **프로젝트를 열기 전까지는 빈 작업대**다.
+ * 어떤 작품을 열지는 시작 화면에서 고른다 (`stores/projects.ts`).
+ */
+function initialState(): WorkspaceState {
+  return emptyWorkspace();
 }
 
 export const workspace = writable<WorkspaceState>(initialState());
@@ -294,6 +325,8 @@ export function toSavedTab(t: Tab): SavedWorkspaceTab {
       if (r.continued) out.continued = true;
       return out;
     }),
+    ...(t.adjust && Object.keys(t.adjust).length > 0 ? { adjust: t.adjust } : {}),
+    ...(t.startsFrom ? { startsFrom: t.startsFrom } : {}),
     ...(t.comments.length > 0 ? { comments: t.comments.map((c) => toSavedComment(c, t.rounds)) } : {}),
     ...(t.progress ? { progress: t.progress } : {}),
   };
@@ -317,12 +350,37 @@ function toSavedComment(c: Comment, rounds: ReadonlyArray<PatternRoundState>): S
   };
 }
 
-// 자동 저장 — 매 변경마다
-workspace.subscribe((ws) => {
-  saveWorkspace({
-    tabs: ws.tabs.map(toSavedTab),
-    activeTabId: ws.activeTabId,
-  });
+/**
+ * 자동 저장 — 매 변경마다 **열어 둔 프로젝트**에 쓴다.
+ *
+ * 저장할 곳을 정하는 건 프로젝트 스토어의 몫이라(순환 참조를 피하려고) 그쪽에서
+ * 함수를 끼워 넣는다. 아직 아무 프로젝트도 열지 않았으면 아무 데도 쓰지 않는다 —
+ * 예전처럼 전역 워크스페이스 하나에 흘려 넣으면 어느 작품의 내용인지 잃는다.
+ */
+let persist: (() => void) | undefined;
+/**
+ * 프로젝트를 바꾸는 **동안에는 저장하지 않는다**.
+ * 새 작품의 내용이 들어오는 순간 저장 대상이 아직 이전 작품이면 이전 작품을 덮어쓴다.
+ */
+let suspended = false;
+
+export function setWorkspacePersister(fn: () => void): void {
+  persist = fn;
+}
+
+/** 저장을 멈춘 채로 작업대를 갈아 끼운다 (프로젝트 전환) */
+export function withoutPersist(fn: () => void): void {
+  suspended = true;
+  try {
+    fn();
+  } finally {
+    suspended = false;
+  }
+}
+
+workspace.subscribe(() => {
+  if (!persist || suspended) return;
+  persist();
   lastSavedAt.set(new Date());
 });
 
@@ -349,6 +407,7 @@ export const pattern = derived(workspace, ($ws) => {
       gauge: active.gauge,
       shape: active.shape,
       rounds: active.rounds,
+      adjust: active.adjust,
     };
   }
   return {
@@ -356,6 +415,7 @@ export const pattern = derived(workspace, ($ws) => {
     gauge: undefined as Gauge | undefined,
     shape: 'circular' as ShapeKind,
     rounds: [] as PatternRoundState[],
+    adjust: undefined as Adjustments | undefined,
   };
 });
 
@@ -432,6 +492,8 @@ export function duplicateTab(id: string): string {
       ...(src.view ? { view: { ...src.view } } : {}),
       ...(src.gauge ? { gauge: { ...src.gauge } } : {}),
       ...(src.progress ? { progress: { ...src.progress } } : {}),
+      ...(src.adjust ? { adjust: { ...src.adjust } } : {}),
+      ...(src.startsFrom ? { startsFrom: { ...src.startsFrom } } : {}),
     };
     newId = tab.id;
 
@@ -480,9 +542,9 @@ export function updateRoundSource(id: string, source: string): void {
     const idx = t.rounds.findIndex((r) => r.id === id);
     if (idx < 0) return t;
     const current = t.rounds[idx]!;
-    const { parsed, expanded } = reparse(t.craft, idx + 1, source, current.direction);
+    const { parsed, expanded, spec, repeat } = reparse(t.craft, idx + 1, source, current.direction);
     const newRounds = [...t.rounds];
-    newRounds[idx] = { ...current, source, parsed, expanded };
+    newRounds[idx] = { ...current, source, parsed, expanded, spec, repeat };
     // 이 단의 코 수가 바뀌면 뒤 단의 미작업 코 계산도 달라진다
     return { ...t, rounds: resolveRounds(newRounds, t.craft) };
   });
@@ -744,6 +806,149 @@ export function reattachComment(commentId: string, roundId: string): 'attached' 
     };
   });
   return result;
+}
+
+// ============================================================
+// 조각 — 잇기 · 이어받기
+// ============================================================
+
+/** 같은 작품 안의 다른 도안들 (조각 고르기·코 수 계산용) */
+export const siblingPieces = derived(workspace, ($ws): PieceInfo[] => {
+  return $ws.tabs.map((t) => {
+    const last = [...t.rounds].reverse().find((r) => (r.expanded?.ops.length ?? 0) > 0);
+    return { id: t.id, name: t.name, lastCount: last?.expanded?.totalProduce ?? 0 };
+  });
+});
+
+/** 활성 도안의 시작 방식과, 그것이 물려주는 코 수 */
+export const activeStart = derived(workspace, ($ws) => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  if (!active?.startsFrom) return undefined;
+  const pieces: PieceInfo[] = $ws.tabs
+    .filter((t) => t.id !== active.id)
+    .map((t) => {
+      const last = [...t.rounds].reverse().find((r) => (r.expanded?.ops.length ?? 0) > 0);
+      return { id: t.id, name: t.name, lastCount: last?.expanded?.totalProduce ?? 0 };
+    });
+  const resolved = resolveStart(active.startsFrom, pieces);
+  return resolved ? { start: active.startsFrom, ...resolved } : undefined;
+});
+
+/**
+ * 활성 도안을 **이어받는 파트들** — 나누기의 반대쪽.
+ * 누가 몇 코를 어디서부터 가져가는지, 남는 코(쉼코)는 몇 코인지 센다.
+ */
+export const activeSplit = derived(workspace, ($ws): SplitInfo | undefined => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  if (!active) return undefined;
+  const last = [...active.rounds].reverse().find((r) => (r.expanded?.ops.length ?? 0) > 0);
+  const total = last?.expanded?.totalProduce ?? 0;
+  const children = $ws.tabs
+    .filter((t) => t.startsFrom?.kind === 'from' && t.startsFrom.piece === active.id)
+    .map((t) => {
+      const from = t.startsFrom as Extract<PieceStart, { kind: 'from' }>;
+      return { id: t.id, name: t.name, at: from.at ?? 1, count: from.stitches ?? total };
+    });
+  if (children.length === 0) return undefined;
+  return splitOf(total, children);
+});
+
+/** 이 도안이 어떻게 시작하는지 정한다 (undefined = 혼자 시작) */
+export function setTabStart(id: string, start: PieceStart | undefined): void {
+  workspace.update((ws) => ({
+    ...ws,
+    tabs: ws.tabs.map((t) => {
+      if (t.id !== id) return t;
+      const next = { ...t };
+      if (start) next.startsFrom = start;
+      else delete next.startsFrom;
+      return next;
+    }),
+  }));
+}
+
+// ============================================================
+// 캔버스 — 손으로 다듬은 배치
+// ============================================================
+
+/** 활성 탭의 보정값 */
+export const adjustments = derived(workspace, ($ws): Adjustments => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  return active?.adjust ?? {};
+});
+
+/** 손으로 옮긴 요소 수 — 도구바 표시용 */
+export const adjustCount = derived(adjustments, ($a) => Object.keys($a).length);
+
+/** 되돌리기 스택 — 탭마다 직전 보정값들을 쌓아 둔다 (세션 한정) */
+const adjustHistory = new Map<string, Adjustments[]>();
+const ADJUST_HISTORY_MAX = 50;
+
+/** 보정을 바꾸기 직전 상태를 스택에 넣는다 */
+function pushAdjustHistory(tabId: string, before: Adjustments): void {
+  const stack = adjustHistory.get(tabId) ?? [];
+  stack.push(before);
+  if (stack.length > ADJUST_HISTORY_MAX) stack.shift();
+  adjustHistory.set(tabId, stack);
+}
+
+function writeAdjust(next: (current: Adjustments) => Adjustments): void {
+  updateActiveTab((t) => {
+    const current = t.adjust ?? {};
+    const updated = next(current);
+    // 빈 보정은 지워서 "손으로 옮긴 N개" 가 실제 개수와 맞게 둔다
+    const cleaned: Adjustments = {};
+    for (const [k, v] of Object.entries(updated)) if (!isEmptyAdjust(v)) cleaned[k] = v;
+    pushAdjustHistory(t.id, current);
+    if (Object.keys(cleaned).length === 0) {
+      const { adjust: _drop, ...rest } = t;
+      return rest as Tab;
+    }
+    return { ...t, adjust: cleaned };
+  });
+}
+
+/** 고른 요소들을 같은 양만큼 옮기거나 키우거나 돌린다 (기존 보정에 더한다) */
+export function nudgeElements(keys: ReadonlyArray<string>, delta: Adjust): void {
+  if (keys.length === 0 || isEmptyAdjust(delta)) return;
+  writeAdjust((current) => {
+    const next = { ...current };
+    for (const key of keys) next[key] = mergeAdjust(current[key], delta);
+    return next;
+  });
+}
+
+/** 보정값을 그대로 지정 (여러 개를 한 번에 — 되돌리기 한 칸으로 묶인다) */
+export function setElementAdjust(entries: Readonly<Record<string, Adjust>>): void {
+  if (Object.keys(entries).length === 0) return;
+  writeAdjust((current) => ({ ...current, ...entries }));
+}
+
+/** 배치 초기화 — 키를 주지 않으면 이 도안 전체 */
+export function resetAdjustments(keys?: ReadonlyArray<string>): void {
+  writeAdjust((current) => {
+    if (!keys) return {};
+    const next = { ...current };
+    for (const key of keys) delete next[key];
+    return next;
+  });
+}
+
+/** 마지막 배치 변경을 되돌린다 */
+export function undoAdjust(): boolean {
+  let undone = false;
+  updateActiveTab((t) => {
+    const stack = adjustHistory.get(t.id);
+    const before = stack?.pop();
+    if (!before) return t;
+    undone = true;
+    if (Object.keys(before).length === 0) {
+      const { adjust: _drop, ...rest } = t;
+      return rest as Tab;
+    }
+    return { ...t, adjust: before };
+  });
+  return undone;
 }
 
 /**

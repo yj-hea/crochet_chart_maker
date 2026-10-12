@@ -224,6 +224,73 @@
       </section>
 
       <section>
+        <h3>여러 단을 한 줄로 — 접어 적기 · 되풀이</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>11~25단: k30</code></td><td>증감 없이 같은 단이 이어질 때 <b>한 줄로 접어</b> 적는다.
+              도안에는 <code>11~25</code> 라벨로 한 줄만 그려지고 위에 물결선이 붙는다.<br>
+              <code>11-25:</code> · <code>11 ~ 25 단 :</code> 처럼 적어도 된다</td></tr>
+            <tr><td><code>7단: k30</code></td><td>번호만 적어 두는 것 — 한 단</td></tr>
+            <tr><td>번호가 밀리면</td><td>위에 단을 끼워 넣어 번호가 달라지면 <b>안내만</b> 하고 도안은 그대로 그린다
+              (적어 둔 번호를 앱이 말없이 고치지 않는다)</td></tr>
+            <tr><td>주의</td><td>접은 줄은 같은 단을 되풀이하므로 <b>코 수가 변하면 오류</b>다 —
+              늘림·줄임이 있는 단은 접을 수 없다</td></tr>
+            <tr><td><code>1~2단 반복*3</code></td><td>앞의 단들을 <b>통째로 되풀이</b>한다 (무늬 단).
+              접어 적기와 달리 <b>모두 그려진다</b> — 무늬가 보여야 하기 때문.<br>
+              <code>1~2단 반복</code>(한 번) · <code>5단 반복 × 2</code> 도 된다. 그 줄에는 코를 적지 않는다</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>걸어뜨기 (앞걸어 · 뒤걸어)</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>fp</code> / <code>bp</code></td><td>다음 코를 <b>아래 코의 기둥</b>에 걸어 뜬다 — 골지·꽈배기 무늬.<br>
+              <code>fpF</code>(앞걸어 한길긴뜨기) · <code>bpT</code>(뒤걸어 긴뜨기) · <code>fp3F</code>(세 번)<br>
+              붙여 써도 띄어 써도 된다. 반복수는 변형자 뒤에 적는다</td></tr>
+            <tr><td>예</td><td><code>(fpF, bpF)*6</code> — 한길긴뜨기 골지</td></tr>
+            <tr><td>기호</td><td>기둥 아래에 갈고리가 붙는다 — <b>앞걸어는 오른쪽, 뒤걸어는 왼쪽</b>으로 굽는 거울상</td></tr>
+            <tr><td>코 수</td><td>코 자체는 그대로라 1 → 1 — 코 수 검증이 달라지지 않는다</td></tr>
+            <tr><td><code>fpF@1-2</code></td><td><b>걸 코 지정</b> — 1단 2번째 코에 건다. 걸린 코까지 점선이 그려진다<br>
+              코 번호는 그 단의 <b>코</b>를 센다 (스킵·사이사슬은 세지 않는다)</td></tr>
+            <tr><td><code>fpF@^</code></td><td><b>이어서</b> — 가장 가까운 아래 걸어뜨기에 이어 건다 (꽈배기·골지)</td></tr>
+            <tr><td>없는 자리</td><td>가리킨 코가 없으면 선을 긋지 않고 보통 걸어뜨기로 그린다 (편집기가 이유를 알려 준다)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>코 세는 규칙</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td><code>tc(O)</code></td><td>기둥코 <b>1코</b> — 코 수에 넣지 않는다 (0 → 0)</td></tr>
+            <tr><td><code>tc(3O)</code></td><td>기둥코 <b>2~5코</b> — 아래 코 하나를 차지하고 1코로 센다</td></tr>
+            <tr><td><code>tc+(3O)</code></td><td><b>추가</b> 기둥코 — 아래 코를 차지하지 않고 따로 서서 1코</td></tr>
+            <tr><td>단 끝 <code>sl</code></td><td>단을 닫는 빼뜨기는 코 수에서 뺀다 (중간 빼뜨기는 1코)</td></tr>
+            <tr><td><code>2cs</code></td><td><b>사이사슬</b> — 코와 코 사이 아치. 코 수에 들어가지 않는다<br>
+              예) <code>(1X, 2cs, skip(1))*6</code> 그물뜨기</td></tr>
+            <tr><td><code>2lc</code></td><td><b>연결사슬</b> — 아래 코를 그만큼 건너뛰며 잇는다. 코 수에 들어간다</td></tr>
+            <tr><td><code>2O</code></td><td>보통 사슬 — 코 수에 들어간다. 뒤에 <code>skip</code> 을 쓰면
+              <b>그 사슬</b>을 건너뛴다(같은 단 사슬 위에 뜨는 설계) — 아래 단 코를 건너뛰려면 <code>cs</code> 를 쓴다</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h3>메모를 도안에 함께</h3>
+        <table class="syntax-table">
+          <tbody>
+            <tr><td>도안 메모</td><td>도안 <b>위쪽</b>에 한 덩이로 그려진다 (실·바늘·게이지 같은 안내)</td></tr>
+            <tr><td>단 메모</td><td>그 단 <b>옆</b>에, 칸에서 점선을 끌어 붙는다</td></tr>
+            <tr><td>켜고 끄기</td><td>도안 위 <b>메모 On/Off</b> — 켜 두면 <b>내보내기(SVG·PNG)에도 그대로</b> 실려
+              기호와 설명이 한 장이 된다</td></tr>
+            <tr><td>자리 옮기기</td><td>캔버스에서 메모를 끌어 옮길 수 있다 (배치 초기화로 되돌림)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
         <h3>마커 (place marker)</h3>
         <table class="syntax-table">
           <tbody>

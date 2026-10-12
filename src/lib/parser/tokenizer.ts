@@ -5,7 +5,7 @@
  * 숫자, 구조 문자(`,`, `(`, `)`, `*`, `^`), 공백, 알 수 없는 문자를 분류.
  */
 
-import type { StitchKind, ModifierKind, AliasTable } from '$lib/model/stitch-kind';
+import { isModifierKind, type StitchKind, type ModifierKind, type AliasTable } from '$lib/model/stitch-kind';
 // 기본 바인딩은 코바늘 테이블. 대바늘 등 다른 크래프트는 config 로 자기 별칭을 주입한다.
 import { ALIAS_MAP, ALIAS_KEYS_BY_LENGTH } from '$lib/crafts/crochet/stitch';
 import type { SourceRange } from '$lib/model/errors';
@@ -27,12 +27,18 @@ export type TokenType =
   | 'STRING'    // "..." (코 코멘트)
   | 'HEX_COLOR' // #rgb | #rrggbb
   | 'COLOR_VALUE' // : 바로 뒤의 키워드/헥스값 (#없음)
+  | 'AT_TARGET' // @1-2 / @^ — 걸어뜨기를 걸 코 지정 (아래 단·코 번호 / 이어서)
   | 'UNKNOWN';  // 별칭에 없는 문자
+
+/** `@1-2` 는 1단 2번째 코, `@^` 는 "가장 가까운 아래 걸어뜨기에 이어서" */
+export type LinkTarget = { round: number; stitch: number } | 'nearest';
 
 export interface Token {
   type: TokenType;
   range: SourceRange;
   text: string;
+  /** AT_TARGET 전용 — 걸 코 */
+  target?: LinkTarget;
   /** NUMBER: 숫자값. STITCH/MODIFIER: 정규화된 kind. STRING: 내부 텍스트. 그 외: undefined */
   value?: number | StitchKind | ModifierKind | string;
 }
@@ -94,6 +100,26 @@ export function tokenize(input: string, config: TokenizerConfig = CROCHET_CONFIG
         continue;
       }
       // 알파숫자/# 가 아니면 에러 토큰, 그 후 normal mode 로
+    }
+
+    // 1.5) 걸 코 지정 — `@1-2` / `@^`
+    //      매직링 별칭 `@` 는 홀로 쓰이므로(`@, 6X`) 숫자·`^` 가 뒤따를 때만 이쪽으로 읽는다.
+    //      (예전에는 `@1` 이 매직링 + 숫자라 문법 오류였다 → 기존 도안과 겹치지 않는다)
+    if (ch === '@') {
+      const m = /^@(?:(\d+)\s*-\s*(\d+)|\^)/.exec(input.slice(i));
+      if (m) {
+        const target: LinkTarget = m[1] !== undefined
+          ? { round: Number(m[1]), stitch: Number(m[2]) }
+          : 'nearest';
+        tokens.push({
+          type: 'AT_TARGET',
+          range: { start: i, end: i + m[0].length },
+          text: m[0],
+          target,
+        });
+        i += m[0].length;
+        continue;
+      }
     }
 
     // 2) 구조 문자
@@ -170,7 +196,7 @@ export function tokenize(input: string, config: TokenizerConfig = CROCHET_CONFIG
     const aliasMatch = tryAliasMatch(input, i, config);
     if (aliasMatch) {
       const { key, kind, length } = aliasMatch;
-      const type: TokenType = kind === 'BLO' ? 'MODIFIER' : 'STITCH';
+      const type: TokenType = isModifierKind(kind) ? 'MODIFIER' : 'STITCH';
       tokens.push({
         type,
         range: { start: i, end: i + length },
@@ -244,13 +270,15 @@ function tryAliasMatch(input: string, start: number, config: TokenizerConfig): A
       // 다자 식별자 별칭(sc, hdc, blo 등)의 경우 뒤 문자가 또다른 알파벳이면
       // 부분 일치일 가능성이 있음 → 매칭 거부. 단일 문자 별칭(V, A, X, T, F, E 등)은
       // 연속 작성(VT, AF) 허용을 위해 거부하지 않음.
+      const kind = config.aliasMap[key];
+      if (!kind) continue;
       const last = key[key.length - 1]!;
-      if (key.length > 1 && /[A-Za-z]/.test(last)) {
+      // 변형자(blo·fp·bp)는 **코 앞에 붙여 쓰는** 말이라 뒤에 글자가 와도 부분 일치가 아니다.
+      // (`fpF` = 앞걸어 한길긴뜨기. 예전에는 `blo X` 처럼 띄어 써야만 했다)
+      if (key.length > 1 && /[A-Za-z]/.test(last) && !isModifierKind(kind)) {
         const next = input[start + key.length];
         if (next !== undefined && /[A-Za-z]/.test(next)) continue;
       }
-      const kind = config.aliasMap[key];
-      if (!kind) continue;
       return { key, kind, length: key.length };
     }
   }

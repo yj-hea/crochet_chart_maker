@@ -14,6 +14,10 @@ export interface Point {
 
 export interface PositionedStitch {
   op: Op;
+  /** 캔버스에서 이 코를 가리키는 키 (`layout/adjust`). 레이아웃 뒤에 채워진다 */
+  key?: string;
+  /** 손으로 다듬은 배치의 transform. 없으면 자동 배치 그대로 */
+  transform?: string;
   /** 1-based 단 번호 */
   roundIndex: number;
   position: Point;
@@ -84,6 +88,10 @@ export type GridGuide =
  */
 export interface RoundMarker {
   roundIndex: number;
+  /** 캔버스 선택용 키 (`layout/adjust`) */
+  key?: string;
+  /** 손으로 다듬은 배치의 transform */
+  transform?: string;
   /**
    * 번호 자리에 적을 글자. 되돌아뜨기로 한 단이 여러 줄이면 `12-2` 처럼 된다.
    * 없으면 `roundIndex` 를 그대로 적는다.
@@ -102,6 +110,10 @@ export interface RoundMarker {
  */
 export interface PositionedMarker {
   roundIndex: number;
+  /** 캔버스 선택용 키 (`layout/adjust`) */
+  key?: string;
+  /** 손으로 다듬은 배치의 transform */
+  transform?: string;
   /** 경계의 중심 좌표 */
   position: Point;
   /**
@@ -114,8 +126,30 @@ export interface PositionedMarker {
   label?: string;
 }
 
+/**
+ * 도안 위에 얹는 덧그림 — 조각을 합쳐 그릴 때의 연결선·이름표처럼
+ * 코가 아닌 것들. 두 크래프트 렌더러가 똑같이 그린다.
+ */
+export type Decoration =
+  | { kind: 'line'; from: Point; to: Point; dashed?: boolean; faint?: boolean }
+  | { kind: 'label'; at: Point; text: string; align?: 'start' | 'middle' | 'end'; muted?: boolean };
+
 export interface LayoutResult {
   stitches: PositionedStitch[];
+  /** 코가 아닌 덧그림 (연결선·이름표) */
+  decorations?: Decoration[];
+  /**
+   * 격자 안내선을 그리지 않는다 — 조각을 합쳐 그릴 때처럼 기준이 여럿이면
+   * 격자가 어느 조각에도 맞지 않는다.
+   */
+  noGrid?: boolean;
+  /**
+   * 걸어뜨기를 **어느 코에 걸었는지** 잇는 선 (`layout/post-links.ts`).
+   * 바로 아래 코에 건 보통 걸어뜨기는 선을 긋지 않는다.
+   */
+  postLinks?: Array<{ from: Point; to: Point }>;
+  /** 범례를 손으로 옮겼을 때의 transform */
+  legendTransform?: string;
   bounds: LayoutBounds;
   gridGuide?: GridGuide;
   roundMarkers: RoundMarker[];
