@@ -156,6 +156,18 @@ export interface LayoutResult {
   postLinks?: Array<{ from: Point; to: Point }>;
   /** 범례를 손으로 옮겼을 때의 transform */
   legendTransform?: string;
+  /**
+   * 합쳐 그릴 때 끌어온 조각들이 **어디에 놓였는지** (`layout/compose`).
+   * 조립도가 조각을 통째로 집어 옮기는 데 쓴다.
+   */
+  pieceBoxes?: Array<{ id?: string; name: string; bounds: LayoutBounds }>;
+  /**
+   * 조각을 **손으로 옮기기 전**의 경계 (`layout/compose`).
+   *
+   * 자동 배치는 이 값으로 잡는다 — 실제 경계로 잡으면 조각 하나를 끌 때마다 위쪽 배치가
+   * 따라 움직여 끈 만큼 가지 않고 다른 조각까지 흔들린다.
+   */
+  baseBounds?: LayoutBounds;
   bounds: LayoutBounds;
   gridGuide?: GridGuide;
   roundMarkers: RoundMarker[];

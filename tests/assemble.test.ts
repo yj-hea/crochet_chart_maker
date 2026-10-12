@@ -5,7 +5,7 @@
  * 보여야 한다 (한 겹만 보면 다리가 사라졌던 자리).
  */
 import { describe, expect, it } from 'vitest';
-import { assemble, rootPieces, type AssembleNode } from '../src/lib/layout/assemble';
+import { assemble, assembleSheet, rootPieces, type AssembleNode } from '../src/lib/layout/assemble';
 import type { PieceStart } from '../src/lib/model/pieces';
 import { parseRound } from '../src/lib/crafts/crochet/parser';
 import { expand as expandOps } from '../src/lib/expand/expander';
@@ -107,6 +107,63 @@ describe('조각 조립', () => {
     const out = assemble('a', (id) => nodes[id], 'all')!;
     // A + B 두 겹에서 멈춘다 (A 를 다시 끌어오지 않는다)
     expect(out.stitches.length).toBe(a.stitches.length * 2);
+  });
+});
+
+describe('조립도 — 작품 한 장', () => {
+  it('뿌리에서 내려가며 모든 조각을 집을 수 있게 알려 준다', () => {
+    const { lookup } = dollParts();
+    const sheet = assembleSheet(['belly'], lookup, 'all')!;
+    const boxes = (sheet.pieceBoxes ?? []).map((b) => b.id);
+    // 뿌리(배)를 뺀 아래쪽 조각들 — 조각의 조각까지
+    expect(boxes).toEqual(['body', 'legA', 'legB']);
+  });
+
+  it('조각을 옮기면 그 조각과 잇는 선이 함께 간다', () => {
+    const { nodes, lookup } = dollParts();
+    const before = assembleSheet(['belly'], lookup, 'all')!;
+    nodes.legA!.offset = { dx: 40, dy: 25 };
+    const after = assembleSheet(['belly'], lookup, 'all')!;
+
+    const boxOf = (l: typeof before, id: string) =>
+      (l.pieceBoxes ?? []).find((b) => b.id === id)!.bounds;
+    expect(boxOf(after, 'legA').minX - boxOf(before, 'legA').minX).toBeCloseTo(40);
+    expect(boxOf(after, 'legA').minY - boxOf(before, 'legA').minY).toBeCloseTo(25);
+    // 다리 B 는 그대로
+    expect(boxOf(after, 'legB')).toEqual(boxOf(before, 'legB'));
+    // 잇는 선 수는 그대로 (자리만 옮겼다)
+    const lines = (l: typeof before) => (l.decorations ?? []).filter((d) => d.kind === 'line').length;
+    expect(lines(after)).toBe(lines(before));
+  });
+
+  it('조각을 돌리면 자기 가운데를 축으로 돈다', () => {
+    const { nodes, lookup } = dollParts();
+    const before = assembleSheet(['belly'], lookup, 'all')!;
+    nodes.legA!.offset = { rot: 180 };
+    const after = assembleSheet(['belly'], lookup, 'all')!;
+    const boxOf = (l: typeof before) => (l.pieceBoxes ?? []).find((b) => b.id === 'legA')!.bounds;
+    const a = boxOf(before);
+    const b = boxOf(after);
+    // 가운데는 제자리, 경계 크기도 (반 바퀴라) 그대로
+    expect((b.minX + b.maxX) / 2).toBeCloseTo((a.minX + a.maxX) / 2);
+    expect((b.minY + b.maxY) / 2).toBeCloseTo((a.minY + a.maxY) / 2);
+    expect(b.width).toBeCloseTo(a.width);
+  });
+
+  it('따로 뜨는 덩어리가 여럿이면 나란히 놓는다', () => {
+    const { nodes, lookup } = dollParts();
+    nodes.lid = { name: '뚜껑', layout: layout('@, 6X') };
+    const sheet = assembleSheet(['belly', 'lid'], lookup, 'all')!;
+    const ids = (sheet.pieceBoxes ?? []).map((b) => b.id);
+    expect(ids).toContain('belly');
+    expect(ids).toContain('lid');
+    const belly = (sheet.pieceBoxes ?? []).find((b) => b.id === 'belly')!.bounds;
+    const lid = (sheet.pieceBoxes ?? []).find((b) => b.id === 'lid')!.bounds;
+    expect(lid.minX).toBeGreaterThan(belly.maxX);   // 겹치지 않는다
+  });
+
+  it('그릴 것이 없으면 null', () => {
+    expect(assembleSheet([], () => undefined)).toBeNull();
   });
 });
 

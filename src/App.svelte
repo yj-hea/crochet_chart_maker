@@ -6,6 +6,8 @@
   import RoundNavigator from './components/RoundNavigator.svelte';
   import TabBar from './components/TabBar.svelte';
   import ProjectBar from './components/ProjectBar.svelte';
+  import AssemblyView from './components/AssemblyView.svelte';
+  import { assemblyOpen, assemblyAvailable, assemblySheet } from '$stores/assembly';
   import ProjectPicker from './components/ProjectPicker.svelte';
   import HelpModal from './components/HelpModal.svelte';
   import DropboxMenu from './components/DropboxMenu.svelte';
@@ -18,7 +20,7 @@
   import { mode, currentRound, currentStitch } from './stores/mode';
   import { setTabProgress } from './stores/tabs';
   import { renderedChart, chartRows } from './stores/rendered';
-  import { openProjectId, initProjects, persistOpenProject } from './stores/projects';
+  import { openProjectId, projects, initProjects, persistOpenProject } from './stores/projects';
   import { setWorkspacePersister } from './stores/tabs';
   import { placeDropdown } from './lib/dropdown-place';
   import { pattern, exportToFile, exportAsTextFile, importFromFile, resetPattern, lastSavedAt } from './stores/pattern';
@@ -61,6 +63,11 @@
   // 하나로 흘러 들어가면 어느 작품의 내용인지 잃는다).
   setWorkspacePersister(persistOpenProject);
   initProjects();
+
+  // 조립할 것이 없어지면(작품을 바꿨거나 이어짐을 지웠거나) 조립도를 닫는다
+  $effect(() => {
+    if (!$assemblyAvailable || !$openProjectId) assemblyOpen.set(false);
+  });
 
   // Dropbox OAuth redirect 복귀 처리 + 연결 상태 초기화 + 워크스페이스 동기화 시작.
   onMount(() => {
@@ -128,14 +135,26 @@
   }
 
   function activeBaseName(): string {
+    if ($assemblyOpen) {
+      const project = $projects.find((p) => p.id === $openProjectId);
+      return (project?.name || '작품').trim() || '작품';
+    }
     const ws = $workspace;
     const active = ws.tabs.find((t) => t.id === ws.activeTabId);
     return (active?.name || 'pattern').trim() || 'pattern';
   }
 
+  /**
+   * 내보낼 그림 — 조립도를 보고 있으면 **작품 한 장**을, 아니면 지금 도안을 낸다.
+   * (조립도에서 바로 공유할 수 있어야 한다)
+   */
+  const exportSource = $derived(
+    $assemblyOpen && $assemblySheet ? $assemblySheet : $renderedChart,
+  );
+
   function chooseExportSvg() {
     exportMenuOpen = false;
-    const r = $renderedChart;
+    const r = exportSource;
     if (!r) return;
     // viewBox 기반 SVG 에 width/height 를 명시해 다른 뷰어에서 자연 크기로 열리도록 보정
     const sized = r.svg.replace(
@@ -148,7 +167,7 @@
 
   async function chooseExportPng() {
     exportMenuOpen = false;
-    const r = $renderedChart;
+    const r = exportSource;
     if (!r) return;
     const scale = 2;  // 레티나 대응
     const sized = r.svg.replace(
@@ -377,10 +396,10 @@
             <button type="button" class="item" onclick={chooseExportText} role="menuitem">
               <i class="fa-solid fa-file-lines"></i> 텍스트 (.txt)
             </button>
-            <button type="button" class="item" onclick={chooseExportSvg} role="menuitem" disabled={!$renderedChart}>
+            <button type="button" class="item" onclick={chooseExportSvg} role="menuitem" disabled={!exportSource}>
               <i class="fa-solid fa-file-image"></i> 이미지 SVG (.svg)
             </button>
-            <button type="button" class="item" onclick={chooseExportPng} role="menuitem" disabled={!$renderedChart}>
+            <button type="button" class="item" onclick={chooseExportPng} role="menuitem" disabled={!exportSource}>
               <i class="fa-solid fa-image"></i> 이미지 PNG (.png)
             </button>
           </div>
@@ -421,8 +440,14 @@
   {/await}
 {/if}
 
+<!-- ===== 조립도 — 작품 전체 한 장 (글 없이 캔버스만) ===== -->
+{#if $openProjectId && $assemblyOpen}
+  <main class="assembly-layout">
+    <AssemblyView />
+  </main>
+
 <!-- ===== Edit Mode ===== -->
-{#if $mode === 'edit'}
+{:else if $mode === 'edit'}
   <main
     class="edit-layout"
     class:resizing
@@ -717,6 +742,14 @@
   }
 
   /* ===== Read Layout ===== */
+  /* 조립도는 작품 한 장을 보는 화면이라 폭을 다 쓴다 */
+  .assembly-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 8px 12px 0;
+  }
   .read-layout {
     display: flex;
     flex-direction: column;

@@ -12,9 +12,19 @@
  * 레이아웃을 그대로 쓴다. 그래서 조각의 코에는 선택 키를 달지 않는다.
  */
 
-import type { LayoutResult, PositionedStitch, Point, Decoration } from './types';
+import type { LayoutResult, PositionedStitch, Point, Decoration, LayoutBounds } from './types';
+
+/** 조각을 놓는 자리를 손으로 다듬은 값 — 자동 배치 위에 덧입힌다 */
+export interface PieceOffset {
+  dx?: number;
+  dy?: number;
+  /** 조각 **자신의 가운데**를 축으로 돌린 각도 (도) */
+  rot?: number;
+}
 
 export interface PieceLayout {
+  /** 조각(도안 탭) id — 조립도에서 이 조각을 집어 옮길 때 쓴다 */
+  id?: string;
   /** 조각 이름 — 도안에 라벨로 적는다 */
   name: string;
   layout: LayoutResult;
@@ -23,6 +33,8 @@ export interface PieceLayout {
    * 주면 그 구간의 코에서 선을 긋고 몇 코인지 적는다. 없으면 조각 전체에서 긋는다.
    */
   range?: { at: number; count: number };
+  /** 손으로 다듬은 자리 */
+  offset?: PieceOffset;
 }
 
 /** 몸통과 조각 사이, 조각끼리의 간격 */
@@ -45,55 +57,76 @@ export function composeWithPieces(
 ): LayoutResult {
   if (pieces.length === 0) return body;
 
-  const widths = pieces.map((p) => p.layout.bounds.width);
-  const totalWidth = widths.reduce((a, b) => a + b, 0) + GAP_X * (pieces.length - 1);
-  const bodyCenterX = (body.bounds.minX + body.bounds.maxX) / 2;
-  const top = body.bounds.maxY + GAP_Y;   // 몸통 아래
+  // 자동 배치는 **손대지 않았을 때의 경계**(baseBounds) 로 잡는다.
+  // 옮겨 둔 조각의 실제 경계로 잡으면, 조각 하나를 끌 때마다 위쪽 배치가 따라 움직여
+  // 끈 만큼 가지 않는다 (끌면 다른 조각들까지 흔들린다).
+  const bodyBase = body.baseBounds ?? body.bounds;
+  const bases = pieces.map((p) => p.layout.baseBounds ?? p.layout.bounds);
+  const totalWidth = bases.reduce((a, b) => a + b.width, 0) + GAP_X * (pieces.length - 1);
+  const bodyCenterX = (bodyBase.minX + bodyBase.maxX) / 2;
+  const top = bodyBase.maxY + GAP_Y;   // 몸통 아래
 
   const stitches: PositionedStitch[] = [...body.stitches];
   const decorations: Decoration[] = [...(body.decorations ?? [])];
   let minX = body.bounds.minX;
   let maxX = body.bounds.maxX;
+  let minY = body.bounds.minY;
   let maxY = body.bounds.maxY;
+  const base = { minX: bodyBase.minX, maxX: bodyBase.maxX, minY: bodyBase.minY, maxY: bodyBase.maxY };
 
   let cursor = bodyCenterX - totalWidth / 2;
   /** 조각마다 몸통과 이어지는 코의 자리 (뜨는 순서) */
   const linked: Point[][] = [];
+  const pieceBoxes: Array<{ id?: string; name: string; bounds: LayoutBounds }> = [];
 
   pieces.forEach((piece, i) => {
-    const b = piece.layout.bounds;
-    // 조각의 왼쪽 위를 (cursor, top) 에 맞춘다
+    const b = bases[i]!;
+    // 조각의 왼쪽 위를 (cursor, top) 에 맞춘 뒤, 손으로 다듬은 만큼 더 옮긴다
     const dx = cursor - b.minX;
     const dy = top - b.minY;
+    const place = placer(b, dx, dy, piece.offset);
+    /** 손으로 옮기기 **전**의 자리 — 위쪽 배치의 기준 */
+    const place0 = placer(b, dx, dy);
     // 부모 인덱스는 **합친 배열 기준**으로 옮긴다 — 안 그러면 조각의 연결선이
     // 몸통의 코를 가리켜 부채처럼 퍼진다
     const offset = stitches.length;
     for (const s of piece.layout.stitches) {
-      stitches.push(translate(s, dx, dy, offset));
+      stitches.push(transform(s, place, offset));
     }
     for (const d of piece.layout.decorations ?? []) {
-      decorations.push(moveDecoration(d, dx, dy));
+      decorations.push(moveDecoration(d, place.at));
     }
-    // 조각 이름
+    const box = place.boxOf(piece.layout.bounds);
+    const baseBox = place0.boxOf(b);
+    // 조각 이름 — 조각 바로 위
     decorations.push({
       kind: 'label',
-      at: { x: cursor + b.width / 2, y: top - 8 },
+      at: { x: box.minX + box.width / 2, y: box.minY - 8 },
       text: piece.name,
       align: 'middle',
     });
+    pieceBoxes.push({ ...(piece.id ? { id: piece.id } : {}), name: piece.name, bounds: box });
+    // 조각이 또 조각을 가졌다면 그것들도 집을 수 있어야 한다
+    for (const inner of piece.layout.pieceBoxes ?? []) {
+      pieceBoxes.push({ ...inner, bounds: place.boxOf(inner.bounds) });
+    }
 
     // 몸통과 이어지는 코들 — 이어받기면 가져온 구간만, 잇기면 마지막 단 전부
     const taken = (piece.range
       ? takenPositions(piece.layout, piece.range)
       : lastRowPositions(piece.layout)
-    ).map((p) => move(p, dx, dy));
+    ).map(place.at);
     linked.push(taken);
 
-    minX = Math.min(minX, cursor);
-    maxX = Math.max(maxX, cursor + b.width);
-    maxY = Math.max(maxY, top + b.height);
+    minX = Math.min(minX, box.minX);
+    maxX = Math.max(maxX, box.maxX);
+    minY = Math.min(minY, box.minY);
+    maxY = Math.max(maxY, box.maxY);
+    base.minX = Math.min(base.minX, baseBox.minX);
+    base.maxX = Math.max(base.maxX, baseBox.maxX);
+    base.minY = Math.min(base.minY, baseBox.minY);
+    base.maxY = Math.max(base.maxY, baseBox.maxY);
     cursor += b.width + GAP_X;
-    void i;
   });
 
   // 조각 → 몸통: **코 하나하나를 짝지어** 점선으로 잇는다.
@@ -130,44 +163,137 @@ export function composeWithPieces(
     ...body,
     stitches,
     decorations,
+    pieceBoxes,
     // 격자 안내선은 조각마다 기준이 달라 합치면 어긋난다 — 합쳐 그릴 때는 생략한다
     gridGuide: undefined,
     noGrid: true,
     bounds: {
-      minX, minY: body.bounds.minY, maxX, maxY,
+      minX, minY, maxX, maxY,
       width: maxX - minX,
-      height: maxY - body.bounds.minY,
+      height: maxY - minY,
+    },
+    baseBounds: {
+      ...base,
+      width: base.maxX - base.minX,
+      height: base.maxY - base.minY,
     },
   };
 }
 
+/**
+ * 따로 뜨는 덩어리 여럿을 **한 장에 나란히** 놓는다 (조립도).
+ *
+ * 서로 이어지지 않으므로 잇는 선은 긋지 않는다. 덩어리가 하나뿐이면 그대로 둔다.
+ */
+export function sideBySide(items: ReadonlyArray<PieceLayout>): LayoutResult | null {
+  if (items.length === 0) return null;
+  if (items.length === 1 && !items[0]!.offset) return items[0]!.layout;
+
+  const stitches: PositionedStitch[] = [];
+  const decorations: Decoration[] = [];
+  const pieceBoxes: Array<{ id?: string; name: string; bounds: LayoutBounds }> = [];
+  let cursor = 0;
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+
+  for (const item of items) {
+    // 나란히 놓는 자리도 **손대기 전** 경계로 잡는다 — 옮긴 조각이 옆 덩어리를 밀지 않도록
+    const b = item.layout.baseBounds ?? item.layout.bounds;
+    const place = placer(b, cursor - b.minX, -b.minY, item.offset);
+    const offset = stitches.length;
+    for (const s of item.layout.stitches) stitches.push(transform(s, place, offset));
+    for (const d of item.layout.decorations ?? []) decorations.push(moveDecoration(d, place.at));
+    const box = place.boxOf(item.layout.bounds);
+    pieceBoxes.push({ ...(item.id ? { id: item.id } : {}), name: item.name, bounds: box });
+    for (const inner of item.layout.pieceBoxes ?? []) {
+      pieceBoxes.push({ ...inner, bounds: place.boxOf(inner.bounds) });
+    }
+    minX = Math.min(minX, box.minX); maxX = Math.max(maxX, box.maxX);
+    minY = Math.min(minY, box.minY); maxY = Math.max(maxY, box.maxY);
+    cursor += b.width + GAP_X * 2;
+  }
+
+  return {
+    ...items[0]!.layout,
+    stitches,
+    decorations,
+    pieceBoxes,
+    roundMarkers: [],
+    gridGuide: undefined,
+    noGrid: true,
+    bounds: { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY },
+  };
+}
+
+/**
+ * 조각 하나를 놓는 변환.
+ *
+ * 자동 배치(`dx`,`dy`) 위에 손으로 다듬은 값을 덧입힌다. 회전은 **조각 자신의 가운데**를
+ * 축으로 돈다 — 조립도에서 다리를 돌려 몸통에 맞출 때 조각이 제자리에서 돌아야 한다.
+ */
+function placer(b: LayoutBounds, dx: number, dy: number, offset?: PieceOffset) {
+  const ox = dx + (offset?.dx ?? 0);
+  const oy = dy + (offset?.dy ?? 0);
+  const rot = ((offset?.rot ?? 0) * Math.PI) / 180;
+  const cx = (b.minX + b.maxX) / 2;
+  const cy = (b.minY + b.maxY) / 2;
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+
+  const at = (p: Point): Point => {
+    if (!rot) return { x: p.x + ox, y: p.y + oy };
+    const vx = p.x - cx;
+    const vy = p.y - cy;
+    return {
+      x: cx + vx * cos - vy * sin + ox,
+      y: cy + vx * sin + vy * cos + oy,
+    };
+  };
+
+  /** 돌린 네 귀퉁이를 감싸는 경계 */
+  const boxOf = (src: LayoutBounds): LayoutBounds => {
+    const pts = [
+      at({ x: src.minX, y: src.minY }), at({ x: src.maxX, y: src.minY }),
+      at({ x: src.minX, y: src.maxY }), at({ x: src.maxX, y: src.maxY }),
+    ];
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+  };
+
+  return { at, boxOf, rot };
+}
+
+type Placer = ReturnType<typeof placer>;
+
 /** 조각의 코는 **보여 주기 전용** — 선택 키를 떼고 좌표만 옮긴다 */
-function translate(s: PositionedStitch, dx: number, dy: number, offset: number): PositionedStitch {
+function transform(s: PositionedStitch, place: Placer, offset: number): PositionedStitch {
   const { key: _key, transform: _t, ...rest } = s;
   return {
     ...rest,
     foreign: true,
     parentIndices: s.parentIndices.map((i) => i + offset),
-    position: { x: s.position.x + dx, y: s.position.y + dy },
+    position: place.at(s.position),
+    // 원형 기호는 각도를 보고 서 있다 — 조각을 돌리면 기호도 같이 돈다
+    ...(s.angle !== undefined ? { angle: s.angle + place.rot } : {}),
     ...(s.chainArcBounds
       ? {
           chainArcBounds: {
-            left: move(s.chainArcBounds.left, dx, dy),
-            right: move(s.chainArcBounds.right, dx, dy),
+            left: place.at(s.chainArcBounds.left),
+            right: place.at(s.chainArcBounds.right),
           },
         }
       : {}),
   };
 }
 
-function move(p: Point, dx: number, dy: number): Point {
-  return { x: p.x + dx, y: p.y + dy };
-}
-
-function moveDecoration(d: Decoration, dx: number, dy: number): Decoration {
+function moveDecoration(d: Decoration, at: (p: Point) => Point): Decoration {
   return d.kind === 'line'
-    ? { ...d, from: move(d.from, dx, dy), to: move(d.to, dx, dy) }
-    : { ...d, at: move(d.at, dx, dy) };
+    ? { ...d, from: at(d.from), to: at(d.to) }
+    : { ...d, at: at(d.at) };
 }
 
 /**

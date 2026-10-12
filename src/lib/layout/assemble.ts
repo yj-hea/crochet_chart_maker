@@ -15,7 +15,7 @@
 
 import type { PieceStart } from '$lib/model/pieces';
 import type { LayoutResult } from './types';
-import { composeWithPieces, type PieceLayout } from './compose';
+import { composeWithPieces, sideBySide, type PieceLayout, type PieceOffset } from './compose';
 
 /** 어디까지 끌고 올지 */
 export type AssembleDepth =
@@ -31,6 +31,8 @@ export interface AssembleNode {
   layout: LayoutResult;
   /** 이 조각이 어떻게 시작하는지 */
   start?: PieceStart;
+  /** 조립도에서 이 조각을 손으로 옮겨 둔 자리 */
+  offset?: PieceOffset;
 }
 
 /**
@@ -64,8 +66,10 @@ export function assemble(
       : child.layout;
     if (!layout) continue;
     pieces.push({
+      id: childId,
       name: child.name,
       layout,
+      ...(child.offset ? { offset: child.offset } : {}),
       ...(start.kind === 'from'
         ? { range: { at: start.at ?? 1, count: start.stitches ?? Number.MAX_SAFE_INTEGER } }
         : {}),
@@ -75,6 +79,30 @@ export function assemble(
   return composeWithPieces(node.layout, pieces, {
     chain: start.kind === 'join' ? start.chain : 0,
   });
+}
+
+/**
+ * 작품 한 장 — 뿌리마다 조립해 나란히 놓는다 (조립도 탭).
+ * 그릴 것이 없으면 `null`.
+ */
+export function assembleSheet(
+  rootIds: ReadonlyArray<string>,
+  lookup: (id: string) => AssembleNode | undefined,
+  depth: AssembleDepth = 'all',
+): LayoutResult | null {
+  const items: PieceLayout[] = [];
+  for (const id of rootIds) {
+    const node = lookup(id);
+    const layout = assemble(id, lookup, depth);
+    if (!node || !layout) continue;
+    items.push({
+      id,
+      name: node.name,
+      layout,
+      ...(node.offset ? { offset: node.offset } : {}),
+    });
+  }
+  return sideBySide(items);
 }
 
 /**
