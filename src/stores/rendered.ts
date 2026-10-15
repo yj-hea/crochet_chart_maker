@@ -13,7 +13,7 @@ import { derived } from 'svelte/store';
 import { pattern, workspace, activeSplit } from './tabs';
 import {
   showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign,
-  knitStartSide, showNotes,
+  knitStartSide, showNotes, composeDepth,
   colorMode, emptyColor, mainColor, symbolColor,
 } from './mode';
 import type { ExpandedRound } from '$lib/expand/op';
@@ -24,7 +24,7 @@ import { applyAdjustments, adjustTransform, type Adjustments } from '$lib/layout
 import { adjustments } from './tabs';
 import type { ChartNote } from '$lib/render/notes';
 import { planRounds } from '$lib/model/round-plan';
-import { composeWithPieces, type PieceLayout } from '$lib/layout/compose';
+import { assemble, type AssembleNode } from '$lib/layout/assemble';
 
 export interface RenderedChart {
   svg: string;
@@ -115,35 +115,36 @@ export const chartLayout = derived(
  * 조각을 합쳐 그린 레이아웃.
  *
  * 몸통이 조각을 이어 시작하면(`Tab.startsFrom`) 그 조각들을 **아래에 나란히** 붙여
- * 한 장으로 만든다. 합친 결과는 **보여 주기 전용**이라 3D·게이지·캔버스 선택은
- * `chartLayout`(몸통 자신의 레이아웃)을 그대로 쓴다.
+ * 한 장으로 만든다. 조각이 또 조각을 가지면(배 ← 몸통 ← 다리) `composeDepth` 가
+ * `all` 인 동안 **끝까지** 따라간다 (`layout/assemble`).
+ *
+ * 합친 결과는 **보여 주기 전용**이라 3D·게이지·캔버스 선택은 `chartLayout`
+ * (이 도안 자신의 레이아웃)을 그대로 쓴다.
  */
 export const composedLayout = derived(
-  [chartLayout, workspace, flatAlign, flatCascade, flatCompact, flatVAlign, flatFlipVertical, knitStartSide],
-  ([$chartLayout, $ws, $align, $cascade, $compact, $vAlign, $flip, $startSide]): LayoutResult | null => {
+  [chartLayout, workspace, composeDepth,
+    flatAlign, flatCascade, flatCompact, flatVAlign, flatFlipVertical, knitStartSide],
+  ([$chartLayout, $ws, $depth,
+    $align, $cascade, $compact, $vAlign, $flip, $startSide]): LayoutResult | null => {
     if (!$chartLayout) return null;
-    const tab = $ws.tabs.find((t) => t.id === $ws.activeTabId);
-    const start = tab?.startsFrom;
-    if (!start) return $chartLayout.layout;
+    const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+    if (!active?.startsFrom) return $chartLayout.layout;
 
-    const ids = start.kind === 'join' ? start.pieces : [start.piece];
-    const pieces: PieceLayout[] = [];
-    for (const id of ids) {
-      const piece = $ws.tabs.find((t) => t.id === id);
-      if (!piece) continue;
-      const rounds = planRounds(piece.rounds).chart
+    const lookup = (id: string): AssembleNode | undefined => {
+      const tab = $ws.tabs.find((t) => t.id === id);
+      if (!tab) return undefined;
+      const node = { name: tab.name, start: tab.startsFrom };
+      // 활성 탭은 이미 풀어 둔 레이아웃(손 조정까지 반영된)을 그대로 쓴다
+      if (tab.id === $ws.activeTabId) return { ...node, layout: $chartLayout.layout };
+      const rounds = planRounds(tab.rounds).chart
         .map((r) => r.expanded)
         .filter((e) => e.ops.length > 0);
-      if (rounds.length === 0) continue;
-      const craft = getCraft(piece.craft);
-      pieces.push({
-        name: piece.name,
-        ...(start.kind === 'from'
-          ? { range: { at: start.at ?? 1, count: start.stitches ?? Number.MAX_SAFE_INTEGER } }
-          : {}),
-        layout: craft.layout(rounds, {
-          shape: piece.shape,
-          gauge: piece.gauge,
+      if (rounds.length === 0) return undefined;
+      return {
+        ...node,
+        layout: getCraft(tab.craft).layout(rounds, {
+          shape: tab.shape,
+          gauge: tab.gauge,
           flipVertical: $flip,
           align: $align,
           cascade: $cascade,
@@ -151,13 +152,10 @@ export const composedLayout = derived(
           startLeft: $startSide === 'L',
           vAlign: $vAlign,
         }),
-      });
-    }
-    return composeWithPieces(
-      $chartLayout.layout,
-      pieces,
-      { chain: start.kind === 'join' ? start.chain : 0 },
-    );
+      };
+    };
+
+    return assemble($ws.activeTabId, lookup, $depth) ?? $chartLayout.layout;
   },
 );
 

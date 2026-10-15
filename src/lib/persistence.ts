@@ -13,6 +13,7 @@ import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import { normalizeViewOptions, type ViewOptions } from '$lib/model/view-options';
 import { isEmptyAdjust, type Adjustments } from '$lib/layout/adjust';
 import type { PieceStart } from '$lib/model/pieces';
+import type { PieceOffset } from '$lib/layout/compose';
 
 export const LOCALSTORAGE_KEY = 'crochet-chart:pattern';
 /** v2: `craft` 필드 추가 (코바늘/대바늘). v1 파일은 코바늘로 마이그레이션. */
@@ -140,6 +141,20 @@ function normalizeAdjust(raw: unknown): Adjustments | undefined {
     };
     if (!isEmptyAdjust(a)) out[key] = a;
   }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** 조립도에서 조각을 옮겨 둔 자리 */
+function normalizePieceOffset(raw: unknown): PieceOffset | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const v = raw as Record<string, unknown>;
+  const num = (n: unknown): number | undefined =>
+    typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+  const out: PieceOffset = {
+    ...(num(v.dx) !== undefined ? { dx: num(v.dx)! } : {}),
+    ...(num(v.dy) !== undefined ? { dy: num(v.dy)! } : {}),
+    ...(num(v.rot) !== undefined ? { rot: num(v.rot)! } : {}),
+  };
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -316,6 +331,8 @@ export interface SavedWorkspaceTab {
   adjust?: Adjustments;
   /** 이 조각이 어떻게 시작하는지 (`lib/model/pieces`) */
   startsFrom?: PieceStart;
+  /** 조립도에서 이 조각을 손으로 옮겨 둔 자리 (`layout/compose`) */
+  assemblyAt?: PieceOffset;
   comments?: SavedComment[];
   progress?: SavedProgress;
 }
@@ -350,6 +367,7 @@ export function serializeWorkspace(ws: { tabs: SavedWorkspaceTab[]; activeTabId:
       }),
       ...(hasAdjust(t.adjust) ? { adjust: t.adjust } : {}),
       ...(t.startsFrom ? { startsFrom: t.startsFrom } : {}),
+      ...(t.assemblyAt ? { assemblyAt: t.assemblyAt } : {}),
       ...(t.comments && t.comments.length > 0 ? { comments: [...t.comments] } : {}),
       ...(t.progress ? { progress: t.progress } : {}),
     })),
@@ -398,6 +416,7 @@ export function validateWorkspace(data: unknown): SavedWorkspace {
       rounds: rounds.length > 0 ? rounds : [{ source: '' }],
       ...(normalizeAdjust(tt.adjust) ? { adjust: normalizeAdjust(tt.adjust) } : {}),
       ...(normalizeStart(tt.startsFrom) ? { startsFrom: normalizeStart(tt.startsFrom)! } : {}),
+      ...(normalizePieceOffset(tt.assemblyAt) ? { assemblyAt: normalizePieceOffset(tt.assemblyAt)! } : {}),
       ...(Array.isArray(tt.comments) ? { comments: tt.comments as SavedComment[] } : {}),
       ...(validateProgress(tt.progress) ? { progress: validateProgress(tt.progress) as SavedProgress } : {}),
     });

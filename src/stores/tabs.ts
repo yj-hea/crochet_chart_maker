@@ -28,6 +28,7 @@ import {
   resolveStart, splitOf, type PieceStart, type PieceInfo, type SplitInfo,
 } from '$lib/model/pieces';
 import { isEmptyAdjust, mergeAdjust, type Adjust, type Adjustments } from '$lib/layout/adjust';
+import type { PieceOffset } from '$lib/layout/compose';
 import { normalizeGauge, type Gauge } from '$lib/model/gauge';
 import {
   replaceColorInRound,
@@ -107,6 +108,11 @@ export interface Tab {
    * 같은 작품 안의 다른 도안을 탭 id 로 가리킨다 (`lib/model/pieces.ts`).
    */
   startsFrom?: PieceStart;
+  /**
+   * 조립도에서 이 조각을 손으로 옮겨 둔 자리 (`layout/compose`).
+   * 자동 배치 위에 덧입히므로, 지우면 제자리로 돌아간다.
+   */
+  assemblyAt?: PieceOffset;
   comments: Comment[];
   /** Read 모드 진행 상태 — 파일에 포함해 다른 기기에서 이어보기 가능 */
   progress?: SavedProgress;
@@ -208,6 +214,7 @@ function tabFromSaved(saved: SavedWorkspaceTab): Tab {
     rounds: reparseAll(rounds, craft),
     ...(saved.adjust ? { adjust: saved.adjust } : {}),
     ...(saved.startsFrom ? { startsFrom: saved.startsFrom } : {}),
+    ...(saved.assemblyAt ? { assemblyAt: saved.assemblyAt } : {}),
     comments: remapSavedComments(saved.comments ?? [], newRoundIds, false),
     ...(saved.progress ? { progress: saved.progress } : {}),
   };
@@ -327,6 +334,7 @@ export function toSavedTab(t: Tab): SavedWorkspaceTab {
     }),
     ...(t.adjust && Object.keys(t.adjust).length > 0 ? { adjust: t.adjust } : {}),
     ...(t.startsFrom ? { startsFrom: t.startsFrom } : {}),
+    ...(t.assemblyAt ? { assemblyAt: t.assemblyAt } : {}),
     ...(t.comments.length > 0 ? { comments: t.comments.map((c) => toSavedComment(c, t.rounds)) } : {}),
     ...(t.progress ? { progress: t.progress } : {}),
   };
@@ -494,6 +502,7 @@ export function duplicateTab(id: string): string {
       ...(src.progress ? { progress: { ...src.progress } } : {}),
       ...(src.adjust ? { adjust: { ...src.adjust } } : {}),
       ...(src.startsFrom ? { startsFrom: { ...src.startsFrom } } : {}),
+      ...(src.assemblyAt ? { assemblyAt: { ...src.assemblyAt } } : {}),
     };
     newId = tab.id;
 
@@ -835,6 +844,18 @@ export const activeStart = derived(workspace, ($ws) => {
 });
 
 /**
+ * 활성 도안이 이어받은 조각이 **또 자기 조각을 가지는지** (배 ← 몸통 ← 다리).
+ * 그럴 때만 "조각 전부 / 바로 아래만" 선택이 뜻을 가진다.
+ */
+export const activeHasNestedPieces = derived(workspace, ($ws): boolean => {
+  const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
+  const start = active?.startsFrom;
+  if (!start) return false;
+  const ids = start.kind === 'join' ? start.pieces : [start.piece];
+  return ids.some((id) => $ws.tabs.find((t) => t.id === id)?.startsFrom !== undefined);
+});
+
+/**
  * 활성 도안을 **이어받는 파트들** — 나누기의 반대쪽.
  * 누가 몇 코를 어디서부터 가져가는지, 남는 코(쉼코)는 몇 코인지 센다.
  */
@@ -866,6 +887,47 @@ export function setTabStart(id: string, start: PieceStart | undefined): void {
     }),
   }));
 }
+
+/**
+ * 조립도에서 조각을 옮기거나 돌린다 — 자동 배치 위에 쌓인다.
+ * 빈 값이 되면 필드를 지워 "손대지 않음" 으로 되돌린다.
+ */
+export function nudgePiece(id: string, delta: PieceOffset): void {
+  workspace.update((ws) => ({
+    ...ws,
+    tabs: ws.tabs.map((t) => {
+      if (t.id !== id) return t;
+      const prev = t.assemblyAt ?? {};
+      const next: PieceOffset = {
+        dx: (prev.dx ?? 0) + (delta.dx ?? 0),
+        dy: (prev.dy ?? 0) + (delta.dy ?? 0),
+        rot: (prev.rot ?? 0) + (delta.rot ?? 0),
+      };
+      const out = { ...t };
+      if (next.dx || next.dy || next.rot) out.assemblyAt = next;
+      else delete out.assemblyAt;
+      return out;
+    }),
+  }));
+}
+
+/** 조립도 배치 되돌리기 — id 를 주면 그 조각만, 없으면 작품 전체 */
+export function resetPieceOffsets(id?: string): void {
+  workspace.update((ws) => ({
+    ...ws,
+    tabs: ws.tabs.map((t) => {
+      if (id !== undefined && t.id !== id) return t;
+      if (!t.assemblyAt) return t;
+      const out = { ...t };
+      delete out.assemblyAt;
+      return out;
+    }),
+  }));
+}
+
+/** 조립도에서 손으로 옮긴 조각 수 */
+export const pieceOffsetCount = derived(workspace, ($ws) =>
+  $ws.tabs.filter((t) => t.assemblyAt).length);
 
 // ============================================================
 // 캔버스 — 손으로 다듬은 배치

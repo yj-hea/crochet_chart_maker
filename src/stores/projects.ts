@@ -8,7 +8,7 @@
  * 여는 순간이 곧 동기화를 결정하는 순간이라 사용자가 그 순간을 보고 있어야 한다.
  */
 
-import { writable, get } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import {
   loadProjectIndex,
   loadProject,
@@ -17,6 +17,7 @@ import {
   setOpenProject,
   addProjectMeta,
   renameProject as renameProjectMeta,
+  setProjectClosed,
   makeProjectId,
   sortProjects,
   type ProjectMeta,
@@ -27,6 +28,13 @@ import { workspace, applyWorkspace, toSavedTab, emptyWorkspace, withoutPersist }
 export const projects = writable<ProjectMeta[]>(sortProjects(loadProjectIndex().projects));
 /** 열어 둔 프로젝트 id. null 이면 시작 화면 */
 export const openProjectId = writable<string | null>(null);
+
+/**
+ * 작품 탭 줄에 둘 작품들 — **치워 두지 않은** 것만.
+ * 치운 작품도 작품 목록에는 그대로 있다 (지운 것이 아니다).
+ */
+export const openTabs = derived([projects, openProjectId], ([$projects, $open]) =>
+  $projects.filter((p) => !p.closed || p.id === $open));
 
 function refresh(): void {
   projects.set(sortProjects(loadProjectIndex().projects));
@@ -53,6 +61,8 @@ export function persistOpenProject(): void {
 export function openProject(id: string): boolean {
   const saved = loadProject(id);
   if (!saved) return false;
+  // 치워 두었던 작품을 다시 열면 탭 줄로 돌아온다
+  setProjectClosed(id, false);
   // 같은 작품을 다시 여는 경우(동기화로 내용을 새로 받은 뒤)에는 저장하지 않는다 —
   // 메모리에 남은 낡은 내용이 방금 받은 것을 덮어쓴다.
   if (get(openProjectId) !== id) persistOpenProject();
@@ -113,6 +123,19 @@ export function renameProject(id: string, name: string): void {
   const trimmed = name.trim();
   if (!trimmed) return;
   renameProjectMeta(id, trimmed);
+  refresh();
+}
+
+/**
+ * 작품 탭 줄에서 **치우기** — 삭제가 아니다.
+ * 내용은 그대로 남고 작품 목록에서 다시 열 수 있다. 열어 둔 작품을 치우면
+ * 저장한 뒤 시작 화면으로 돌아간다.
+ */
+export function closeProjectTab(id: string): void {
+  if (get(openProjectId) === id) {
+    closeProject();
+  }
+  setProjectClosed(id, true);
   refresh();
 }
 

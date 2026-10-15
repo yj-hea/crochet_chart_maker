@@ -3,6 +3,7 @@
   import { workspace, switchTab, createTab, duplicateTab, closeTab, renameTab } from '$stores/tabs';
   import { CRAFT_LIST, getCraft } from '$lib/crafts';
   import { placeDropdown } from '$lib/dropdown-place';
+  import { assemblyOpen, assemblyAvailable } from '$stores/assembly';
 
   // 탭 하나 = 크래프트 하나 → 새 탭을 만들 때 기법을 고른다 (이후 변경 불가)
   let addMenuOpen = $state(false);
@@ -94,8 +95,24 @@
 </script>
 
 <div class="tab-bar" role="tablist">
+  {#if $assemblyAvailable}
+    <!-- 작품 전체를 한 장으로 보는 고정 탭 — 글(단 입력) 없이 자리만 다듬는다 -->
+    <div
+      class="tab sheet"
+      class:active={$assemblyOpen}
+      role="tab"
+      tabindex="0"
+      aria-selected={$assemblyOpen}
+      onclick={() => assemblyOpen.set(true)}
+      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') assemblyOpen.set(true); }}
+      title="조각을 모두 이어 붙인 작품 전체 — 조각을 끌어 자리를 다듬습니다"
+    >
+      <span class="tab-craft"><i class="fa-solid fa-object-group"></i></span>
+      <span class="tab-name">조립도</span>
+    </div>
+  {/if}
   {#each $workspace.tabs as tab (tab.id)}
-    {@const isActive = tab.id === $workspace.activeTabId}
+    {@const isActive = tab.id === $workspace.activeTabId && !$assemblyOpen}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       class="tab"
@@ -103,7 +120,7 @@
       role="tab"
       tabindex="0"
       aria-selected={isActive}
-      onclick={() => switchTab(tab.id)}
+      onclick={() => { assemblyOpen.set(false); switchTab(tab.id); }}
       ondblclick={() => startEdit(tab.id, tab.name)}
     >
       {#if editingId === tab.id}
@@ -223,6 +240,9 @@
     line-height: 1;
     opacity: 0.85;
   }
+  /* 조립도는 도안이 아니라 작품 한 장 — 살짝 구분해 둔다 */
+  .tab.sheet { border-style: dashed; }
+  .tab.sheet .tab-name { font-weight: 600; }
   .tab-add-wrap {
     position: relative;
     display: inline-flex;

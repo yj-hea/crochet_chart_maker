@@ -156,3 +156,42 @@ describe('프로젝트 관리', () => {
     expect(get(p.projects).find((x) => x.id === id)!.tabCount).toBe(2);
   });
 });
+
+describe('작품 탭 닫기 — 삭제가 아니다', () => {
+  it('닫으면 탭 줄에서만 사라지고 목록·내용은 남는다', async () => {
+    const p = await fresh();
+    const a = p.createProject('가');
+    const b = p.createProject('나');
+    p.closeProjectTab(a);
+
+    expect(get(p.openTabs).map((x) => x.id)).not.toContain(a);
+    // 작품 목록에는 그대로 있고 내용도 읽힌다
+    expect(get(p.projects).map((x) => x.id)).toContain(a);
+    expect(p.openProject(a)).toBe(true);
+    // 다시 열면 탭 줄로 돌아온다
+    expect(get(p.openTabs).map((x) => x.id)).toContain(a);
+    expect(b).toBeTruthy();
+  });
+
+  it('열어 둔 작품을 닫으면 저장한 뒤 시작 화면으로 간다', async () => {
+    const p = await fresh();
+    const id = p.createProject('작품');
+    p.tabs.updateRoundSource(get(p.tabs.workspace).tabs[0]!.rounds[0]!.id, '@, 9X');
+    p.closeProjectTab(id);
+
+    expect(get(p.openProjectId)).toBeNull();
+    expect(get(p.openTabs).map((x) => x.id)).not.toContain(id);
+    // 닫기 직전의 내용이 남아 있다
+    p.openProject(id);
+    expect(get(p.tabs.workspace).tabs[0]!.rounds[0]!.source).toBe('@, 9X');
+  });
+
+  it('닫아 둔 상태는 다시 켜도 그대로다', async () => {
+    const p = await fresh();
+    const id = p.createProject('작품');
+    p.closeProjectTab(id);
+    const again = await fresh();
+    expect(get(again.openTabs).map((x) => x.id)).not.toContain(id);
+    expect(get(again.projects).map((x) => x.id)).toContain(id);
+  });
+});
