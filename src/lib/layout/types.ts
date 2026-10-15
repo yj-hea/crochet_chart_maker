@@ -50,7 +50,21 @@ export interface PositionedStitch {
    *  - col: 왼쪽부터 0-based 열 (cascade 로 폭이 달라지면 누적 단위 위치)
    *  - span: 차지하는 칸 수 (kfb 처럼 여러 코를 만드는 경우 > 1)
    */
-  cell?: { row: number; col: number; span: number };
+  cell?: { row: number; col: number; span: number } & ForeignCell;
+}
+
+/**
+ * 합쳐 그릴 때 **끌어온 조각의 칸** 정보 (`layout/compose`).
+ *
+ * 격자 크래프트(대바늘)는 칸이 도안의 일부라서, 조각을 합쳐도 칸을 계속 그려야 한다.
+ * 그런데 칸 크기는 조각의 게이지에서 나오고(`cellSize`) 조립도에서 조각을 돌릴 수도
+ * 있으므로, 합칠 때 그 조각의 칸 크기와 회전을 코·빈칸마다 들려 보낸다.
+ * 없으면 레이아웃 자신의 `cellSize` 를 쓴다.
+ */
+export interface ForeignCell {
+  size?: { width: number; height: number };
+  /** 조각을 돌려 놓은 각도(도) — 칸도 같이 돈다 */
+  rot?: number;
 }
 
 export interface LayoutBounds {
@@ -130,6 +144,8 @@ export interface PositionedMarker {
   color?: string;
   /** 사용자 지정 라벨 (`pm "옆선"`) */
   label?: string;
+  /** 합쳐 그릴 때 끌어온 조각의 칸 (`layout/compose`) */
+  foreign?: ForeignCell;
 }
 
 /**
@@ -190,7 +206,7 @@ export interface LayoutResult {
      * `pad`  — 행이 차트 폭보다 좁아 남는 좌우 여백
      */
     kind?: 'hole' | 'pad';
-  }>;
+  } & ForeignCell>;
   /** 편물 마커 (`pm`) — 코 사이 경계 위치 */
   stitchMarkers?: PositionedMarker[];
 }

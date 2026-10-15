@@ -13,6 +13,7 @@ import type {
   PositionedStitch,
   RoundMarker,
   PositionedMarker,
+  ForeignCell,
 } from '$lib/layout/types';
 import { LEGEND_KEY } from '$lib/layout/adjust';
 import { renderNotes, type ChartNote } from '$lib/render/notes';
@@ -82,7 +83,10 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     ...(layout.fillerCells ?? []),
     ...layout.stitches
       .filter((s) => s.op.kind === 'UNWORKED')
-      .map((s) => ({ x: s.position.x, y: s.position.y, span: s.cell?.span ?? 1 })),
+      .map((s) => ({
+        x: s.position.x, y: s.position.y, span: s.cell?.span ?? 1,
+        size: s.cell?.size, rot: s.cell?.rot,
+      })),
   ];
 
   return [
@@ -93,11 +97,13 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
     `<defs>${KNIT_SYMBOL_DEFS}</defs>`,
     renderFillers(greyCells, cell, emptyColor),
     renderColorCells(layout.stitches, cell, fillMode ? undefined : mainColor, mainColor),
-    showGrid && !layout.noGrid ? renderCellBorders(layout, cell) : '',
+    // `noGrid` 는 보지 않는다 — 대바늘은 칸마다 사각형을 그리므로, 조각을 합쳐
+    // 기준이 여럿이어도 어긋나지 않는다. 오히려 칸이 없으면 도안이 읽히지 않는다.
+    showGrid ? renderCellBorders(layout, cell) : '',
     renderDecorations(layout.decorations),
     renderRoundGroups(layout.stitches, fillMode),
     renderRoundNumbers(layout.roundMarkers),
-    renderFoldMarks(layout.roundMarkers, cell, bounds),
+    renderFoldMarks(layout, cell),
     renderStitchMarkers(layout.stitchMarkers ?? [], cell),
     renderLegend(legend, bounds.minX, bounds.maxY + LEGEND_GAP, layout.legendTransform),
     notes.svg,
@@ -107,17 +113,34 @@ export function renderKnitSvg(opts: KnitRenderOptions): string {
 
 /** 코 없음 칸 — 회색 채움 */
 function renderFillers(
-  cells: ReadonlyArray<{ x: number; y: number; span: number; kind?: string }>,
+  cells: ReadonlyArray<{ x: number; y: number; span: number; kind?: string } & ForeignCell>,
   cell: { width: number; height: number },
   fill: string,
 ): string {
   if (cells.length === 0) return '';
-  const rects = cells.map((c) => {
-    const w = c.span * cell.width;
-    return `<rect x="${fmt(c.x - w / 2)}" y="${fmt(c.y - cell.height / 2)}" ` +
-      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${escapeAttr(fill)}"/>`;
-  });
+  const rects = cells.map((c) => cellRect(c.x, c.y, c.span, c.size ?? cell, c.rot,
+    `fill="${escapeAttr(fill)}"`));
   return `<g class="no-stitch">${rects.join('')}</g>`;
+}
+
+/**
+ * 칸 하나를 그리는 사각형.
+ *
+ * 크기는 그 칸이 들고 온 값(`ForeignCell.size`)을 먼저 쓴다 — 합쳐 그릴 때 조각마다
+ * 게이지가 달라 칸 높이가 다를 수 있다. 조각을 돌려 놓았으면 칸도 같이 돌린다.
+ */
+function cellRect(
+  cx: number,
+  cy: number,
+  span: number,
+  cell: { width: number; height: number },
+  rot: number | undefined,
+  attrs: string,
+): string {
+  const w = span * cell.width;
+  const t = rot ? ` transform="rotate(${fmt(rot)} ${fmt(cx)} ${fmt(cy)})"` : '';
+  return `<rect x="${fmt(cx - w / 2)}" y="${fmt(cy - cell.height / 2)}" ` +
+    `width="${fmt(w)}" height="${fmt(cell.height)}" ${attrs}${t}/>`;
 }
 
 /**
@@ -126,17 +149,13 @@ function renderFillers(
  */
 function renderCellBorders(layout: LayoutResult, cell: { width: number; height: number }): string {
   const rects: string[] = [];
-  const push = (cx: number, cy: number, span: number) => {
-    const w = span * cell.width;
-    rects.push(
-      `<rect x="${fmt(cx - w / 2)}" y="${fmt(cy - cell.height / 2)}" ` +
-      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="none" ` +
+  const push = (cx: number, cy: number, span: number, own?: ForeignCell) => {
+    rects.push(cellRect(cx, cy, span, own?.size ?? cell, own?.rot,
       // vector-effect: 축소해도 격자선이 sub-pixel 로 사라지지 않도록 화면 기준 두께 유지
-      `stroke="${GRID_COLOR}" stroke-width="0.8" vector-effect="non-scaling-stroke"/>`
-    );
+      `fill="none" stroke="${GRID_COLOR}" stroke-width="0.8" vector-effect="non-scaling-stroke"`));
   };
-  for (const s of layout.stitches) push(s.position.x, s.position.y, s.cell?.span ?? 1);
-  for (const f of layout.fillerCells ?? []) push(f.x, f.y, f.span);
+  for (const s of layout.stitches) push(s.position.x, s.position.y, s.cell?.span ?? 1, s.cell);
+  for (const f of layout.fillerCells ?? []) push(f.x, f.y, f.span, f);
   if (rects.length === 0) return '';
   return `<g class="grid">${rects.join('')}</g>`;
 }
@@ -204,11 +223,10 @@ function renderColorCells(
     // 미작업 코는 빈칸으로 그린다 (renderFillers 가 이미 회색으로 칠했다)
     if (s.op.kind === 'UNWORKED') continue;
     const fill = force ?? s.op.color ?? mainColor;
-    const w = (s.cell?.span ?? 1) * cell.width;
-    rects.push(
-      `<rect x="${fmt(s.position.x - w / 2)}" y="${fmt(s.position.y - cell.height / 2)}" ` +
-      `width="${fmt(w)}" height="${fmt(cell.height)}" fill="${escapeAttr(fill)}"/>`
-    );
+    rects.push(cellRect(
+      s.position.x, s.position.y, s.cell?.span ?? 1,
+      s.cell?.size ?? cell, s.cell?.rot, `fill="${escapeAttr(fill)}"`,
+    ));
   }
   if (rects.length === 0) return '';
   return `<g class="colorwork">${rects.join('')}</g>`;
@@ -254,22 +272,30 @@ function renderLegend(
  * "여기에 같은 단이 더 있다"는 뜻이라, 번호(`11~25`)와 함께 읽힌다.
  */
 function renderFoldMarks(
-  markers: RoundMarker[],
+  layout: LayoutResult,
   cell: { width: number; height: number },
-  bounds: LayoutResult['bounds'],
 ): string {
-  const folded = markers.filter((m) => (m.label ?? '').includes('~'));
+  const folded = layout.roundMarkers.filter((m) => (m.label ?? '').includes('~'));
   if (folded.length === 0) return '';
-  const parts = folded.map((m) => {
+  const parts: string[] = [];
+  for (const m of folded) {
+    // 물결선은 **그 단의 폭**만큼만 긋는다 — 도안 전체 경계로 그으면 합쳐 그릴 때
+    // 아래 조각들 위를 지나간다
+    const row = layout.stitches.filter((s) => !s.foreign && s.roundIndex === m.roundIndex);
+    if (row.length === 0) continue;
+    const half = (s: typeof row[number]) => ((s.cell?.span ?? 1) * cell.width) / 2;
+    const left = Math.min(...row.map((s) => s.position.x - half(s)));
+    const right = Math.max(...row.map((s) => s.position.x + half(s)));
     const y = m.position.y - cell.height / 2;
     const step = 8;
-    const d: string[] = [`M ${fmt(bounds.minX)},${fmt(y)}`];
-    for (let x = bounds.minX; x < bounds.maxX; x += step) {
+    const d: string[] = [`M ${fmt(left)},${fmt(y)}`];
+    for (let x = left; x < right; x += step) {
       d.push(`q ${fmt(step / 2)},-3 ${fmt(step)},0`);
     }
-    return `<path d="${d.join(' ')}" fill="none" stroke="${STITCH_COLOR}" stroke-width="0.9" ` +
-      `stroke-linecap="round" opacity="0.5"/>`;
-  });
+    parts.push(`<path d="${d.join(' ')}" fill="none" stroke="${STITCH_COLOR}" stroke-width="0.9" ` +
+      `stroke-linecap="round" opacity="0.5"/>`);
+  }
+  if (parts.length === 0) return '';
   return `<g class="fold-marks">${parts.join('')}</g>`;
 }
 
@@ -299,19 +325,22 @@ function renderStitchMarkers(
   cell: { width: number; height: number },
 ): string {
   if (markers.length === 0) return '';
-  const h = cell.height / 2;
   const parts = markers.map((m) => {
     const color = m.color ? escapeAttr(m.color) : GRID_COLOR;
+    // 합쳐 그린 조각의 마커는 그 조각의 칸 높이를 들고 온다
+    const h = (m.foreign?.size ?? cell).height / 2;
+    const rot = m.foreign?.rot;
     const { x, y } = m.position;
     const label = m.label
       ? `<text x="${fmt(x + 2)}" y="${fmt(y - h - 3)}" font-size="6" ` +
         `font-family="system-ui, sans-serif" fill="${color}" ` +
         `dominant-baseline="ideographic">${escapeAttr(m.label)}</text>`
       : '';
+    const t = rot ? ` transform="rotate(${fmt(rot)} ${fmt(x)} ${fmt(y)})"` : '';
     return selectable(m.key, m.transform, m.position,
       `<line x1="${fmt(x)}" y1="${fmt(y - h)}" x2="${fmt(x)}" y2="${fmt(y + h)}" ` +
       `stroke="${color}" stroke-width="${MARKER_STROKE}" stroke-linecap="square" ` +
-      `vector-effect="non-scaling-stroke"/>` + label,
+      `vector-effect="non-scaling-stroke"${t}/>` + label,
     );
   });
   return `<g class="stitch-markers">${parts.join('')}</g>`;

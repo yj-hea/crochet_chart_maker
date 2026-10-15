@@ -10,7 +10,7 @@
  */
 
 import { derived } from 'svelte/store';
-import { pattern, workspace, activeSplit } from './tabs';
+import { pattern, workspace, activeSplit, type Tab } from './tabs';
 import {
   showGrid, showConnections, flatFlipVertical, flatAlign, flatCascade, flatCompact, flatVAlign,
   knitStartSide, showNotes, composeDepth,
@@ -24,6 +24,7 @@ import { applyAdjustments, adjustTransform, type Adjustments } from '$lib/layout
 import { adjustments } from './tabs';
 import type { ChartNote } from '$lib/render/notes';
 import { planRounds } from '$lib/model/round-plan';
+import { DEFAULT_VIEW_OPTIONS } from '$lib/model/view-options';
 import { assemble, type AssembleNode } from '$lib/layout/assemble';
 
 export interface RenderedChart {
@@ -112,6 +113,31 @@ export const chartLayout = derived(
 );
 
 /**
+ * 조각(다른 탭) 하나를 그 탭의 **자기 표시 옵션**으로 풀어 놓는다.
+ *
+ * 활성 탭의 옵션을 쓰면 안 된다 — 표시 옵션은 도안마다 따로 기억하는 값이고,
+ * 특히 대바늘의 읽는 방향(`startLeft`)·상하 반전은 차트를 뒤집어 버리므로
+ * 남의 설정으로 풀면 조각이 거울상으로 붙는다.
+ */
+export function layoutOfTab(tab: Tab): LayoutResult | undefined {
+  const rounds = planRounds(tab.rounds).chart
+    .map((r) => r.expanded)
+    .filter((e): e is ExpandedRound => !!e && e.ops.length > 0);
+  if (rounds.length === 0) return undefined;
+  const view = tab.view ?? DEFAULT_VIEW_OPTIONS;
+  return getCraft(tab.craft).layout(rounds, {
+    shape: tab.shape,
+    gauge: tab.gauge,
+    flipVertical: view.flatFlipVertical,
+    align: view.flatAlign,
+    cascade: view.flatCascade,
+    compact: view.flatCompact,
+    startLeft: view.knitStartSide === 'L',
+    vAlign: view.flatVAlign,
+  });
+}
+
+/**
  * 조각을 합쳐 그린 레이아웃.
  *
  * 몸통이 조각을 이어 시작하면(`Tab.startsFrom`) 그 조각들을 **아래에 나란히** 붙여
@@ -122,10 +148,8 @@ export const chartLayout = derived(
  * (이 도안 자신의 레이아웃)을 그대로 쓴다.
  */
 export const composedLayout = derived(
-  [chartLayout, workspace, composeDepth,
-    flatAlign, flatCascade, flatCompact, flatVAlign, flatFlipVertical, knitStartSide],
-  ([$chartLayout, $ws, $depth,
-    $align, $cascade, $compact, $vAlign, $flip, $startSide]): LayoutResult | null => {
+  [chartLayout, workspace, composeDepth],
+  ([$chartLayout, $ws, $depth]): LayoutResult | null => {
     if (!$chartLayout) return null;
     const active = $ws.tabs.find((t) => t.id === $ws.activeTabId);
     if (!active?.startsFrom) return $chartLayout.layout;
@@ -136,23 +160,8 @@ export const composedLayout = derived(
       const node = { name: tab.name, start: tab.startsFrom };
       // 활성 탭은 이미 풀어 둔 레이아웃(손 조정까지 반영된)을 그대로 쓴다
       if (tab.id === $ws.activeTabId) return { ...node, layout: $chartLayout.layout };
-      const rounds = planRounds(tab.rounds).chart
-        .map((r) => r.expanded)
-        .filter((e) => e.ops.length > 0);
-      if (rounds.length === 0) return undefined;
-      return {
-        ...node,
-        layout: getCraft(tab.craft).layout(rounds, {
-          shape: tab.shape,
-          gauge: tab.gauge,
-          flipVertical: $flip,
-          align: $align,
-          cascade: $cascade,
-          compact: $compact,
-          startLeft: $startSide === 'L',
-          vAlign: $vAlign,
-        }),
-      };
+      const layout = layoutOfTab(tab);
+      return layout ? { ...node, layout } : undefined;
     };
 
     return assemble($ws.activeTabId, lookup, $depth) ?? $chartLayout.layout;

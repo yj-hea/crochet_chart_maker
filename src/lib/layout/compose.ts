@@ -12,7 +12,10 @@
  * 레이아웃을 그대로 쓴다. 그래서 조각의 코에는 선택 키를 달지 않는다.
  */
 
-import type { LayoutResult, PositionedStitch, Point, Decoration, LayoutBounds } from './types';
+import type {
+  LayoutResult, PositionedStitch, PositionedMarker, Point, Decoration, LayoutBounds,
+  ForeignCell,
+} from './types';
 
 /** 조각을 놓는 자리를 손으로 다듬은 값 — 자동 배치 위에 덧입힌다 */
 export interface PieceOffset {
@@ -68,6 +71,10 @@ export function composeWithPieces(
 
   const stitches: PositionedStitch[] = [...body.stitches];
   const decorations: Decoration[] = [...(body.decorations ?? [])];
+  // 격자 크래프트(대바늘)의 빈칸·편물 마커도 조각과 함께 와야 한다 —
+  // 두고 오면 코막음 구멍이 메워지고 마커가 사라진 그림이 된다
+  const fillerCells: NonNullable<LayoutResult['fillerCells']> = [...(body.fillerCells ?? [])];
+  const stitchMarkers: PositionedMarker[] = [...(body.stitchMarkers ?? [])];
   let minX = body.bounds.minX;
   let maxX = body.bounds.maxX;
   let minY = body.bounds.minY;
@@ -90,11 +97,18 @@ export function composeWithPieces(
     // 부모 인덱스는 **합친 배열 기준**으로 옮긴다 — 안 그러면 조각의 연결선이
     // 몸통의 코를 가리켜 부채처럼 퍼진다
     const offset = stitches.length;
+    const cell = cellOf(piece.layout, place);
     for (const s of piece.layout.stitches) {
-      stitches.push(transform(s, place, offset));
+      stitches.push(transform(s, place, offset, cell));
     }
     for (const d of piece.layout.decorations ?? []) {
       decorations.push(moveDecoration(d, place.at));
+    }
+    for (const f of piece.layout.fillerCells ?? []) {
+      fillerCells.push({ ...f, ...place.at(f), ...cell });
+    }
+    for (const m of piece.layout.stitchMarkers ?? []) {
+      stitchMarkers.push(moveMarker(m, place, cell));
     }
     const box = place.boxOf(piece.layout.bounds);
     const baseBox = place0.boxOf(b);
@@ -163,6 +177,8 @@ export function composeWithPieces(
     ...body,
     stitches,
     decorations,
+    fillerCells,
+    stitchMarkers,
     pieceBoxes,
     // 격자 안내선은 조각마다 기준이 달라 합치면 어긋난다 — 합쳐 그릴 때는 생략한다
     gridGuide: undefined,
@@ -191,6 +207,8 @@ export function sideBySide(items: ReadonlyArray<PieceLayout>): LayoutResult | nu
 
   const stitches: PositionedStitch[] = [];
   const decorations: Decoration[] = [];
+  const fillerCells: NonNullable<LayoutResult['fillerCells']> = [];
+  const stitchMarkers: PositionedMarker[] = [];
   const pieceBoxes: Array<{ id?: string; name: string; bounds: LayoutBounds }> = [];
   let cursor = 0;
   let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
@@ -200,8 +218,15 @@ export function sideBySide(items: ReadonlyArray<PieceLayout>): LayoutResult | nu
     const b = item.layout.baseBounds ?? item.layout.bounds;
     const place = placer(b, cursor - b.minX, -b.minY, item.offset);
     const offset = stitches.length;
-    for (const s of item.layout.stitches) stitches.push(transform(s, place, offset));
+    const cell = cellOf(item.layout, place);
+    for (const s of item.layout.stitches) stitches.push(transform(s, place, offset, cell));
     for (const d of item.layout.decorations ?? []) decorations.push(moveDecoration(d, place.at));
+    for (const f of item.layout.fillerCells ?? []) {
+      fillerCells.push({ ...f, ...place.at(f), ...cell });
+    }
+    for (const m of item.layout.stitchMarkers ?? []) {
+      stitchMarkers.push(moveMarker(m, place, cell));
+    }
     const box = place.boxOf(item.layout.bounds);
     pieceBoxes.push({ ...(item.id ? { id: item.id } : {}), name: item.name, bounds: box });
     for (const inner of item.layout.pieceBoxes ?? []) {
@@ -216,6 +241,8 @@ export function sideBySide(items: ReadonlyArray<PieceLayout>): LayoutResult | nu
     ...items[0]!.layout,
     stitches,
     decorations,
+    fillerCells,
+    stitchMarkers,
     pieceBoxes,
     roundMarkers: [],
     gridGuide: undefined,
@@ -269,12 +296,30 @@ function placer(b: LayoutBounds, dx: number, dy: number, offset?: PieceOffset) {
 
 type Placer = ReturnType<typeof placer>;
 
+/**
+ * 조각이 들고 오는 칸 정보 — 칸 크기는 조각의 게이지에서 나오고, 회전은 놓인 자리에서 나온다.
+ * 격자가 없는 크래프트(코바늘)는 `cellSize` 가 없으니 아무것도 들려 보내지 않는다.
+ */
+function cellOf(layout: LayoutResult, place: Placer): ForeignCell {
+  const deg = (place.rot * 180) / Math.PI;
+  return {
+    ...(layout.cellSize ? { size: layout.cellSize } : {}),
+    ...(deg ? { rot: deg } : {}),
+  };
+}
+
 /** 조각의 코는 **보여 주기 전용** — 선택 키를 떼고 좌표만 옮긴다 */
-function transform(s: PositionedStitch, place: Placer, offset: number): PositionedStitch {
+function transform(
+  s: PositionedStitch,
+  place: Placer,
+  offset: number,
+  cell: ForeignCell = {},
+): PositionedStitch {
   const { key: _key, transform: _t, ...rest } = s;
   return {
     ...rest,
     foreign: true,
+    ...(s.cell ? { cell: { ...s.cell, ...cell } } : {}),
     parentIndices: s.parentIndices.map((i) => i + offset),
     position: place.at(s.position),
     // 원형 기호는 각도를 보고 서 있다 — 조각을 돌리면 기호도 같이 돈다
@@ -287,6 +332,17 @@ function transform(s: PositionedStitch, place: Placer, offset: number): Position
           },
         }
       : {}),
+  };
+}
+
+/** 편물 마커도 조각과 같이 옮긴다 — 칸 경계를 가리키므로 칸 크기·회전이 필요하다 */
+function moveMarker(m: PositionedMarker, place: Placer, cell: ForeignCell): PositionedMarker {
+  const { key: _key, transform: _t, ...rest } = m;
+  return {
+    ...rest,
+    position: place.at(m.position),
+    ...(m.angle !== undefined ? { angle: m.angle + place.rot } : {}),
+    ...(cell.size || cell.rot ? { foreign: cell } : {}),
   };
 }
 

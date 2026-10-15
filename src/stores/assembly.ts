@@ -13,10 +13,9 @@ import { writable, derived } from 'svelte/store';
 import { workspace } from './tabs';
 import {
   showGrid, showConnections, colorMode, emptyColor, mainColor, symbolColor,
-  flatAlign, flatCascade, flatCompact, flatVAlign, flatFlipVertical, knitStartSide,
 } from './mode';
 import { assembleSheet, rootPieces, type AssembleNode } from '$lib/layout/assemble';
-import { planRounds } from '$lib/model/round-plan';
+import { layoutOfTab } from './rendered';
 import { getCraft } from '$lib/crafts';
 import type { LayoutResult } from '$lib/layout/types';
 
@@ -27,31 +26,25 @@ export const assemblyOpen = writable(false);
 export const assemblyAvailable = derived(workspace, ($ws) =>
   $ws.tabs.length > 1 && $ws.tabs.some((t) => t.startsFrom));
 
-/** 작품 전체를 조립한 레이아웃 */
+/**
+ * 작품 전체를 조립한 레이아웃.
+ *
+ * 조각마다 **그 도안의 표시 옵션**으로 푼다 (`layoutOfTab`) — 표시 옵션은 탭 단위
+ * 값이므로, 조립도가 자기 기준을 들이밀면 조각이 저 혼자 뒤집혀 보인다.
+ */
 export const assemblyLayout = derived(
-  [workspace, flatAlign, flatCascade, flatCompact, flatVAlign, flatFlipVertical, knitStartSide],
-  ([$ws, $align, $cascade, $compact, $vAlign, $flip, $startSide]): LayoutResult | null => {
+  workspace,
+  ($ws): LayoutResult | null => {
     const lookup = (id: string): AssembleNode | undefined => {
       const tab = $ws.tabs.find((t) => t.id === id);
       if (!tab) return undefined;
-      const rounds = planRounds(tab.rounds).chart
-        .map((r) => r.expanded)
-        .filter((e) => e.ops.length > 0);
-      if (rounds.length === 0) return undefined;
+      const layout = layoutOfTab(tab);
+      if (!layout) return undefined;
       return {
         name: tab.name,
         start: tab.startsFrom,
         ...(tab.assemblyAt ? { offset: tab.assemblyAt } : {}),
-        layout: getCraft(tab.craft).layout(rounds, {
-          shape: tab.shape,
-          gauge: tab.gauge,
-          flipVertical: $flip,
-          align: $align,
-          cascade: $cascade,
-          compact: $compact,
-          startLeft: $startSide === 'L',
-          vAlign: $vAlign,
-        }),
+        layout,
       };
     };
     const roots = rootPieces($ws.tabs.map((t) => t.id), (id) =>
