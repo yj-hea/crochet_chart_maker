@@ -45,6 +45,11 @@ export interface ProjectMeta {
   rev?: string;
   /** 그 rev 와 같은 내용의 `savedAt` — 이 뒤에 고쳤으면 로컬이 새것이다 */
   syncedAt?: string;
+  /**
+   * 작품 탭 줄에서 **치워 둔** 작품 — 지운 것이 아니라 안 보이게만 한 것이다.
+   * 작품 목록(시작 화면)에는 그대로 있고, 다시 열면 탭 줄로 돌아온다.
+   */
+  closed?: boolean;
 }
 
 export interface ProjectIndex {
@@ -129,6 +134,7 @@ function normalizeMeta(m: ProjectMeta): ProjectMeta {
     ...(typeof m.openedAt === 'string' ? { openedAt: m.openedAt } : {}),
     ...(typeof m.rev === 'string' ? { rev: m.rev } : {}),
     ...(typeof m.syncedAt === 'string' ? { syncedAt: m.syncedAt } : {}),
+    ...(m.closed === true ? { closed: true } : {}),
   };
 }
 
@@ -253,6 +259,25 @@ export function renameProject(id: string, name: string): void {
   saveProjectIndex({
     ...index,
     projects: index.projects.map((p) => (p.id === id ? { ...p, name } : p)),
+  });
+}
+
+/**
+ * 작품 탭 줄에서 치우기 / 되돌리기.
+ * 내용 파일은 건드리지 않는다 — 목록에서 다시 열면 그대로 돌아온다.
+ */
+export function setProjectClosed(id: string, closed: boolean): void {
+  const index = loadProjectIndex();
+  saveProjectIndex({
+    ...index,
+    projects: index.projects.map((p) => {
+      if (p.id !== id) return p;
+      const next = { ...p };
+      if (closed) next.closed = true;
+      else delete next.closed;
+      return next;
+    }),
+    ...(closed && index.openId === id ? { openId: undefined } : {}),
   });
 }
 
