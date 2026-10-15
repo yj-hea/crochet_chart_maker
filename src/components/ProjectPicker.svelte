@@ -149,6 +149,16 @@
               />
             {:else}
               <button type="button" class="open" disabled={busy !== null} onclick={() => open(p.id)}>
+                <!-- 작품 줄에 열려 있는지 / 닫아 두었는지 -->
+                <span
+                  class="state"
+                  class:closed={p.closed}
+                  title={p.closed
+                    ? '닫아 둠 — 열면 작품 줄로 돌아옵니다'
+                    : '작품 줄에 열려 있습니다'}
+                >
+                  <i class="fa-solid {p.closed ? 'fa-folder' : 'fa-folder-open'}"></i>
+                </span>
                 <span class="name">{p.name}</span>
                 <span class="meta">
                   도안 {p.tabCount}개 · {when(p.openedAt ?? p.updatedAt)}
@@ -306,7 +316,17 @@
     gap: 10px;
   }
   .open:hover { background: var(--bg-hover); }
+  .state {
+    align-self: center;
+    font-size: 12px;
+    color: var(--accent, #4d86ff);
+    width: 14px;
+    text-align: center;
+  }
+  /* 닫아 둔 작품은 눈에 덜 띄게 — 목록에는 남아 있다 */
+  .state.closed { color: var(--text-muted); }
   .name { font-weight: 600; font-size: 14px; }
+  .open:has(.state.closed) .name { color: var(--text-secondary); }
   .meta { font-size: 11px; color: var(--text-secondary); }
   .badge {
     margin-left: auto;

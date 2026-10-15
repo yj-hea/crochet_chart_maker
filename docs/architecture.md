@@ -327,6 +327,7 @@ crochet-chart:workspace       예전 키 — 마이그레이션 뒤에도 백업
 작품 줄은 **열어 둔 작품들**만 보여 준다(`openTabs`). `⋯ → 닫기`(`closeProjectTab`)는
 메타에 `closed` 를 달아 줄에서만 치운다 — 내용 파일도 Dropbox 파일도 그대로다. 작품 목록
 (시작 화면)에는 계속 보이고, 거기서 다시 열면 줄로 돌아온다(`openProject` 가 표시를 지운다).
+목록에서는 폴더 아이콘으로 구분한다 — 열린 폴더는 작품 줄에 있는 것, 닫힌 폴더는 치워 둔 것.
 삭제(`removeProject`)만 내용을 지운다.
 
 ### 조각 — 잇기 · 이어받기 (`lib/model/pieces.ts`)
