@@ -32,10 +32,15 @@ import {
   loadProject, saveProject, loadProjectIndex, saveProjectIndex, addProjectMeta,
   type ProjectMeta,
 } from '$lib/projects';
+import {
+  WORKSPACE_FOLDER, INDEX_NAME, readIndex, noteProject, forgetProject,
+} from '$lib/dropbox/workspace-index';
 import { workspace, toSavedTab } from './tabs';
-import { openProjectId, projects, refreshProjects, openProject } from './projects';
+import {
+  openProjectId, projects, refreshProjects, openProject, renameProject,
+} from './projects';
 
-export const WORKSPACE_FOLDER = '/workspaces';
+export { WORKSPACE_FOLDER };
 const PUSH_DEBOUNCE_MS = 1500;
 
 /** 파일 안에 함께 적는 이름 — 다른 기기에서 목록에 보여 준다 */
@@ -46,9 +51,12 @@ interface NamedWorkspace extends SavedWorkspace {
 
 export interface RemoteProject {
   id: string;
+  /** 목록 파일에 적힌 이름. 아직 없으면 id 그대로 */
   name: string;
   rev: string;
   updatedAt: string;
+  /** 목록 파일이 알려 주는 도안 수 */
+  tabCount?: number;
 }
 
 export type SyncStatus = 'offline' | 'idle' | 'syncing' | 'error' | 'conflict';
@@ -84,14 +92,23 @@ export async function refreshRemote(): Promise<RemoteProject[]> {
   }
   try {
     const entries = await listFolder(WORKSPACE_FOLDER);
+    // 이름은 목록 파일에서 온다 — 폴더 목록은 파일 이름(= 작품 id) 밖에 모른다
+    const named = await readIndex().then((r) => r.index.projects).catch(() => []);
+    const nameOfId = new Map(named.map((p) => [p.id, p]));
     const list: RemoteProject[] = entries
-      .filter((e) => e.name.endsWith('.json'))
-      .map((e) => ({
-        id: e.name.replace(/\.json$/, ''),
-        name: e.name.replace(/\.json$/, ''),
-        rev: e.rev,
-        updatedAt: e.serverModified,
-      }));
+      .filter((e) => e.name.endsWith('.json') && e.name !== INDEX_NAME)
+      .map((e) => {
+        const id = e.name.replace(/\.json$/, '');
+        const known = nameOfId.get(id);
+        return {
+          id,
+          // 목록에 없는 파일은 아직 이름을 모른다 — 열어 보면 이름이 붙는다
+          name: known?.name || id,
+          rev: e.rev,
+          updatedAt: e.serverModified,
+          ...(known?.tabCount !== undefined ? { tabCount: known.tabCount } : {}),
+        };
+      });
     remoteProjects.set(list);
     syncStatus.set('idle');
     return list;
@@ -253,6 +270,13 @@ async function push(id: string, saved: SavedWorkspace, baseRev?: string): Promis
     patchMeta(id, { rev: up.rev, syncedAt: serialized.savedAt });
     lastSyncAt.set(new Date());
     syncStatus.set('idle');
+    // 이름을 목록 파일에 적어 둔다 — 다른 기기가 키 값 대신 이름을 본다.
+    // 실패해도 작품은 이미 올라갔으므로 동기화 상태를 건드리지 않는다.
+    await noteProject({
+      id,
+      name: named.workspaceName,
+      tabCount: serialized.tabs.length,
+    }).catch(() => { /* 다음 기회에 맞는다 */ });
   } catch (err) {
     if (err instanceof DropboxApiError && err.status === 409) {
       // 다른 기기가 먼저 올렸다 — 작업을 막지 않고 멈춘다. 다음에 열 때 정리된다.
@@ -306,6 +330,22 @@ export async function pushOpen(): Promise<void> {
   if (saved) await push(id, saved, metaOf(id)?.rev);
 }
 
+/**
+ * 이름 바꾸기 — 목록 파일의 이름도 함께 고친다.
+ *
+ * 이름은 작품 **내용**이 아니라서 자동 올리기가 돌지 않는다. 그래서 이름만 바꾸면
+ * 다음에 본문을 고칠 때까지 다른 기기는 옛 이름(처음 올릴 때의 이름)을 봤다.
+ */
+export async function renameProjectSynced(id: string, name: string): Promise<void> {
+  renameProject(id, name);
+  if (!isConnected()) return;
+  const meta = metaOf(id);
+  // 아직 올린 적이 없으면 둘 곳이 없다 — 처음 올릴 때 이름이 함께 간다
+  if (!meta?.rev) return;
+  await noteProject({ id, name: meta.name, tabCount: meta.tabCount })
+    .catch(() => { /* 다음 기회에 맞는다 */ });
+}
+
 /** 원격 파일 지우기 (작품 삭제 시) */
 export async function deleteRemote(id: string): Promise<void> {
   if (!isConnected()) return;
@@ -313,6 +353,7 @@ export async function deleteRemote(id: string): Promise<void> {
     await deleteFile(pathOf(id));
     remoteProjects.update((l) => l.filter((r) => r.id !== id));
   } catch { /* 없으면 그만 */ }
+  await forgetProject(id).catch(() => { /* 목록은 다음에 맞는다 */ });
 }
 
 // ── 열기 (동기화 포함) ─────────────────────────────────────

@@ -7,10 +7,10 @@
    * 대신 마지막으로 연 작품을 맨 위에 두고 Enter 로 바로 열 수 있게 한다.
    */
   import { onMount } from 'svelte';
-  import { projects, openProject, createProject, removeProject, renameProject } from '$stores/projects';
+  import { projects, openProject, createProject, removeProject } from '$stores/projects';
   import {
     remoteProjects, refreshRemote, openProjectSynced, resolveAndOpen, pendingConflict,
-    deleteRemote,
+    deleteRemote, renameProjectSynced,
   } from '$stores/projectSync';
   import { dropboxConnected } from '$stores/dropbox';
 
@@ -95,7 +95,7 @@
   }
 
   function commitRename() {
-    if (renamingId) renameProject(renamingId, renameValue);
+    if (renamingId) void renameProjectSynced(renamingId, renameValue);
     renamingId = null;
   }
 
@@ -193,8 +193,12 @@
           {#each remoteOnly as r (r.id)}
             <li class="row">
               <button type="button" class="open" disabled={busy !== null} onclick={() => pullRemote(r.id, r.name)}>
-                <span class="name">{r.name}</span>
-                <span class="meta">받아서 열기</span>
+                <!-- 이름은 폴더의 목록 파일에서 온다. 거기에 없는 파일은 아직 키 값으로만 보인다 -->
+                <span class="name" class:unnamed={r.name === r.id}>{r.name}</span>
+                <span class="meta">
+                  {#if r.tabCount !== undefined}도안 {r.tabCount}개 · {/if}
+                  {r.name === r.id ? '이름을 모르는 파일 — 열면 이름이 붙습니다' : '받아서 열기'}
+                </span>
               </button>
               <button
                 type="button" class="icon danger" title="Dropbox 에서 삭제" aria-label="Dropbox 에서 삭제"
@@ -326,6 +330,8 @@
   /* 닫아 둔 작품은 눈에 덜 띄게 — 목록에는 남아 있다 */
   .state.closed { color: var(--text-muted); }
   .name { font-weight: 600; font-size: 14px; }
+  /* 목록 파일에 이름이 없는 원격 파일 — 키 값 그대로라 덜 눈에 띄게 */
+  .name.unnamed { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); }
   .open:has(.state.closed) .name { color: var(--text-secondary); }
   .meta { font-size: 11px; color: var(--text-secondary); }
   .badge {

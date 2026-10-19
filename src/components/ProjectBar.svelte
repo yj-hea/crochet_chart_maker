@@ -6,11 +6,11 @@
    * "작품 고르기 → 그 작품의 도안 고르기" 가 된다.
    */
   import {
-    projects, openTabs, openProjectId, openProject, createProject, renameProject,
+    projects, openTabs, openProjectId, openProject, createProject,
     duplicateProject, removeProject, closeProject, closeProjectTab,
   } from '$stores/projects';
   import {
-    openProjectSynced, pushOpen, refreshRemote, syncStatus, syncError,
+    openProjectSynced, pushOpen, refreshRemote, syncStatus, syncError, renameProjectSynced,
   } from '$stores/projectSync';
   import { dropboxConnected } from '$stores/dropbox';
 
@@ -73,7 +73,7 @@
     menuFor = null;
   }
   function commitRename() {
-    if (renamingId) renameProject(renamingId, renameValue);
+    if (renamingId) void renameProjectSynced(renamingId, renameValue);
     renamingId = null;
   }
   function addProject() {
